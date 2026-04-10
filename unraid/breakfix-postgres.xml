@@ -3,13 +3,13 @@
   <Name>breakfix-postgres</Name>
   <Repository>postgres:15-alpine</Repository>
   <Registry>https://hub.docker.com/_/postgres</Registry>
-  <Network>breakfix-net</Network>
+  <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support>https://github.com/aceospades95/breakfixtriage</Support>
   <Project>https://www.postgresql.org/</Project>
-  <Overview>PostgreSQL 15 database for BreakFix Triage. Keep this container running before starting the breakfix-triage app container. Both containers must be attached to the same custom Docker network (default: breakfix-net) so they can reach each other by container name.</Overview>
+  <Overview>PostgreSQL 15 database for BreakFix Triage. Runs on the default Docker bridge network and publishes port 5432 on the Unraid host so the breakfix-triage app container can reach it via the host IP.</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI/>
   <TemplateURL/>
@@ -20,9 +20,10 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>A user-defined Docker network called "breakfix-net" must exist. Create it from Unraid's Docker settings or via: docker network create breakfix-net</Requires>
-  <Config Name="Postgres Data" Target="/var/lib/postgresql/data" Default="/mnt/user/appdata/breakfix-triage/postgres" Mode="rw" Description="Where Postgres stores its data on the Unraid array. Do not change after the first start unless you also migrate the data." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/breakfix-triage/postgres</Config>
-  <Config Name="POSTGRES_DB" Target="POSTGRES_DB" Default="breakfix" Mode="" Description="Database name. Must match the database used in the app container's DATABASE_URL." Type="Variable" Display="always" Required="true" Mask="false">breakfix</Config>
+  <Requires>Port 5432 on the Unraid host must be free. If another container already uses 5432, remap the host side to something else (e.g. 5433) and update the app container's DATABASE_URL to match.</Requires>
+  <Config Name="Postgres Port" Target="5432" Default="5432" Mode="tcp" Description="Host port to publish Postgres on. Leave at 5432 unless something else on Unraid already uses it." Type="Port" Display="always" Required="true" Mask="false">5432</Config>
+  <Config Name="Postgres Data" Target="/var/lib/postgresql/data" Default="/mnt/user/appdata/breakfix-triage/postgres" Mode="rw" Description="Where Postgres stores its data on the Unraid array. Do not change after the first start unless you also migrate the data directory." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/breakfix-triage/postgres</Config>
+  <Config Name="POSTGRES_DB" Target="POSTGRES_DB" Default="breakfix" Mode="" Description="Database name. Must match the database in the app container's DATABASE_URL." Type="Variable" Display="always" Required="true" Mask="false">breakfix</Config>
   <Config Name="POSTGRES_USER" Target="POSTGRES_USER" Default="breakfix" Mode="" Description="Database user. Must match the app container's DATABASE_URL." Type="Variable" Display="always" Required="true" Mask="false">breakfix</Config>
-  <Config Name="POSTGRES_PASSWORD" Target="POSTGRES_PASSWORD" Default="" Mode="" Description="Database password. Choose a long random string. Must match the password inside the app container's DATABASE_URL." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="POSTGRES_PASSWORD" Target="POSTGRES_PASSWORD" Default="" Mode="" Description="Database password. Choose a long random string WITHOUT shell-special characters (@ : / ? #). Must match the password encoded in the app container's DATABASE_URL." Type="Variable" Display="always" Required="true" Mask="true"/>
 </Container>

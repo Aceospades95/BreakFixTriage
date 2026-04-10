@@ -1,0 +1,7 @@
+# Placeholder so the `public/` directory exists in git and inside the
+# Docker builder stage. Next.js expects a public/ folder, and the Dockerfile
+# copies it from the builder into the runtime image. Without this file,
+# the directory would not be tracked by git and the build would fail with
+# "failed to compute cache key: /app/public: not found".
+#
+# Add real static assets (favicon, images, etc.) here as needed.

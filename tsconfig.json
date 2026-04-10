@@ -28,8 +28,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "prisma/**/*.ts",
-    "tests/**/*.ts",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "tests"]
 }

@@ -101,18 +101,28 @@ export const NearestNeighborOptimizer: RouteOptimizer = {
   },
 };
 
+import { buildGoogleRoutesOptimizer } from "./google-routes";
+
 /**
- * Resolve which optimizer to use from env. In Phase 4, this is where the
- * GoogleRoutesOptimizer gets registered.
+ * Resolve which optimizer to use from env.
+ *
+ * Selection rules:
+ *   - `ROUTE_OPTIMIZER=google-routes` with a populated
+ *     `GOOGLE_ROUTES_API_KEY` uses the Google Routes API.
+ *   - Anything else (including `google-routes` with a missing key)
+ *     falls back to the built-in nearest-neighbor optimizer.
+ *
+ * We intentionally fail open: the admin may have misconfigured their
+ * env, but nobody wants route-building to hard-fail because of it.
+ * The chosen optimizer is recorded on every Route row for audit.
  */
 export function getOptimizer(): RouteOptimizer {
   const name = process.env.ROUTE_OPTIMIZER ?? "nearest-neighbor";
-  switch (name) {
-    case "nearest-neighbor":
-      return NearestNeighborOptimizer;
-    // case "google-routes":
-    //   return GoogleRoutesOptimizer; // Phase 4
-    default:
-      return NearestNeighborOptimizer;
+  if (name === "google-routes") {
+    const optimizer = buildGoogleRoutesOptimizer(
+      process.env.GOOGLE_ROUTES_API_KEY,
+    );
+    if (optimizer) return optimizer;
   }
+  return NearestNeighborOptimizer;
 }

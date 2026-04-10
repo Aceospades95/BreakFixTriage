@@ -18,7 +18,8 @@
     "db:bootstrap": "tsx prisma/bootstrap.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
-    "quotes:sweep": "tsx prisma/sweep-quotes.ts"
+    "quotes:sweep": "tsx prisma/sweep-quotes.ts",
+    "servicenow:sync": "tsx prisma/sync-servicenow.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -28,6 +29,7 @@
     "bcryptjs": "^2.4.3",
     "next": "^14.2.15",
     "next-auth": "^4.24.10",
+    "nodemailer": "^7.0.13",
     "papaparse": "^5.4.1",
     "pg-boss": "^9.0.3",
     "react": "^18.3.1",
@@ -38,6 +40,7 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.16.11",
+    "@types/nodemailer": "^6.4.23",
     "@types/papaparse": "^5.3.15",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",

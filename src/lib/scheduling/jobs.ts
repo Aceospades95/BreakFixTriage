@@ -8,6 +8,11 @@ import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
 import { transitionTicket } from "@/lib/workflow";
 import { getOptimizer, type Stop } from "@/lib/routing/optimizer";
+import {
+  enqueueNotification,
+  renderDeliveryScheduled,
+  renderPickupScheduled,
+} from "@/lib/notifications";
 
 export interface CreateJobInput {
   type: JobType;
@@ -92,8 +97,10 @@ export async function buildRoute(
     const jobs = await tx.job.findMany({
       where: { id: { in: input.jobIds } },
       include: {
-        school: { include: { address: true } },
-        ticketLinks: true,
+        school: {
+          include: { address: true, mainContact: true },
+        },
+        ticketLinks: { include: { ticket: true } },
       },
     });
     if (jobs.length !== input.jobIds.length) {
@@ -142,7 +149,8 @@ export async function buildRoute(
       data: { status: JobStatus.SCHEDULED },
     });
 
-    // For each ticket on each job, fire the appropriate transition.
+    // For each ticket on each job, fire the appropriate transition
+    // and (best-effort) queue an email to the school main contact.
     for (const job of jobs) {
       const targetState =
         job.type === JobType.PICKUP
@@ -180,6 +188,53 @@ export async function buildRoute(
             },
             tx,
           );
+        }
+
+        const contact = job.school.mainContact;
+        if (contact?.email && contact.email.includes("@")) {
+          const rendered =
+            job.type === JobType.DELIVERY
+              ? renderDeliveryScheduled({
+                  incidentNumber: link.ticket.incidentNumber,
+                  schoolName: job.school.name,
+                  deliveryDate: input.date,
+                  contactName: contact.name ?? null,
+                })
+              : renderPickupScheduled({
+                  incidentNumber: link.ticket.incidentNumber,
+                  schoolName: job.school.name,
+                  pickupDate: input.date,
+                  contactName: contact.name ?? null,
+                });
+          try {
+            await enqueueNotification(
+              {
+                kind:
+                  job.type === JobType.DELIVERY
+                    ? "DELIVERY_SCHEDULED"
+                    : "PICKUP_SCHEDULED",
+                ticketId: link.ticketId,
+                recipientEmail: contact.email,
+                subject: rendered.subject,
+                body: rendered.body,
+              },
+              tx,
+            );
+          } catch (err) {
+            await writeAudit(
+              {
+                actorUserId: input.actorUserId,
+                entityType: "Ticket",
+                entityId: link.ticketId,
+                action: "schedule:notify-skip",
+                after: {
+                  reason: err instanceof Error ? err.message : String(err),
+                  routeId: route.id,
+                },
+              },
+              tx,
+            );
+          }
         }
       }
     }

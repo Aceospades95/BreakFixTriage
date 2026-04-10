@@ -27,6 +27,10 @@ import {
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
 import { transitionTicket } from "@/lib/workflow";
+import {
+  enqueueNotification,
+  renderQuoteNoResponse,
+} from "@/lib/notifications";
 
 /**
  * Pure predicate. A quote is considered expired iff it is still SENT,
@@ -74,7 +78,13 @@ export async function sweepExpiredQuotes(
       status: QuoteStatus.SENT,
       holdUntil: { lte: now },
     },
-    include: { ticket: true },
+    include: {
+      ticket: {
+        include: {
+          school: { include: { mainContact: true } },
+        },
+      },
+    },
   });
 
   const report: SweepReport = {
@@ -141,6 +151,42 @@ export async function sweepExpiredQuotes(
                 after: {
                   reason: err instanceof Error ? err.message : String(err),
                   quoteId: quote.id,
+                },
+              },
+              tx,
+            );
+          }
+        }
+
+        // Queue a follow-up email to the school's primary contact.
+        const contact = quote.ticket.school.mainContact;
+        if (contact?.email && contact.email.includes("@")) {
+          const rendered = renderQuoteNoResponse({
+            incidentNumber: quote.ticket.incidentNumber,
+            schoolName: quote.ticket.school.name,
+            holdUntil: quote.holdUntil,
+          });
+          try {
+            await enqueueNotification(
+              {
+                kind: "NO_RESPONSE_CLOSURE",
+                ticketId: quote.ticketId,
+                quoteId: quote.id,
+                recipientEmail: contact.email,
+                subject: rendered.subject,
+                body: rendered.body,
+              },
+              tx,
+            );
+          } catch (err) {
+            await writeAudit(
+              {
+                actorUserId,
+                entityType: "Quote",
+                entityId: quote.id,
+                action: "auto-expire:notify-skip",
+                after: {
+                  reason: err instanceof Error ? err.message : String(err),
                 },
               },
               tx,

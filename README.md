@@ -27,7 +27,8 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 **Phase 0 — Foundations** ✓ complete.
 **Phase 1 — Auth, UI shell, read-only parity** ✓ complete.
 **Phase 2 — Scheduling & dispatch** ✓ complete.
-**Phase 3 — Quotes, OOW, invoices, hold-window automation** ✓ complete in this commit.
+**Phase 3 — Quotes, OOW, invoices, hold-window automation** ✓ complete.
+**Phase 4 — Email, Google Routes, ServiceNow API** ✓ complete in this commit.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
   routes, quotes, imports, duplicates, audit, and notifications
@@ -101,14 +102,43 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 - New vitest coverage for `isQuoteExpired` including edge cases
   (no hold window, boundary equality, non-SENT statuses)
 
-**Not yet wired in Phase 3 (comes in Phase 4+):**
+**Added in Phase 4:**
 
-- Email sending beyond the stdout transport (currently stdout
-  NotificationTransport only)
-- ServiceNow API mode (CSV/XLSX import works today)
-- Google Routes optimizer
+- SMTP notification transport built on nodemailer, compatible with
+  Google Workspace SMTP relay, Gmail app passwords, SES, SendGrid, or
+  any other RFC-compliant server. Selected by `NOTIFICATION_TRANSPORT=
+  smtp` (or auto-detected whenever the `SMTP_*` env vars are
+  populated), with graceful fallback to the stdout transport.
+- Pure-function notification templates for quote-sent, delivery-
+  scheduled, pickup-scheduled, and quote-no-response, all plain text
+  so they work across stdout, SMTP, and any future webhook transport.
+- `enqueueNotification` helper that writes a PENDING Notification row
+  and (outside a transaction) fires the dispatch in the background,
+  recording success or failure back onto the row.
+- Live notifications wired into `sendQuote`, `buildRoute`, and
+  `sweepExpiredQuotes`, each routed to the school's primary contact.
+- Google Routes optimizer with `buildComputeRoutesBody` and
+  `parseComputeRoutesResponse` exposed as pure functions for unit
+  testing; selected by `ROUTE_OPTIMIZER=google-routes` with a
+  populated `GOOGLE_ROUTES_API_KEY`. Fails open to the built-in
+  nearest-neighbor optimizer if the key is missing.
+- ServiceNow API connector: `normalizeServiceNowRow` (pure mapper),
+  `fetchServiceNowIncidents` (Table API wrapper with basic auth), and
+  `runServiceNowSync` (runs the records through the existing commit
+  pipeline and writes a real `ImportBatch`).
+- Manual "Sync from ServiceNow" button on `/imports/new` gated on
+  `SERVICENOW_*` env vars, plus a standalone
+  `npm run servicenow:sync` script for cron / Unraid User Scripts.
+- New vitest coverage: notification templates (8 cases), Google
+  Routes response parser + body builder (7 cases), ServiceNow row
+  normalizer (6 cases).
+
+**Not yet wired in Phase 4 (carry-over to Phase 5):**
+
+- Parallel-run validation against the legacy spreadsheet, cutover
 - Drag-and-drop route reordering (up/down buttons ship today)
 - Dry-run preview before committing an import
+- HTML email templates (plain text only today)
 
 ## Local setup
 
@@ -200,7 +230,7 @@ src/
     db/              Prisma client singleton
     duplicates/      Duplicate detection + conflict resolution
     import/          CSV/XLSX parse → map → validate → upsert
-    notifications/   Notification transport abstraction
+    notifications/   Transports (stdout, SMTP), templates, enqueue helper
     quotes/          Quote lifecycle, invoice / PO, hold-window sweep
     reports/         Dashboard queries
     routing/         Route optimizer abstraction (default: nearest neighbor)
@@ -211,19 +241,48 @@ tests/               Vitest coverage for pure business logic
 
 ## Scheduled tasks
 
-The hold-window sweeper auto-expires any SENT quote whose `holdUntil`
-timestamp has passed. Run it on whatever schedule makes sense for you:
+Two background jobs ship today. Both can run on a cron, an Unraid User
+Script, or whatever scheduler your environment uses:
 
 ```bash
-npm run quotes:sweep   # or: npx tsx prisma/sweep-quotes.ts
+npm run quotes:sweep       # auto-expire quotes past their hold window
+npm run servicenow:sync    # pull fresh incidents from ServiceNow
 ```
 
-Typical wiring is a nightly cron or Unraid User Script. The script
-prints a JSON summary and exits non-zero only on unexpected errors, so
-you can pipe the output straight to your notification channel of
-choice. Dispatchers can also kick off the sweep manually from the
-`/quotes` page via the "Run hold-window sweep" button, which calls the
-same service function.
+Each script prints a JSON summary and exits non-zero on unexpected
+errors, so you can pipe the output straight into your alerting
+channel of choice. Both are also exposed in the UI:
+
+- `/quotes` → "Run hold-window sweep" button (same code path as
+  `npm run quotes:sweep`).
+- `/imports/new` → "Sync from ServiceNow" button, gated on the
+  `SERVICENOW_*` env vars being populated.
+
+The ServiceNow sync writes a real `ImportBatch`, so both cron runs
+and manual syncs show up in `/imports` alongside CSV uploads.
+
+## Email
+
+By default notifications log to the container's stdout. To send real
+email, set `NOTIFICATION_TRANSPORT=smtp` (or just populate the
+`SMTP_*` vars in `.env.example`) and provide credentials to a relay
+your Workspace / SMTP provider accepts. The transport is built on
+nodemailer, so anything nodemailer talks to works:
+
+```
+SMTP_HOST=smtp-relay.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<workspace service account>
+SMTP_PASS=<app password>
+SMTP_FROM="BreakFix Triage <ops@your-domain.org>"
+```
+
+The app fires live emails whenever a quote is sent, a route with a
+delivery or pickup is built, or a quote auto-expires via the
+hold-window sweeper. Recipients come from each school's primary
+`Contact.email`; schools without a contact silently skip the
+notification rather than failing the upstream operation.
 
 ## Testing
 

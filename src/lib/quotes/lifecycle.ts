@@ -31,6 +31,7 @@ import {
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
 import { transitionTicket } from "@/lib/workflow";
+import { enqueueNotification, renderQuoteSent } from "@/lib/notifications";
 
 /**
  * Default hold window: ServiceNow tickets with a sent quote wait seven
@@ -208,7 +209,17 @@ export async function sendQuote(
   return db.$transaction(async (tx) => {
     const quote = await tx.quote.findUnique({
       where: { id: input.quoteId },
-      include: { ticket: true },
+      include: {
+        ticket: {
+          include: {
+            school: {
+              include: {
+                mainContact: true,
+              },
+            },
+          },
+        },
+      },
     });
     if (!quote) throw new Error(`Quote ${input.quoteId} not found`);
     if (quote.status !== QuoteStatus.DRAFT) {
@@ -279,6 +290,48 @@ export async function sendQuote(
             after: {
               reason: err instanceof Error ? err.message : String(err),
               quoteId: quote.id,
+            },
+          },
+          tx,
+        );
+      }
+    }
+
+    // Queue an email to the school's primary contact if we have one.
+    // Missing/invalid email is not a failure — the sweep page and UI
+    // stay functional even without a mail transport configured.
+    const contact = quote.ticket.school.mainContact;
+    if (contact?.email && contact.email.includes("@")) {
+      const rendered = renderQuoteSent({
+        incidentNumber: quote.ticket.incidentNumber,
+        schoolName: quote.ticket.school.name,
+        amountDollars:
+          quote.amountCents != null ? quote.amountCents / 100 : null,
+        diagnosticOnly: quote.diagnosticOnly,
+        holdUntil,
+        requesterName: contact.name ?? null,
+      });
+      try {
+        await enqueueNotification(
+          {
+            kind: "QUOTE_SENT",
+            ticketId: quote.ticketId,
+            quoteId: quote.id,
+            recipientEmail: contact.email,
+            subject: rendered.subject,
+            body: rendered.body,
+          },
+          tx,
+        );
+      } catch (err) {
+        await writeAudit(
+          {
+            actorUserId: input.actorUserId,
+            entityType: "Quote",
+            entityId: quote.id,
+            action: "quote-send:notify-skip",
+            after: {
+              reason: err instanceof Error ? err.message : String(err),
             },
           },
           tx,

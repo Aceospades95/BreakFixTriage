@@ -201,9 +201,9 @@ export async function runImport(
   };
 }
 
-type CommitOutcome = "CREATED" | "UPDATED" | "DUPLICATE" | "REJECTED";
+export type CommitOutcome = "CREATED" | "UPDATED" | "DUPLICATE" | "REJECTED";
 
-async function commitRow(
+export async function commitRow(
   db: PrismaClient,
   batchId: string,
   row: { id: string; normalized: NormalizedImportRow },

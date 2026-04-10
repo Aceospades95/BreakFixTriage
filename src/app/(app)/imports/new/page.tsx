@@ -2,7 +2,11 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
-import { uploadImportAction } from "@/server/actions/imports";
+import {
+  runServiceNowSyncAction,
+  uploadImportAction,
+} from "@/server/actions/imports";
+import { isServiceNowConfigured } from "@/lib/import/servicenow";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +16,13 @@ export default async function NewImportPage({
   searchParams?: { error?: string };
 }) {
   await requireRole(PERMISSIONS.IMPORTS_RUN);
+  const snConfigured = isServiceNowConfigured();
 
   return (
     <>
       <PageHeader
         title="New import"
-        subtitle="Upload a ServiceNow CSV or XLSX export. The importer maps common ServiceNow column names, validates every row, detects duplicates, and writes results to the database."
+        subtitle="Upload a ServiceNow CSV or XLSX export, or pull directly from the ServiceNow Table API."
         actions={
           <Link
             href="/imports"
@@ -33,6 +38,37 @@ export default async function NewImportPage({
           {searchParams.error}
         </div>
       )}
+
+      <section className="mb-6 max-w-xl rounded-lg border border-surface-border bg-surface-muted p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Pull from ServiceNow
+        </h2>
+        <p className="mt-2 text-xs text-slate-400">
+          Calls the ServiceNow Table API and feeds the results through the
+          normal import pipeline. Uses{" "}
+          <code className="font-mono">SERVICENOW_BASE_URL</code>,{" "}
+          <code className="font-mono">SERVICENOW_USERNAME</code>, and{" "}
+          <code className="font-mono">SERVICENOW_PASSWORD</code> from the
+          environment.
+        </p>
+        <div className="mt-4">
+          {snConfigured ? (
+            <form action={runServiceNowSyncAction}>
+              <button
+                type="submit"
+                className="rounded bg-accent px-4 py-2 text-sm font-semibold transition hover:bg-accent-strong"
+              >
+                Sync from ServiceNow
+              </button>
+            </form>
+          ) : (
+            <p className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+              ServiceNow is not configured for this deployment. Set the
+              three env vars above and redeploy to enable the sync button.
+            </p>
+          )}
+        </div>
+      </section>
 
       <form
         action={uploadImportAction}

@@ -1,53 +1,48 @@
 import { NotificationStatus, type PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
+import type { NotificationTransport } from "./types";
+import { StdoutTransport } from "./stdout";
+import { buildSmtpTransport, isSmtpConfigured } from "./smtp";
 
 /**
- * Notification transport abstraction.
+ * Resolve the notification transport from environment configuration.
  *
- * A transport is a concrete mechanism for delivering a notification:
- *   - `stdout`    → dev default; logs to console
- *   - `smtp`      → plain SMTP (nodemailer-compatible, future)
- *   - `gmail`     → Gmail API via a service account (Phase 4)
- *   - `apps-script` → webhook into an Apps Script endpoint (Phase 4)
+ * Precedence:
+ *   1. `NOTIFICATION_TRANSPORT=stdout` forces stdout (useful for CI)
+ *   2. `NOTIFICATION_TRANSPORT=smtp` enables SMTP — requires SMTP_* envs
+ *   3. If SMTP_* envs are populated, SMTP is used automatically
+ *   4. Otherwise stdout
  *
- * Phase 0 ships `stdout` only. The point is to give the rest of the system
- * a stable API (`sendNotification`) so later phases can swap transports
- * without touching business logic.
+ * Keeping this in a single place means the rest of the codebase just
+ * calls `dispatchNotification()` without caring how the email actually
+ * gets sent.
  */
-
-export interface TransportResult {
-  ok: boolean;
-  error?: string;
-}
-
-export interface NotificationTransport {
-  readonly name: string;
-  send(input: {
-    recipientEmail: string;
-    subject: string;
-    body: string;
-  }): Promise<TransportResult>;
-}
-
-export const StdoutTransport: NotificationTransport = {
-  name: "stdout",
-  async send({ recipientEmail, subject, body }) {
-    // eslint-disable-next-line no-console
-    console.log(
-      `\n[notification:stdout] to=${recipientEmail}\n  subject: ${subject}\n  body: ${body}\n`,
-    );
-    return { ok: true };
-  },
-};
+let cachedTransport: NotificationTransport | null = null;
 
 export function getTransport(): NotificationTransport {
-  const name = process.env.NOTIFICATION_TRANSPORT ?? "stdout";
-  switch (name) {
-    case "stdout":
-      return StdoutTransport;
-    default:
-      return StdoutTransport;
+  if (cachedTransport) return cachedTransport;
+  const explicit = process.env.NOTIFICATION_TRANSPORT?.toLowerCase();
+  if (explicit === "stdout") {
+    cachedTransport = StdoutTransport;
+    return cachedTransport;
   }
+  if (explicit === "smtp" || (!explicit && isSmtpConfigured())) {
+    const smtp = buildSmtpTransport();
+    if (smtp) {
+      cachedTransport = smtp;
+      return cachedTransport;
+    }
+  }
+  cachedTransport = StdoutTransport;
+  return cachedTransport;
+}
+
+/**
+ * Test-only helper to reset the cached transport between runs so that
+ * env changes are honored.
+ */
+export function resetTransportCache(): void {
+  cachedTransport = null;
 }
 
 /**
@@ -79,3 +74,6 @@ export async function dispatchNotification(
     },
   });
 }
+
+export type { NotificationTransport, TransportResult } from "./types";
+export { StdoutTransport } from "./stdout";

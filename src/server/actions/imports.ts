@@ -5,6 +5,10 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { runImport } from "@/lib/import/pipeline";
+import {
+  loadServiceNowConfigFromEnv,
+  runServiceNowSync,
+} from "@/lib/import/servicenow";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
 
@@ -54,6 +58,49 @@ export async function uploadImportAction(formData: FormData) {
     redirect(
       "/imports/new?error=" +
         encodeURIComponent(errorMessage ?? "Upload failed."),
+    );
+  }
+
+  revalidatePath("/imports");
+  revalidatePath("/tickets");
+  redirect(`/imports/${batchId}`);
+}
+
+/**
+ * Trigger a ServiceNow API sync. Gated on the same IMPORTS_RUN
+ * permission as file uploads. Fails loudly on the /imports/new page
+ * if the env isn't configured, since that's usually a deployment
+ * error rather than something the operator can fix on the fly.
+ */
+export async function runServiceNowSyncAction() {
+  const session = await requireRole(PERMISSIONS.IMPORTS_RUN);
+
+  const config = loadServiceNowConfigFromEnv();
+  if (!config) {
+    redirect(
+      "/imports/new?error=" +
+        encodeURIComponent(
+          "ServiceNow is not configured. Set SERVICENOW_BASE_URL, SERVICENOW_USERNAME, and SERVICENOW_PASSWORD and redeploy.",
+        ),
+    );
+  }
+
+  let batchId: string | null = null;
+  let errorMessage: string | null = null;
+  try {
+    const result = await runServiceNowSync({
+      config,
+      triggeredByUserId: session.userId,
+    });
+    batchId = result.batchId;
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : "Sync failed.";
+  }
+
+  if (errorMessage || !batchId) {
+    redirect(
+      "/imports/new?error=" +
+        encodeURIComponent(errorMessage ?? "Sync failed."),
     );
   }
 

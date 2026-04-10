@@ -74,6 +74,7 @@ async function main() {
         name: u.name,
         role: u.role,
         passwordHash,
+        active: true,
         districts: {
           create: [
             { districtId: bronx.id },
@@ -81,7 +82,16 @@ async function main() {
           ],
         },
       },
-      update: { role: u.role },
+      // On re-run of the seed, reset the demo password and role. This is a
+      // demo dataset — idempotency matters more than preserving whatever
+      // state the row drifted to. Note: district links are not touched
+      // because those are many-to-many and would need explicit reconcile.
+      update: {
+        role: u.role,
+        passwordHash,
+        active: true,
+        name: u.name,
+      },
     });
     createdUsers[u.role] = row.id;
   }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { QuoteStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { prisma } from "@/lib/db/prisma";
@@ -7,6 +8,13 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { allowedNextStates } from "@/lib/workflow";
 import { transitionTicketAction } from "@/server/actions/tickets";
+import {
+  cancelQuoteAction,
+  createQuoteAction,
+  respondQuoteAction,
+  sendQuoteAction,
+  updateDraftQuoteAction,
+} from "@/server/actions/quotes";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +27,7 @@ export default async function TicketDetailPage({
 }) {
   const session = await requireRole(PERMISSIONS.TICKETS_READ);
   const canTransition = can(session.role, PERMISSIONS.TICKETS_TRANSITION);
+  const canWriteQuotes = can(session.role, PERMISSIONS.QUOTES_WRITE);
 
   const ticket = await prisma.ticket.findUnique({
     where: { id: params.ticketId },
@@ -30,7 +39,17 @@ export default async function TicketDetailPage({
         take: 50,
         include: { actor: { select: { name: true, email: true } } },
       },
-      quotes: { orderBy: { createdAt: "desc" } },
+      quotes: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          purchaseOrder: true,
+          activities: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            include: { actor: { select: { name: true } } },
+          },
+        },
+      },
     },
   });
   if (!ticket) notFound();
@@ -194,26 +213,136 @@ export default async function TicketDetailPage({
             {ticket.quotes.length === 0 ? (
               <p className="text-sm text-slate-400">No quotes yet.</p>
             ) : (
-              <ul className="space-y-2 text-sm">
+              <ul className="space-y-3 text-sm">
                 {ticket.quotes.map((q) => (
                   <li
                     key={q.id}
                     className="rounded border border-surface-border bg-surface px-3 py-2"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs">{q.status}</span>
-                      {q.amountCents != null && (
-                        <span>${(q.amountCents / 100).toFixed(2)}</span>
-                      )}
+                      <QuoteStatusPill status={q.status} />
+                      {q.amountCents != null ? (
+                        <span className="font-mono">
+                          ${(q.amountCents / 100).toFixed(2)}
+                        </span>
+                      ) : q.diagnosticOnly ? (
+                        <span className="text-xs text-slate-400">
+                          diagnostic
+                        </span>
+                      ) : null}
                     </div>
                     {q.holdUntil && (
-                      <div className="text-xs text-slate-500">
+                      <div className="mt-1 text-xs text-slate-500">
                         hold until {q.holdUntil.toISOString().slice(0, 10)}
+                        {q.holdUntil.getTime() <= Date.now() && (
+                          <span className="ml-1 text-amber-300">
+                            (expired)
+                          </span>
+                        )}
                       </div>
+                    )}
+                    {q.notes && (
+                      <p className="mt-1 text-xs text-slate-400">{q.notes}</p>
+                    )}
+                    {q.purchaseOrder && (
+                      <div className="mt-2 rounded border border-surface-border bg-surface-muted/40 p-2 text-xs">
+                        <div className="font-mono">
+                          PO {q.purchaseOrder.poNumber}
+                        </div>
+                        <div className="text-slate-400">
+                          ${(q.purchaseOrder.amountCents / 100).toFixed(2)}
+                          {q.purchaseOrder.invoicedAt && (
+                            <>
+                              {" "}
+                              · invoiced{" "}
+                              {q.purchaseOrder.invoicedAt
+                                .toISOString()
+                                .slice(0, 10)}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {canWriteQuotes && (
+                      <QuoteActions
+                        ticketId={ticket.id}
+                        quoteId={q.id}
+                        status={q.status}
+                      />
+                    )}
+
+                    {q.activities.length > 0 && (
+                      <details className="mt-2 text-xs text-slate-400">
+                        <summary className="cursor-pointer select-none">
+                          Activity ({q.activities.length})
+                        </summary>
+                        <ul className="mt-1 space-y-0.5">
+                          {q.activities.map((a) => (
+                            <li key={a.id}>
+                              <span className="font-mono">{a.kind}</span>
+                              <span className="mx-1">·</span>
+                              {a.createdAt
+                                .toISOString()
+                                .replace("T", " ")
+                                .slice(0, 16)}
+                              {a.actor && (
+                                <span className="ml-1 text-slate-500">
+                                  by {a.actor.name}
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
                     )}
                   </li>
                 ))}
               </ul>
+            )}
+
+            {canWriteQuotes && ticket.state === "QUOTE_REQUIRED" && (
+              <form
+                action={createQuoteAction}
+                className="mt-3 space-y-2 border-t border-surface-border pt-3 text-sm"
+              >
+                <input type="hidden" name="ticketId" value={ticket.id} />
+                <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                  New quote
+                </div>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase tracking-wide text-slate-500">
+                    Amount ($)
+                  </span>
+                  <input
+                    type="text"
+                    name="amount"
+                    inputMode="decimal"
+                    placeholder="199.00"
+                    className="rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    name="diagnosticOnly"
+                    className="accent-accent"
+                  />
+                  Diagnostic only (no repair amount)
+                </label>
+                <textarea
+                  name="notes"
+                  rows={2}
+                  placeholder="Internal notes"
+                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="w-full rounded bg-accent px-2 py-1 text-xs font-semibold hover:bg-accent-strong"
+                >
+                  Create draft quote
+                </button>
+              </form>
             )}
           </Card>
 
@@ -257,4 +386,146 @@ function Dd({
   className?: string;
 }) {
   return <dd className={`text-slate-200 ${className}`}>{children}</dd>;
+}
+
+function QuoteStatusPill({ status }: { status: QuoteStatus }) {
+  const cls: Record<QuoteStatus, string> = {
+    DRAFT: "bg-slate-500/20 text-slate-200 border-slate-500/40",
+    SENT: "bg-violet-500/20 text-violet-200 border-violet-500/40",
+    APPROVED: "bg-emerald-500/20 text-emerald-200 border-emerald-500/40",
+    DECLINED: "bg-red-500/20 text-red-200 border-red-500/40",
+    NO_RESPONSE: "bg-amber-500/20 text-amber-200 border-amber-500/40",
+    CANCELLED: "bg-slate-500/20 text-slate-400 border-slate-500/40",
+  };
+  return (
+    <span
+      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls[status]}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+/**
+ * Per-quote action buttons. Contextual: DRAFT quotes can be edited /
+ * sent / cancelled; SENT quotes can be approved, declined, or
+ * cancelled; terminal quotes show nothing.
+ */
+function QuoteActions({
+  ticketId,
+  quoteId,
+  status,
+}: {
+  ticketId: string;
+  quoteId: string;
+  status: QuoteStatus;
+}) {
+  if (status === "DRAFT") {
+    return (
+      <div className="mt-3 space-y-2 border-t border-surface-border pt-2">
+        <form
+          action={sendQuoteAction}
+          className="flex flex-wrap items-end gap-2"
+        >
+          <input type="hidden" name="quoteId" value={quoteId} />
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-500">
+              Hold days
+            </span>
+            <input
+              type="number"
+              name="holdDays"
+              min={0}
+              max={90}
+              defaultValue={7}
+              className="w-16 rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded bg-accent px-2 py-1 text-xs font-semibold hover:bg-accent-strong"
+          >
+            Send quote
+          </button>
+        </form>
+        <form
+          action={updateDraftQuoteAction}
+          className="flex flex-wrap items-end gap-2"
+        >
+          <input type="hidden" name="quoteId" value={quoteId} />
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-500">
+              New amount
+            </span>
+            <input
+              type="text"
+              name="amount"
+              inputMode="decimal"
+              placeholder="$"
+              className="w-24 rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded border border-surface-border px-2 py-1 text-xs hover:border-accent"
+          >
+            Save draft
+          </button>
+        </form>
+        <form action={cancelQuoteAction}>
+          <input type="hidden" name="quoteId" value={quoteId} />
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <button
+            type="submit"
+            className="rounded border border-red-500/40 px-2 py-1 text-xs text-red-200 hover:bg-red-500/10"
+          >
+            Cancel quote
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  if (status === "SENT") {
+    return (
+      <div className="mt-3 flex flex-wrap gap-2 border-t border-surface-border pt-2">
+        <form action={respondQuoteAction}>
+          <input type="hidden" name="quoteId" value={quoteId} />
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <input type="hidden" name="response" value="APPROVED" />
+          <button
+            type="submit"
+            className="rounded bg-emerald-500/80 px-2 py-1 text-xs font-semibold text-slate-950 hover:bg-emerald-400"
+          >
+            Mark approved
+          </button>
+        </form>
+        <form action={respondQuoteAction}>
+          <input type="hidden" name="quoteId" value={quoteId} />
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <input type="hidden" name="response" value="DECLINED" />
+          <button
+            type="submit"
+            className="rounded border border-red-500/60 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-100 hover:bg-red-500/20"
+          >
+            Mark declined
+          </button>
+        </form>
+        <form action={cancelQuoteAction}>
+          <input type="hidden" name="quoteId" value={quoteId} />
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <button
+            type="submit"
+            className="rounded border border-surface-border px-2 py-1 text-xs hover:border-accent"
+          >
+            Cancel
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  return null;
 }

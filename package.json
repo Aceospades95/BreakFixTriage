@@ -17,7 +17,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:bootstrap": "tsx prisma/bootstrap.ts",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force"
+    "db:reset": "prisma migrate reset --force",
+    "quotes:sweep": "tsx prisma/sweep-quotes.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

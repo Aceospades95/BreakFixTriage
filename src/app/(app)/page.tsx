@@ -64,6 +64,16 @@ export default async function HomePage() {
             description="Jobs, routes, and driver assignments"
           />
           <NavCard
+            href="/quotes"
+            title="Quotes"
+            description="Out-of-warranty repairs and hold-window follow-up"
+          />
+          <NavCard
+            href="/invoices"
+            title="Invoices"
+            description="POs, invoicing, and ticket closure"
+          />
+          <NavCard
             href="/dashboards"
             title="Dashboards"
             description="Operational health, aging, and queues"

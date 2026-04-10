@@ -26,7 +26,8 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 
 **Phase 0 — Foundations** ✓ complete.
 **Phase 1 — Auth, UI shell, read-only parity** ✓ complete.
-**Phase 2 — Scheduling & dispatch** ✓ complete in this commit.
+**Phase 2 — Scheduling & dispatch** ✓ complete.
+**Phase 3 — Quotes, OOW, invoices, hold-window automation** ✓ complete in this commit.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
   routes, quotes, imports, duplicates, audit, and notifications
@@ -75,11 +76,37 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
   ADMIN on the allow list; vitest coverage for the pure stop-status
   validator
 
-**Not yet wired in Phase 2 (comes in Phase 3+):**
+**Added in Phase 3:**
 
-- Full quote / OOW workflow with hold-window automation
-- Email sending beyond the stdout transport
+- Quote lifecycle services (`createQuote`, `updateDraftQuote`,
+  `sendQuote`, `respondToQuote`, `cancelQuote`) with activity logs and
+  full audit trail; quote state transitions cascade into the ticket
+  state machine through the existing `quoteStateAlignment` guard
+- `/quotes` queue page with per-status tabs, a banner for overdue
+  sent quotes, and a "Run hold-window sweep" button that triggers the
+  same sweeper as the scheduled job
+- Hold-window automation: `sweepExpiredQuotes` flips every overdue
+  SENT quote to NO_RESPONSE and moves the owning ticket to
+  QUOTE_NO_RESPONSE. Exposed both as a server action (manual trigger)
+  and as a standalone `npm run quotes:sweep` script for cron
+- Purchase order / invoice services: `attachPurchaseOrder` upserts a
+  PO against an APPROVED quote; `markPoInvoiced` stamps `invoicedAt`
+  and optionally transitions INVOICE_REQUIRED → CLOSED through the
+  `invoiceBeforeClose` guard
+- `/invoices` queue page listing every INVOICE_REQUIRED ticket with
+  an inline PO entry form and a "Mark invoiced + close" action
+- Ticket detail page now shows quote activity history and contextual
+  DRAFT/SENT action buttons (Send / Approve / Decline / Cancel) plus
+  an inline "Create quote" form when the ticket is in QUOTE_REQUIRED
+- New vitest coverage for `isQuoteExpired` including edge cases
+  (no hold window, boundary equality, non-SENT statuses)
+
+**Not yet wired in Phase 3 (comes in Phase 4+):**
+
+- Email sending beyond the stdout transport (currently stdout
+  NotificationTransport only)
 - ServiceNow API mode (CSV/XLSX import works today)
+- Google Routes optimizer
 - Drag-and-drop route reordering (up/down buttons ship today)
 - Dry-run preview before committing an import
 
@@ -163,7 +190,7 @@ npx tsx scripts/import-sample.ts
 
 ```
 docs/                Architecture, domain, migration plan, open questions
-prisma/              Schema + migrations + seed
+prisma/              Schema + migrations + seed + sweep-quotes cron entry
 sample-data/         Example ServiceNow export
 src/
   app/               Next.js App Router pages
@@ -174,12 +201,29 @@ src/
     duplicates/      Duplicate detection + conflict resolution
     import/          CSV/XLSX parse → map → validate → upsert
     notifications/   Notification transport abstraction
+    quotes/          Quote lifecycle, invoice / PO, hold-window sweep
     reports/         Dashboard queries
     routing/         Route optimizer abstraction (default: nearest neighbor)
     scheduling/      Jobs + routes + dispatch
     workflow/        Ticket state machine + transitions
 tests/               Vitest coverage for pure business logic
 ```
+
+## Scheduled tasks
+
+The hold-window sweeper auto-expires any SENT quote whose `holdUntil`
+timestamp has passed. Run it on whatever schedule makes sense for you:
+
+```bash
+npm run quotes:sweep   # or: npx tsx prisma/sweep-quotes.ts
+```
+
+Typical wiring is a nightly cron or Unraid User Script. The script
+prints a JSON summary and exits non-zero only on unexpected errors, so
+you can pipe the output straight to your notification channel of
+choice. Dispatchers can also kick off the sweep manually from the
+`/quotes` page via the "Run hold-window sweep" button, which calls the
+same service function.
 
 ## Testing
 

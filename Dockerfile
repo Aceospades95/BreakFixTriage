@@ -50,10 +50,14 @@ EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]
 
 # On each start:
-#   1. run any pending Prisma migrations against the DB (crash on failure)
-#   2. run the bootstrap script (idempotent, creates an admin if none exists,
-#      never crashes the container)
-#   3. launch next start
-# Migration failures should crash the container, so we chain with && between
-# migrate and bootstrap. Bootstrap has its own error handling.
-CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/bootstrap.ts && node node_modules/next/dist/bin/next start -H 0.0.0.0 -p 3000"]
+#   1. sync the Prisma schema to the database. Phase 1 uses `prisma db push`
+#      instead of `migrate deploy` because no migration history has been
+#      committed to the repo yet. We'll switch to proper migrations before
+#      production cutover (see docs/MIGRATION_PLAN.md). `db push` is
+#      idempotent — running it on a DB that already matches the schema is
+#      a no-op.
+#   2. run the idempotent bootstrap script (creates an admin if none exists,
+#      never crashes the container).
+#   3. launch next start.
+# Schema sync failures should crash the container, so we chain with &&.
+CMD ["sh", "-c", "npx prisma db push --skip-generate && npx tsx prisma/bootstrap.ts && node node_modules/next/dist/bin/next start -H 0.0.0.0 -p 3000"]

@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode/
+.idea/
+coverage/
+.turbo/
+.cache/
+tmp/
+prisma/*.db
+prisma/*.db-journal

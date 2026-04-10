@@ -1,0 +1,585 @@
+// BreakFix Triage — Prisma schema
+//
+// This is the authoritative data model. Update this file and run
+// `npm run db:migrate` to evolve the database. See docs/DOMAIN.md for the
+// business meaning of each entity.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity & organization
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  OPS_MANAGER
+  DISPATCHER
+  WAREHOUSE
+  TECHNICIAN
+  DRIVER
+  READ_ONLY
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String?
+  role         Role     @default(READ_ONLY)
+  active       Boolean  @default(true)
+  // Districts this user is allowed to operate in. Admins typically have all.
+  districts    DistrictUser[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Inverse relations
+  ticketEventsActed TicketEvent[]      @relation("TicketEventActor")
+  importBatches     ImportBatch[]
+  resolvedDupes     DuplicateConflict[] @relation("DupeResolver")
+  auditLogs         AuditLog[]
+  assignedRoutes    Route[]            @relation("RouteAssignee")
+  quoteActivities   QuoteActivity[]
+
+  @@index([role])
+}
+
+model District {
+  id       String         @id @default(cuid())
+  name     String
+  code     String         @unique
+  region   String?
+  active   Boolean        @default(true)
+  schools  School[]
+  users    DistrictUser[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+model DistrictUser {
+  districtId String
+  userId     String
+  district   District @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([districtId, userId])
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  postalCode String
+  latitude   Float?
+  longitude  Float?
+  schools    School[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model School {
+  id            String    @id @default(cuid())
+  districtId    String
+  name          String
+  code          String?   @unique // NYC DBN (e.g., 11X123)
+  addressId     String?
+  mainContactId String?   @unique
+  notes         String?
+  active        Boolean   @default(true)
+
+  district      District  @relation(fields: [districtId], references: [id])
+  address       Address?  @relation(fields: [addressId], references: [id])
+  mainContact   Contact?  @relation("SchoolMainContact", fields: [mainContactId], references: [id])
+
+  contacts      Contact[] @relation("SchoolContacts")
+  devices       Device[]
+  tickets       Ticket[]
+  jobs          Job[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([districtId])
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  schoolId  String
+  name      String
+  title     String?
+  email     String?
+  phone     String?
+  isPrimary Boolean  @default(false)
+  school    School   @relation("SchoolContacts", fields: [schoolId], references: [id], onDelete: Cascade)
+  mainOf    School?  @relation("SchoolMainContact")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+}
+
+// ---------------------------------------------------------------------------
+// Assets
+// ---------------------------------------------------------------------------
+
+enum FormFactor {
+  LAPTOP
+  CHROMEBOOK
+  DESKTOP
+  TABLET
+  PHONE
+  PRINTER
+  NETWORK
+  OTHER
+}
+
+model DeviceModel {
+  id             String     @id @default(cuid())
+  manufacturer   String
+  modelName      String
+  formFactor     FormFactor @default(OTHER)
+  warrantyMonths Int?
+  devices        Device[]
+
+  @@unique([manufacturer, modelName])
+}
+
+model Device {
+  id               String       @id @default(cuid())
+  serialNumber     String       @unique
+  assetTag         String?      @unique
+  modelId          String?
+  ownerSchoolId    String?
+  purchaseDate     DateTime?
+  warrantyExpires  DateTime?
+  notes            String?
+  model            DeviceModel? @relation(fields: [modelId], references: [id])
+  school           School?      @relation(fields: [ownerSchoolId], references: [id])
+  tickets          Ticket[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([ownerSchoolId])
+}
+
+// ---------------------------------------------------------------------------
+// Ticket lifecycle
+// ---------------------------------------------------------------------------
+
+enum TicketState {
+  IMPORTED
+  TRIAGE
+  AWAITING_PICKUP
+  PICKUP_SCHEDULED
+  IN_WAREHOUSE
+  DIAGNOSIS
+  AWAITING_PARTS
+  PARTS_ORDERED
+  IN_REPAIR
+  REPAIR_COMPLETED
+  AWAITING_ONSITE
+  ONSITE_IN_PROGRESS
+  QUOTE_REQUIRED
+  QUOTE_SENT
+  QUOTE_APPROVED
+  QUOTE_DECLINED
+  QUOTE_NO_RESPONSE
+  MANUFACTURER_RMA
+  OUT_OF_SCOPE
+  PENDING_DELIVERY
+  DELIVERY_SCHEDULED
+  RETURNED
+  INVOICE_REQUIRED
+  CLOSED
+  REOPENED
+  ON_HOLD
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model Ticket {
+  id               String         @id @default(cuid())
+  incidentNumber   String         @unique
+  serviceNowSysId  String?        @unique
+  deviceId         String?
+  schoolId         String
+  reportedAt       DateTime
+  shortDescription String
+  longDescription  String?
+  priority         TicketPriority @default(NORMAL)
+  state            TicketState    @default(IMPORTED)
+  substate         String?
+  assignedUserId   String?
+  // Free-form metadata we don't want to flatten into columns yet
+  meta             Json?
+  invoiceRequired  Boolean        @default(false)
+  closedAt         DateTime?
+
+  device           Device?  @relation(fields: [deviceId], references: [id])
+  school           School   @relation(fields: [schoolId], references: [id])
+
+  events           TicketEvent[]
+  quotes           Quote[]
+  jobLinks         TicketJob[]
+  duplicateLefts   DuplicateConflict[] @relation("DupeLeft")
+  duplicateRights  DuplicateConflict[] @relation("DupeRight")
+  importRows       ImportRow[]
+  notifications    Notification[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([state])
+  @@index([schoolId])
+  @@index([deviceId])
+}
+
+model TicketEvent {
+  id          String       @id @default(cuid())
+  ticketId    String
+  fromState   TicketState?
+  toState     TicketState
+  actorUserId String?
+  reason      String?
+  payload     Json?
+  createdAt   DateTime     @default(now())
+
+  ticket      Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actor       User?  @relation("TicketEventActor", fields: [actorUserId], references: [id])
+
+  @@index([ticketId])
+  @@index([toState])
+}
+
+// ---------------------------------------------------------------------------
+// Import pipeline
+// ---------------------------------------------------------------------------
+
+enum ImportSource {
+  SN_CSV
+  SN_XLSX
+  MANUAL
+}
+
+enum ImportStatus {
+  PENDING
+  VALIDATING
+  READY
+  COMMITTING
+  COMMITTED
+  FAILED
+  CANCELLED
+}
+
+enum ImportRowStatus {
+  PENDING
+  INVALID
+  DUPLICATE
+  READY
+  CREATED
+  UPDATED
+  REJECTED
+  SKIPPED
+}
+
+model ImportBatch {
+  id               String       @id @default(cuid())
+  filename         String
+  uploadedByUserId String
+  source           ImportSource
+  status           ImportStatus @default(PENDING)
+  stats            Json?
+  error            String?
+
+  uploadedBy       User         @relation(fields: [uploadedByUserId], references: [id])
+  rows             ImportRow[]
+  conflicts        DuplicateConflict[]
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([status])
+}
+
+model ImportRow {
+  id               String          @id @default(cuid())
+  batchId          String
+  rowNumber        Int
+  raw              Json
+  normalized       Json?
+  status           ImportRowStatus @default(PENDING)
+  errors           String[]        @default([])
+  resultingTicketId String?
+
+  batch            ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  resultingTicket  Ticket?     @relation(fields: [resultingTicketId], references: [id])
+
+  @@index([batchId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate handling
+// ---------------------------------------------------------------------------
+
+enum DuplicateKind {
+  INCIDENT
+  SERIAL
+}
+
+enum DuplicateResolution {
+  MERGE_INTO_LEFT
+  MERGE_INTO_RIGHT
+  TREAT_AS_REOPEN
+  KEEP_BOTH
+  REJECT_NEW
+}
+
+model DuplicateConflict {
+  id             String               @id @default(cuid())
+  batchId        String?
+  kind           DuplicateKind
+  leftTicketId   String
+  rightTicketId  String
+  notes          String?
+  resolution     DuplicateResolution?
+  resolvedByUserId String?
+  resolvedAt     DateTime?
+
+  batch          ImportBatch? @relation(fields: [batchId], references: [id])
+  leftTicket     Ticket       @relation("DupeLeft", fields: [leftTicketId], references: [id])
+  rightTicket    Ticket       @relation("DupeRight", fields: [rightTicketId], references: [id])
+  resolvedBy     User?        @relation("DupeResolver", fields: [resolvedByUserId], references: [id])
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([kind])
+  @@index([resolvedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Scheduling & dispatch
+// ---------------------------------------------------------------------------
+
+enum JobType {
+  PICKUP
+  DELIVERY
+  ONSITE_REPAIR
+  OTHER
+}
+
+enum JobStatus {
+  UNSCHEDULED
+  SCHEDULED
+  EN_ROUTE
+  ARRIVED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Job {
+  id          String      @id @default(cuid())
+  type        JobType
+  schoolId    String
+  status      JobStatus   @default(UNSCHEDULED)
+  windowStart DateTime?
+  windowEnd   DateTime?
+  notes       String?
+
+  school      School      @relation(fields: [schoolId], references: [id])
+  ticketLinks TicketJob[]
+  routeStop   RouteStop?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([schoolId])
+}
+
+// Join table so a job can cover multiple tickets (e.g. pickup of 6 devices)
+// and a ticket may be associated with multiple jobs over its lifetime.
+model TicketJob {
+  ticketId String
+  jobId    String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  job      Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, jobId])
+}
+
+enum RouteStatus {
+  DRAFT
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Route {
+  id             String      @id @default(cuid())
+  date           DateTime    @db.Date
+  assigneeUserId String
+  vehicleRef     String?
+  status         RouteStatus @default(DRAFT)
+  optimizerName  String?
+  optimizedAt    DateTime?
+
+  assignee       User        @relation("RouteAssignee", fields: [assigneeUserId], references: [id])
+  stops          RouteStop[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([date])
+  @@index([assigneeUserId, date])
+}
+
+model RouteStop {
+  id               String    @id @default(cuid())
+  routeId          String
+  jobId            String    @unique
+  sequence         Int
+  arrivalEstimate  DateTime?
+  status           JobStatus @default(SCHEDULED)
+
+  route            Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  job              Job   @relation(fields: [jobId], references: [id])
+
+  @@index([routeId])
+}
+
+// ---------------------------------------------------------------------------
+// Commercial (quotes / POs)
+// ---------------------------------------------------------------------------
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  DECLINED
+  NO_RESPONSE
+  CANCELLED
+}
+
+model Quote {
+  id             String      @id @default(cuid())
+  ticketId       String
+  status         QuoteStatus @default(DRAFT)
+  amountCents    Int?
+  diagnosticOnly Boolean     @default(false)
+  holdUntil      DateTime?
+  sentAt         DateTime?
+  respondedAt    DateTime?
+  notes          String?
+
+  ticket         Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  activities     QuoteActivity[]
+  purchaseOrder  PurchaseOrder?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([ticketId])
+  @@index([status])
+}
+
+model QuoteActivity {
+  id          String   @id @default(cuid())
+  quoteId     String
+  kind        String
+  actorUserId String?
+  payload     Json?
+  createdAt   DateTime @default(now())
+
+  quote       Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  actor       User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([quoteId])
+}
+
+model PurchaseOrder {
+  id              String    @id @default(cuid())
+  quoteId         String    @unique
+  poNumber        String    @unique
+  issuedAt        DateTime
+  amountCents     Int
+  invoiceRequired Boolean   @default(false)
+  invoicedAt      DateTime?
+
+  quote           Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Ops: audit + notifications
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  entityType  String
+  entityId    String
+  action      String
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now())
+
+  actor       User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum NotificationKind {
+  DEVICE_SCHEDULED
+  PICKUP_SCHEDULED
+  DELIVERY_SCHEDULED
+  QUOTE_SENT
+  QUOTE_FOLLOW_UP
+  OUT_OF_SCOPE_CLOSURE
+  NO_RESPONSE_CLOSURE
+  GENERIC
+}
+
+model Notification {
+  id             String             @id @default(cuid())
+  kind           NotificationKind
+  ticketId       String?
+  quoteId        String?
+  recipientEmail String
+  subject        String
+  body           String
+  status         NotificationStatus @default(PENDING)
+  transport      String
+  sentAt         DateTime?
+  error          String?
+
+  ticket         Ticket? @relation(fields: [ticketId], references: [id])
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status])
+  @@index([kind])
+}

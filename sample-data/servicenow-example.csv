@@ -1,0 +1,6 @@
+Incident Number,Opened At,Short Description,Description,Priority,DBN,Location,Serial Number,Asset Tag,Manufacturer,Model,Requested For,Email
+INC2000001,2025-09-01 08:12:00,Cracked screen,Top-right corner shattered,3 - Moderate,11X101,P.S. 101 Bronx,SN-A0001,AT-A0001,Acme,EduBook 14,Ms. Smith,smith@schools.nyc
+INC2000002,2025-09-02 09:30:00,Will not power on,Power button unresponsive,2 - High,11X101,P.S. 101 Bronx,SN-A0002,AT-A0002,Acme,EduBook 14,Mr. Jones,jones@schools.nyc
+INC2000003,2025-09-03 10:15:00,Liquid damage,Juice spilled into keyboard,2 - High,11X220,M.S. 220 Bronx,SN-A0003,AT-A0003,Acme,EduBook 14,Mr. Lee,lee@schools.nyc
+INC2000004,2025-09-03 11:00:00,Keyboard keys missing,Three keys came off,4 - Low,11X220,M.S. 220 Bronx,SN-A0004,AT-A0004,Acme,EduBook 14,Ms. Rivera,rivera@schools.nyc
+INC2000005,2025-09-04 13:22:00,Wifi disconnects constantly,NIC driver issue suspected,3 - Moderate,28Q045,P.S. 45 Queens,SN-A0005,AT-A0005,Acme,EduBook 14,Ms. Wong,wong@schools.nyc

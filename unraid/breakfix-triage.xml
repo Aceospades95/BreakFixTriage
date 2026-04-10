@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/aceospades95/breakfixtriage</Support>
   <Project>https://github.com/aceospades95/breakfixtriage</Project>
-  <Overview>Break-fix operations platform for NYC DOE device repair lifecycle management. Replaces a legacy Google Sheets + Apps Script workflow with a PostgreSQL-backed Next.js application. Requires a running breakfix-postgres container reachable on the Unraid host IP. Database migrations run automatically on container start.</Overview>
+  <Overview>Break-fix operations platform for NYC DOE device repair lifecycle management. Replaces a legacy Google Sheets + Apps Script workflow with a PostgreSQL-backed Next.js application. Requires a running breakfix-postgres container reachable on the Unraid host IP. Database migrations and the idempotent bootstrap script run automatically on container start.</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:3000]</WebUI>
   <TemplateURL/>
@@ -25,6 +25,9 @@
   <Config Name="DATABASE_URL" Target="DATABASE_URL" Default="postgresql://breakfix:REPLACE_ME@192.168.1.19:5432/breakfix?schema=public" Mode="" Description="Full Postgres connection string. Use the Unraid host IP (192.168.1.19) as the hostname. Replace REPLACE_ME with the password you set on breakfix-postgres." Type="Variable" Display="always" Required="true" Mask="true">postgresql://breakfix:REPLACE_ME@192.168.1.19:5432/breakfix?schema=public</Config>
   <Config Name="NEXTAUTH_URL" Target="NEXTAUTH_URL" Default="http://192.168.1.19:3005" Mode="" Description="URL the browser uses to reach this app. Use your Unraid tower IP and the host port you published." Type="Variable" Display="always" Required="true" Mask="false">http://192.168.1.19:3005</Config>
   <Config Name="NEXTAUTH_SECRET" Target="NEXTAUTH_SECRET" Default="" Mode="" Description="Random string used to sign session tokens. Generate once with: openssl rand -base64 32" Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="BOOTSTRAP_ADMIN_EMAIL" Target="BOOTSTRAP_ADMIN_EMAIL" Default="admin@breakfix.local" Mode="" Description="Email address for the initial admin user. Used only when the database has zero users (first boot). Ignored on subsequent restarts." Type="Variable" Display="always" Required="false" Mask="false">admin@breakfix.local</Config>
+  <Config Name="BOOTSTRAP_ADMIN_PASSWORD" Target="BOOTSTRAP_ADMIN_PASSWORD" Default="" Mode="" Description="Password for the initial admin user. Must be 8+ characters. Used only when the database has zero users. Leave blank if you plan to create users manually later." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="BOOTSTRAP_ADMIN_NAME" Target="BOOTSTRAP_ADMIN_NAME" Default="BreakFix Admin" Mode="" Description="Display name for the initial admin user." Type="Variable" Display="advanced" Required="false" Mask="false">BreakFix Admin</Config>
   <Config Name="NODE_ENV" Target="NODE_ENV" Default="production" Mode="" Description="Runtime mode. Leave as production." Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
   <Config Name="ROUTE_OPTIMIZER" Target="ROUTE_OPTIMIZER" Default="nearest-neighbor" Mode="" Description="Route optimizer backend. Options: nearest-neighbor (default, no API key) or google-routes (Phase 4)." Type="Variable" Display="advanced" Required="false" Mask="false">nearest-neighbor</Config>
   <Config Name="NOTIFICATION_TRANSPORT" Target="NOTIFICATION_TRANSPORT" Default="stdout" Mode="" Description="Notification delivery transport. Options: stdout (default), smtp, gmail, apps-script." Type="Variable" Display="advanced" Required="false" Mask="false">stdout</Config>

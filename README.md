@@ -63,17 +63,35 @@ docker compose up -d
 cp .env.example .env.local
 # (defaults work with docker-compose)
 
-# 4. Generate the Prisma client, run migrations, and seed
+# 4. Generate the Prisma client and run migrations
 npm run db:generate
 npm run db:migrate
+
+# 5. Bootstrap the initial admin user (idempotent; no-op if users already exist)
+BOOTSTRAP_ADMIN_PASSWORD=changeme-long npm run db:bootstrap
+
+# 6. (Optional) Load demo data — two districts, four schools, three sample
+#    tickets. One-time only; do NOT run in production.
 npm run db:seed
 
-# 5. Run tests (no DB needed)
+# 7. Run tests (no DB needed)
 npm run test
 
-# 6. Start the app
+# 8. Start the app
 npm run dev
 ```
+
+### Bootstrap vs seed
+
+- **`db:bootstrap`** — idempotent. Creates an initial admin user if the
+  database has zero users. Does nothing otherwise. This script runs
+  automatically on every container start in production (via the Dockerfile
+  CMD), so in Docker deployments you never need to run it by hand.
+- **`db:seed`** — one-time demo data loader for local exploration. Creates
+  two districts, four schools, one user per role, and three sample tickets
+  in mid-lifecycle states. **Do not run this in production**: if you later
+  delete the demo rows, they are not restored, but you would have
+  unnecessary clutter in your real database.
 
 Visit http://localhost:3000.
 

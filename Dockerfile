@@ -50,7 +50,10 @@ EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]
 
 # On each start:
-#   1. run any pending Prisma migrations against the DB
-#   2. launch next start
-# Migration failures should crash the container, so we chain with &&.
-CMD ["sh", "-c", "npx prisma migrate deploy && node node_modules/next/dist/bin/next start -H 0.0.0.0 -p 3000"]
+#   1. run any pending Prisma migrations against the DB (crash on failure)
+#   2. run the bootstrap script (idempotent, creates an admin if none exists,
+#      never crashes the container)
+#   3. launch next start
+# Migration failures should crash the container, so we chain with && between
+# migrate and bootstrap. Bootstrap has its own error handling.
+CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/bootstrap.ts && node node_modules/next/dist/bin/next start -H 0.0.0.0 -p 3000"]

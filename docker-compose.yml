@@ -4,18 +4,50 @@ services:
     container_name: breakfix-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: breakfix
-      POSTGRES_PASSWORD: breakfix
-      POSTGRES_DB: breakfix
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-breakfix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-breakfix}
+      POSTGRES_DB: ${POSTGRES_DB:-breakfix}
     volumes:
       - breakfix_pgdata:/var/lib/postgresql/data
+    # Postgres is only reachable on the internal compose network by default.
+    # Uncomment the "ports" block below if you want to connect from your
+    # workstation with a GUI like DBeaver or TablePlus.
+    # ports:
+    #   - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U breakfix -d breakfix"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-breakfix} -d ${POSTGRES_DB:-breakfix}",
+        ]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: breakfix-triage:local
+    container_name: breakfix-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-breakfix}:${POSTGRES_PASSWORD:-breakfix}@postgres:5432/${POSTGRES_DB:-breakfix}?schema=public
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?set NEXTAUTH_SECRET in .env}
+      NODE_ENV: production
+      # Optional feature toggles
+      ROUTE_OPTIMIZER: ${ROUTE_OPTIMIZER:-nearest-neighbor}
+      NOTIFICATION_TRANSPORT: ${NOTIFICATION_TRANSPORT:-stdout}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_ALLOWED_DOMAINS: ${GOOGLE_ALLOWED_DOMAINS:-}
+      GOOGLE_ROUTES_API_KEY: ${GOOGLE_ROUTES_API_KEY:-}
+    ports:
+      - "${APP_PORT:-3000}:3000"
 
 volumes:
   breakfix_pgdata:

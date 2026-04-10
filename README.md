@@ -24,7 +24,8 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 
 ## Status
 
-**Phase 0 — Foundations (complete in this commit).**
+**Phase 0 — Foundations** ✓ complete.
+**Phase 1 — Auth, UI shell, read-only parity** ✓ complete in this commit.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
   routes, quotes, imports, duplicates, audit, and notifications
@@ -39,14 +40,28 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 - Vitest coverage for state machine, mapper/schema, optimizer, and RBAC
 - Deterministic seed data (two districts, four schools, three tickets)
 
-**Not yet wired in Phase 0 (by design — comes in Phase 1+):**
+**Added in Phase 1:**
 
-- Sign-in flow (NextAuth wiring)
-- Upload UI for imports (service function `runImport` is ready)
-- Interactive duplicate resolution UI (service function `resolveDuplicate`
-  is ready)
+- NextAuth credentials provider (bcrypt against the User table) and optional
+  Google Workspace OIDC
+- Sign-in page, route groups `(auth)` and `(app)`, middleware-based auth
+- Session helpers: `getSession()`, `requireSession()`, `requireRole()`
+- Authenticated layout shell with nav and sign-out
+- Ticket list with filter, search, pagination
+- Ticket detail with event timeline and in-UI state transitions (via
+  server actions that go through the state machine)
+- Import upload UI that runs the full pipeline and shows per-row outcomes
+- Duplicate resolution UI with five resolution strategies
+- Dashboards wired to real queries (open by state, closed-by-month bars,
+  aging table, duplicate + invoice queues)
+
+**Not yet wired in Phase 1 (comes in Phase 2+):**
+
+- Scheduling / dispatch UI (route builder, driver day view)
+- Full quote / OOW workflow with hold-window automation
 - Email sending beyond the stdout transport
 - ServiceNow API mode (CSV/XLSX import works today)
+- Dry-run preview before committing an import
 
 ## Local setup
 

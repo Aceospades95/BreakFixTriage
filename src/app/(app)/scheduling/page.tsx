@@ -1,39 +1,52 @@
-import Link from "next/link";
+import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
+import { requireRole } from "@/lib/auth/session";
+import { PERMISSIONS } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
 export default async function SchedulingPage() {
+  await requireRole(PERMISSIONS.SCHEDULING_READ);
+
   const [routes, unscheduledJobs] = await Promise.all([
     prisma.route.findMany({
       take: 10,
       orderBy: { date: "desc" },
       include: {
-        assignee: true,
-        stops: { include: { job: { include: { school: true } } } },
+        assignee: { select: { name: true } },
+        stops: {
+          orderBy: { sequence: "asc" },
+          include: { job: { include: { school: { select: { name: true } } } } },
+        },
       },
     }),
     prisma.job.findMany({
       where: { status: "UNSCHEDULED" },
-      take: 20,
-      include: { school: true, ticketLinks: true },
+      take: 30,
+      include: {
+        school: { select: { name: true } },
+        ticketLinks: true,
+      },
     }),
   ]);
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-12 space-y-10">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Scheduling</h1>
-        <Link href="/" className="text-sm text-accent hover:underline">
-          ← Home
-        </Link>
-      </div>
+    <>
+      <PageHeader
+        title="Scheduling"
+        subtitle="Jobs, routes, and assignments. Full route-builder UI ships in Phase 2."
+      />
 
       <section>
-        <h2 className="text-lg font-semibold">Recent routes</h2>
-        <ul className="mt-3 divide-y divide-surface-border rounded border border-surface-border">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Recent routes
+        </h2>
+        <ul className="space-y-3">
           {routes.map((r) => (
-            <li key={r.id} className="p-4">
+            <li
+              key={r.id}
+              className="rounded-lg border border-surface-border bg-surface-muted/60 p-4"
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-semibold">
@@ -47,33 +60,33 @@ export default async function SchedulingPage() {
                   {r.status}
                 </span>
               </div>
-              <ol className="mt-2 list-decimal pl-5 text-sm text-slate-300">
-                {r.stops
-                  .sort((a, b) => a.sequence - b.sequence)
-                  .map((s) => (
-                    <li key={s.id}>
-                      {s.job.school.name}{" "}
-                      <span className="font-mono text-xs text-slate-500">
-                        ({s.job.type})
-                      </span>
-                    </li>
-                  ))}
+              <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm text-slate-300">
+                {r.stops.map((s) => (
+                  <li key={s.id}>
+                    {s.job.school.name}{" "}
+                    <span className="font-mono text-xs text-slate-500">
+                      ({s.job.type})
+                    </span>
+                  </li>
+                ))}
               </ol>
             </li>
           ))}
           {routes.length === 0 && (
-            <li className="px-3 py-8 text-center text-sm text-slate-400">
+            <li className="rounded border border-surface-border bg-surface-muted/40 p-6 text-center text-sm text-slate-400">
               No routes yet.
             </li>
           )}
         </ul>
       </section>
 
-      <section>
-        <h2 className="text-lg font-semibold">Unscheduled jobs</h2>
-        <div className="mt-3 overflow-hidden rounded-lg border border-surface-border">
+      <section className="mt-10">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Unscheduled jobs
+        </h2>
+        <div className="overflow-hidden rounded-lg border border-surface-border">
           <table className="min-w-full divide-y divide-surface-border text-sm">
-            <thead className="bg-surface-muted text-left">
+            <thead className="bg-surface-muted text-left text-xs uppercase tracking-wide text-slate-400">
               <tr>
                 <th className="px-3 py-2 font-medium">Type</th>
                 <th className="px-3 py-2 font-medium">School</th>
@@ -102,6 +115,6 @@ export default async function SchedulingPage() {
           </table>
         </div>
       </section>
-    </main>
+    </>
   );
 }

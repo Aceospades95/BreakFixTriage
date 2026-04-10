@@ -104,7 +104,15 @@ function normalizePriorityValue(raw: unknown): string | undefined {
   if (raw == null) return undefined;
   const v = String(raw).trim().toLowerCase();
   if (v === "") return undefined;
-  return PRIORITY_ALIASES[v] ?? v.toUpperCase();
+  // ServiceNow exports often use "3 - Moderate" with spaces around the
+  // hyphen. Strip all whitespace before looking up the alias table so
+  // those values line up with entries like "3-moderate".
+  const compact = v.replace(/\s+/g, "");
+  return (
+    PRIORITY_ALIASES[v] ??
+    PRIORITY_ALIASES[compact] ??
+    compact.toUpperCase()
+  );
 }
 
 /**

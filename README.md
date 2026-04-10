@@ -25,7 +25,8 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 ## Status
 
 **Phase 0 — Foundations** ✓ complete.
-**Phase 1 — Auth, UI shell, read-only parity** ✓ complete in this commit.
+**Phase 1 — Auth, UI shell, read-only parity** ✓ complete.
+**Phase 2 — Scheduling & dispatch** ✓ complete in this commit.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
   routes, quotes, imports, duplicates, audit, and notifications
@@ -55,12 +56,31 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 - Dashboards wired to real queries (open by state, closed-by-month bars,
   aging table, duplicate + invoice queues)
 
-**Not yet wired in Phase 1 (comes in Phase 2+):**
+**Added in Phase 2:**
 
-- Scheduling / dispatch UI (route builder, driver day view)
+- Scheduling dashboard grouping pickup-ready / delivery-ready / onsite-ready
+  tickets by school with one-click "create job" forms
+- Route builder page: multi-select unscheduled jobs, pick date + driver +
+  vehicle, and the optimizer sequences the stops
+- Route detail page with per-stop status controls (Start / Arrived /
+  Complete / Fail), manual up/down reorder while the route is still open,
+  and a Cancel Route action that reverts the underlying tickets
+- `/my-day` driver view — mobile-friendly one-tap status updates over
+  the signed-in user's active routes
+- `updateStopStatus` service that cascades stop completions into ticket
+  transitions (PICKUP_SCHEDULED → IN_WAREHOUSE, DELIVERY_SCHEDULED →
+  RETURNED) and rolls the parent route forward to IN_PROGRESS / COMPLETED
+- `reorderRoute` / `cancelRoute` services with audit entries
+- New `stops:update` permission with DRIVER, DISPATCHER, OPS_MANAGER and
+  ADMIN on the allow list; vitest coverage for the pure stop-status
+  validator
+
+**Not yet wired in Phase 2 (comes in Phase 3+):**
+
 - Full quote / OOW workflow with hold-window automation
 - Email sending beyond the stdout transport
 - ServiceNow API mode (CSV/XLSX import works today)
+- Drag-and-drop route reordering (up/down buttons ship today)
 - Dry-run preview before committing an import
 
 ## Local setup

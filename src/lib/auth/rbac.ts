@@ -14,6 +14,7 @@ export const PERMISSIONS = {
   SCHEDULING_READ: "scheduling:read",
   SCHEDULING_WRITE: "scheduling:write",
   ROUTES_BUILD: "routes:build",
+  STOPS_UPDATE: "stops:update",
   QUOTES_READ: "quotes:read",
   QUOTES_WRITE: "quotes:write",
   USERS_MANAGE: "users:manage",
@@ -46,6 +47,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     PERMISSIONS.DUPLICATES_RESOLVE,
     PERMISSIONS.SCHEDULING_WRITE,
     PERMISSIONS.ROUTES_BUILD,
+    PERMISSIONS.STOPS_UPDATE,
     PERMISSIONS.QUOTES_WRITE,
   ],
   DISPATCHER: [
@@ -53,6 +55,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     PERMISSIONS.TICKETS_TRANSITION,
     PERMISSIONS.SCHEDULING_WRITE,
     PERMISSIONS.ROUTES_BUILD,
+    PERMISSIONS.STOPS_UPDATE,
   ],
   WAREHOUSE: [
     ...READ_ONLY_SET,
@@ -65,6 +68,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   DRIVER: [
     PERMISSIONS.TICKETS_READ,
     PERMISSIONS.SCHEDULING_READ,
+    PERMISSIONS.STOPS_UPDATE,
   ],
   READ_ONLY: READ_ONLY_SET,
 };

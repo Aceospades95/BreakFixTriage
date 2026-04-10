@@ -20,9 +20,11 @@ describe("rbac", () => {
     expect(can(Role.READ_ONLY, PERMISSIONS.ROUTES_BUILD)).toBe(false);
   });
 
-  it("driver can see scheduling but not build routes", () => {
+  it("driver can see scheduling and update stops but not build routes", () => {
     expect(can(Role.DRIVER, PERMISSIONS.SCHEDULING_READ)).toBe(true);
+    expect(can(Role.DRIVER, PERMISSIONS.STOPS_UPDATE)).toBe(true);
     expect(can(Role.DRIVER, PERMISSIONS.ROUTES_BUILD)).toBe(false);
+    expect(can(Role.DRIVER, PERMISSIONS.SCHEDULING_WRITE)).toBe(false);
   });
 
   it("dispatcher can build routes", () => {

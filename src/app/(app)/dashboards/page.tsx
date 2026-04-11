@@ -45,6 +45,18 @@ export default async function DashboardsPage() {
             >
               Finance →
             </Link>
+            <Link
+              href="/dashboards/productivity"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              Productivity →
+            </Link>
+            <Link
+              href="/dashboards/devices"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              Device hotspots →
+            </Link>
           </div>
         }
       />

@@ -10,6 +10,7 @@ import {
   bulkAssignAction,
   bulkTransitionAction,
 } from "@/server/actions/bulk";
+import { createTicketFromTemplateAction } from "@/server/actions/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,8 @@ export default async function TicketsPage({
       : {}),
   };
 
-  const [tickets, total, assignableUsers] = await Promise.all([
+  const [tickets, total, assignableUsers, templates, schoolsForPicker] =
+    await Promise.all([
     prisma.ticket.findMany({
       where,
       take: PAGE_SIZE,
@@ -84,6 +86,20 @@ export default async function TicketsPage({
           },
           orderBy: { name: "asc" },
           select: { id: true, name: true, role: true },
+        })
+      : Promise.resolve([]),
+    canWrite
+      ? prisma.ticketTemplate.findMany({
+          where: { active: true },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
+    canWrite
+      ? prisma.school.findMany({
+          where: { active: true },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, code: true },
+          take: 500,
         })
       : Promise.resolve([]),
   ]);
@@ -128,6 +144,53 @@ export default async function TicketsPage({
         <div className="mb-4 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
           {searchParams.ok}
         </div>
+      )}
+
+      {canWrite && templates.length > 0 && (
+        <form
+          action={createTicketFromTemplateAction}
+          className="mb-4 flex flex-wrap items-end gap-3 rounded border border-surface-border bg-surface-muted/60 p-3 text-sm"
+        >
+          <div className="text-[10px] uppercase tracking-wide text-slate-400">
+            Quick-create from template
+          </div>
+          <select
+            name="templateId"
+            required
+            className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+          >
+            <option value="">— template —</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <select
+            name="schoolId"
+            required
+            className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+          >
+            <option value="">— school —</option>
+            {schoolsForPicker.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} {s.code && `(${s.code})`}
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            name="deviceSerial"
+            placeholder="Device serial (optional)"
+            className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none"
+          />
+          <button
+            type="submit"
+            className="rounded bg-accent px-3 py-1.5 text-sm font-semibold hover:bg-accent-strong"
+          >
+            Create ticket
+          </button>
+        </form>
       )}
 
       <form

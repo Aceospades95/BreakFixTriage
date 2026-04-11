@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { QuoteStatus, TicketPriority } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
@@ -27,6 +27,12 @@ import {
   markRmaReceivedAction,
   markRmaShippedAction,
 } from "@/server/actions/rma";
+import {
+  startTimerAction,
+  stopTimerAction,
+} from "@/server/actions/time";
+import { mergeTicketAction } from "@/server/actions/merge";
+import { totalMinutesForTicket } from "@/lib/time/time-tracking";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +94,17 @@ export default async function TicketDetailPage({
         manufacturerRmas: {
           orderBy: { createdAt: "desc" },
         },
+        timeEntries: {
+          orderBy: { startedAt: "desc" },
+          take: 20,
+          include: { user: { select: { id: true, name: true } } },
+        },
+        mergedInto: {
+          select: { id: true, incidentNumber: true },
+        },
+        mergedFrom: {
+          select: { id: true, incidentNumber: true },
+        },
       },
     }),
     prisma.user.findMany({
@@ -107,6 +124,31 @@ export default async function TicketDetailPage({
     }),
   ]);
   if (!ticket) notFound();
+
+  // If the ticket has been merged into another one, bounce to the
+  // target so writes don't accidentally land on a closed source.
+  // Skip the redirect when the caller explicitly asks to view the
+  // source via `?view=source`.
+  if (
+    ticket.mergedIntoTicketId &&
+    ticket.mergedInto &&
+    searchParams?.error == null
+  ) {
+    const url = new URL(
+      `/tickets/${ticket.mergedIntoTicketId}`,
+      "http://local",
+    );
+    url.searchParams.set(
+      "ok",
+      `Merged — showing target ${ticket.mergedInto.incidentNumber}`,
+    );
+    redirect(url.pathname + url.search);
+  }
+
+  const totalMinutes = await totalMinutesForTicket(ticket.id);
+  const myOpenTimer = ticket.timeEntries.find(
+    (e) => e.endedAt == null && e.user?.id === session.userId,
+  );
 
   // Parts compatible with this ticket's device model — shown in the
   // parts usage form so techs pick from a curated list. Falls back to
@@ -373,6 +415,85 @@ export default async function TicketDetailPage({
               returnTo={returnTo}
               canWrite={canWrite}
             />
+          </Card>
+
+          <Card title={`Time logged (${formatHours(totalMinutes)})`}>
+            {canWrite && (
+              <div className="mb-3 flex items-center gap-2 border-b border-surface-border pb-3">
+                {myOpenTimer ? (
+                  <form action={stopTimerAction} className="flex items-center gap-2">
+                    <input type="hidden" name="entryId" value={myOpenTimer.id} />
+                    <input type="hidden" name="ticketId" value={ticket.id} />
+                    <span className="text-xs text-amber-200">
+                      ⏱ running since{" "}
+                      {myOpenTimer.startedAt
+                        .toISOString()
+                        .replace("T", " ")
+                        .slice(11, 16)}
+                    </span>
+                    <input
+                      type="text"
+                      name="notes"
+                      placeholder="notes (optional)"
+                      className="w-40 rounded border border-surface-border bg-surface px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded bg-accent px-3 py-1 text-xs font-semibold hover:bg-accent-strong"
+                    >
+                      Stop timer
+                    </button>
+                  </form>
+                ) : (
+                  <form action={startTimerAction} className="flex items-center gap-2">
+                    <input type="hidden" name="ticketId" value={ticket.id} />
+                    <input
+                      type="text"
+                      name="notes"
+                      placeholder="what are you doing? (optional)"
+                      className="w-56 rounded border border-surface-border bg-surface px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded bg-accent px-3 py-1 text-xs font-semibold hover:bg-accent-strong"
+                    >
+                      Start timer
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+            {ticket.timeEntries.length === 0 ? (
+              <p className="text-sm text-slate-400">No time logged yet.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {ticket.timeEntries.map((e) => (
+                  <li
+                    key={e.id}
+                    className="flex items-center justify-between rounded border border-surface-border bg-surface px-3 py-1.5"
+                  >
+                    <span className="flex items-center gap-2">
+                      {e.user?.name ?? "unknown"}
+                      {e.endedAt == null && (
+                        <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-200">
+                          running
+                        </span>
+                      )}
+                      {e.notes && (
+                        <span className="text-xs text-slate-400">
+                          · {e.notes}
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-mono text-xs text-slate-400">
+                      {e.endedAt != null && e.minutes != null
+                        ? formatHours(e.minutes)
+                        : "—"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
 
           <Card title="Event timeline">
@@ -807,6 +928,60 @@ export default async function TicketDetailPage({
             </Card>
           )}
 
+          {canWrite && ticket.mergedIntoTicketId == null && (
+            <Card title="Merge ticket">
+              <p className="mb-2 text-xs text-slate-400">
+                Fold this ticket into another one. The source closes
+                with a comment linking both sides.
+              </p>
+              <form action={mergeTicketAction} className="space-y-2">
+                <input
+                  type="hidden"
+                  name="sourceTicketId"
+                  value={ticket.id}
+                />
+                <input
+                  type="text"
+                  name="targetIncidentNumber"
+                  required
+                  placeholder="Target incident #"
+                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs font-mono focus:border-accent focus:outline-none"
+                />
+                <input
+                  type="text"
+                  name="reason"
+                  placeholder="Reason (optional)"
+                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="w-full rounded border border-red-500/60 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-500/20"
+                >
+                  Merge into target
+                </button>
+              </form>
+            </Card>
+          )}
+
+          {ticket.mergedFrom.length > 0 && (
+            <Card title={`Merged in (${ticket.mergedFrom.length})`}>
+              <ul className="text-xs">
+                {ticket.mergedFrom.map((m) => (
+                  <li key={m.id}>
+                    <Link
+                      href={`/tickets/${m.id}?error=${encodeURIComponent(
+                        "Viewing a merged source — writes go to the target.",
+                      )}`}
+                      className="font-mono text-accent hover:underline"
+                    >
+                      {m.incidentNumber}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
           {ticket.loanerAssignments.length > 0 && (
             <Card title={`Loaners (${ticket.loanerAssignments.length})`}>
               <ul className="space-y-2 text-sm">
@@ -1064,4 +1239,14 @@ function QuoteActions({
     );
   }
   return null;
+}
+
+/** Format minutes as "Xh Ym" for readable totals. */
+function formatHours(minutes: number): string {
+  if (minutes <= 0) return "0m";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
 }

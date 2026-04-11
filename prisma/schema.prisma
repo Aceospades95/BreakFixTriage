@@ -53,6 +53,7 @@ model User {
   loanerCheckouts   LoanerAssignment[] @relation("LoanerCheckedOutBy")
   partMovements     PartMovement[]     @relation("PartMovementUser")
   shiftNotes        ShiftNote[]        @relation("ShiftNoteAuthor")
+  timeEntries       TimeEntry[]        @relation("UserTimeEntries")
 
   @@index([role])
 }
@@ -239,10 +240,16 @@ model Ticket {
   invoiceRequired  Boolean        @default(false)
   closedAt         DateTime?
   stateEnteredAt   DateTime       @default(now())
+  /// Phase 10: soft ticket merge. When set, the UI shows a "merged
+  /// into X" banner and redirects writers to the target, but history
+  /// on both rows is preserved.
+  mergedIntoTicketId String?
 
   device           Device?  @relation(fields: [deviceId], references: [id])
   school           School   @relation(fields: [schoolId], references: [id])
   assignee         User?    @relation("TicketAssignee", fields: [assignedUserId], references: [id])
+  mergedInto       Ticket?  @relation("TicketMerge", fields: [mergedIntoTicketId], references: [id])
+  mergedFrom       Ticket[] @relation("TicketMerge")
 
   events           TicketEvent[]
   quotes           Quote[]
@@ -257,6 +264,7 @@ model Ticket {
   partUsages       PartUsage[]        @relation("PartUsageTicket")
   partMovements    PartMovement[]     @relation("PartMovementTicket")
   manufacturerRmas ManufacturerRma[]
+  timeEntries      TimeEntry[]        @relation("TicketTimeEntries")
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -266,6 +274,7 @@ model Ticket {
   @@index([deviceId])
   @@index([assignedUserId])
   @@index([stateEnteredAt])
+  @@index([mergedIntoTicketId])
 }
 
 model TicketEvent {
@@ -925,4 +934,56 @@ model ShiftNote {
   author       User @relation("ShiftNoteAuthor", fields: [authorUserId], references: [id])
 
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 10: ticket templates + time tracking
+// ---------------------------------------------------------------------------
+
+/// Preset shapes for common repair tickets. The quick-create form
+/// on the ticket list lets ops spin up a new ticket with one click
+/// instead of typing the same short description for the tenth time
+/// this week ("cracked screen", "battery won't charge", etc.).
+///
+/// Kept deliberately simple: name, short description, long
+/// description, priority. A real template system could grow fields
+/// over time (state presets, auto-assignments), but this covers 90%
+/// of the pain today.
+model TicketTemplate {
+  id               String         @id @default(cuid())
+  name             String         @unique
+  shortDescription String
+  longDescription  String?
+  priority         TicketPriority @default(NORMAL)
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([active])
+}
+
+/// Time tracking on tickets. A tech starts a timer, works, stops it,
+/// and the minutes are totaled per ticket and per user for the
+/// productivity dashboard. The `startedAt` / `endedAt` pair keeps
+/// the raw history; `minutes` is denormalized for fast aggregation.
+///
+/// Only one open (unclosed) timer per user at a time — enforced in
+/// the service, not the schema, because a unique partial index
+/// would need raw SQL.
+model TimeEntry {
+  id        String   @id @default(cuid())
+  ticketId  String
+  userId    String
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  minutes   Int?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  ticket    Ticket @relation("TicketTimeEntries", fields: [ticketId], references: [id], onDelete: Cascade)
+  user      User   @relation("UserTimeEntries", fields: [userId], references: [id])
+
+  @@index([ticketId])
+  @@index([userId, endedAt])
+  @@index([startedAt])
 }

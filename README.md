@@ -33,11 +33,11 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 **Phase 6 — Adoption (admin UIs, comments, attachments, SLAs, search, profile)** ✓ complete.
 **Phase 7 — Workflow (bulk, kanban, bench, loaners, escalation, digest, settings)** ✓ complete.
 **Phase 8 — Business features (parts, RMA, finance, portal, KB, calendar, shift notes)** ✓ complete.
-**Phase 9 — Polish & platform (QR scan, shortcuts, a11y, health, rate-limit, CSP)** ✓ complete in this commit.
+**Phase 9 — Polish & platform (QR scan, shortcuts, a11y, health, rate-limit, CSP)** ✓ complete.
+**Phase 10 — Refinement (home, toasts, time tracking, templates, merge, signatures, map links, PWA, productivity, hotspots, bulk close)** ✓ complete in this commit.
 
-All migration-plan phases plus the Phase 6–9 adoption / workflow /
-business / hardening releases are shipped. See `docs/CUTOVER_PLAN.md`
-for the operational cutover runbook.
+All migration-plan phases plus Phase 6–10 are shipped. See
+`docs/CUTOVER_PLAN.md` for the operational cutover runbook.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
   routes, quotes, imports, duplicates, audit, and notifications
@@ -141,6 +141,96 @@ for the operational cutover runbook.
 - New vitest coverage: notification templates (8 cases), Google
   Routes response parser + body builder (7 cases), ServiceNow row
   normalizer (6 cases).
+
+**Added in Phase 10 — Refinement release:**
+
+The "make every daily workflow feel good" phase. A gap audit found
+eleven friction points I'd kept deferring, and this commit closes
+all of them.
+
+- **Attention-driven home page**: action blocks instead of generic
+  KPIs. Every user sees their own queue, unread notifications,
+  recent shift notes, and a running-timer banner if they have one.
+  Dispatchers/ops managers additionally get a manager attention
+  queue (SLA-breached / duplicates / expired quotes / invoices
+  pending / unscheduled jobs) and the ten oldest breached tickets.
+- **Toast notifications**: client `ToastHost` strips `?ok` and
+  `?error` params from the URL on navigation and pops a
+  fixed-position toast. Replaces the "redirect + banner that stays
+  in history" hack with a native feel, no dependencies.
+- **Time tracking** on tickets:
+  - New `TimeEntry` model with signed minutes
+  - `startTimer` / `stopTimer` with auto-stop of any previous open
+    timer for the same user (so clocking in on a new ticket
+    cleanly clocks out the old one)
+  - Ticket detail page shows total time, per-entry log, and a
+    context-aware Start / Stop form
+  - Home page shows a running-timer banner if any timer is open
+- **Ticket templates**:
+  - New `TicketTemplate` model with name, short/long description,
+    priority
+  - `/admin/templates` admin page to create and toggle templates
+  - Quick-create form at the top of the ticket list spins up a new
+    ticket in one click (pick template + school + optional
+    device serial)
+  - Generated incidents use a `LOCAL<base36>` prefix so they don't
+    collide with ServiceNow `INCxxxxx`
+- **Ticket merge** beyond the duplicate queue:
+  - Soft merge: source gets `mergedIntoTicketId`, state → CLOSED,
+    both tickets get explanatory comments
+  - Viewing a merged source auto-redirects to the target with a
+    toast
+  - "Merge ticket" card on the detail page accepts a target
+    incident number for one-click merging
+- **E-signature capture**:
+  - New `SignaturePad` client component using pointer events
+    (finger, stylus, mouse — same API), DPR-aware canvas sizing,
+    clear button
+  - Writes a base64 PNG to a hidden input, submitted via the
+    existing `uploadAttachmentAction`
+  - Wired onto every route-stop card so school contacts can sign
+    for pickups and deliveries
+- **Map links on stop addresses**: tapping an address on
+  `/my-day` opens Google Maps (uses lat/lng when available,
+  falls back to a text search). One-tap navigation for drivers.
+- **Warehouse scan-in flow** (`/scan/warehouse`):
+  - Dedicated scanner page for the warehouse intake bench
+  - Each scan auto-transitions every `AWAITING_PICKUP` /
+    `PICKUP_SCHEDULED` ticket for the device to `IN_WAREHOUSE`
+  - Skips tickets that would fail the state machine guard;
+    reports the count of moves and skips via a toast
+- **Productivity dashboard** (`/dashboards/productivity`):
+  - Per-assignee: tickets closed in window, average turnaround
+    (reported → closed), open assigned, hours logged
+  - Rolling window selector (7 / 14 / 30 / 60 / 90 days)
+  - Totals across the board for spot-check managers
+- **Device hotspots dashboard** (`/dashboards/devices`):
+  - Devices with N+ tickets in a rolling window
+  - Configurable threshold (default: 3 tickets in 180 days)
+  - Sorted hottest-first so retire-or-repair candidates surface
+- **Bulk close stale** admin action on `/admin/settings`:
+  - Picks a state + day threshold, closes every ticket older than
+    that through the state machine
+  - Confirm dialog before firing
+- **PWA manifest** at `/public/manifest.webmanifest`:
+  - Standalone display, theme color, shortcuts to My Day / Scan /
+    Tickets
+  - Root layout now advertises the manifest, viewport, and
+    Apple web-app meta tags
+- **Schema**: new `TimeEntry`, `TicketTemplate`, and
+  `mergedIntoTicketId` column on Ticket (self-relation).
+
+New tests (164/164 passing, +4 new):
+- `tests/time-tracking.test.ts` — 4 cases for `computeMinutes`
+  (rounding, zero, negative clamp, multi-hour)
+
+Deferred:
+- Drag-and-drop kanban
+- Dark/light toggle
+- Onboarding tour
+- 2FA
+- Real-time SSE updates (polling ships today)
+- Full ARIA audit
 
 **Added in Phase 9 — Polish & platform hardening release:**
 

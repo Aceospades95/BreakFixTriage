@@ -4,6 +4,7 @@ import { JobStatus, RouteStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { AttachmentList } from "@/components/attachment-list";
+import { SignaturePad } from "@/components/signature-pad";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
@@ -12,6 +13,7 @@ import {
   reorderRouteAction,
   updateStopStatusAction,
 } from "@/server/actions/scheduling";
+import { uploadAttachmentAction } from "@/server/actions/attachments";
 
 export const dynamic = "force-dynamic";
 
@@ -218,6 +220,34 @@ export default async function RouteDetailPage({
                       returnTo={`/scheduling/routes/${route.id}`}
                       canWrite={canUpdateStop}
                     />
+                    {canUpdateStop && (
+                      <form
+                        action={uploadAttachmentAction}
+                        className="mt-3 space-y-2 rounded border border-surface-border bg-surface-muted/40 p-3"
+                      >
+                        <input type="hidden" name="kind" value="ROUTE_STOP" />
+                        <input
+                          type="hidden"
+                          name="routeStopId"
+                          value={stop.id}
+                        />
+                        <input
+                          type="hidden"
+                          name="returnTo"
+                          value={`/scheduling/routes/${route.id}`}
+                        />
+                        <SignaturePad
+                          name="signatureDataUrl"
+                          label="School contact signature"
+                        />
+                        <button
+                          type="submit"
+                          className="rounded bg-accent px-3 py-1.5 text-xs font-semibold hover:bg-accent-strong"
+                        >
+                          Save signature
+                        </button>
+                      </form>
+                    )}
                   </div>
                 )}
               </li>

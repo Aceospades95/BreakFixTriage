@@ -170,10 +170,20 @@ export default async function MyDayPage({
                         </div>
                         {stop.job.school.address && (
                           <div className="mt-1 text-xs text-slate-400">
-                            {stop.job.school.address.line1},{" "}
-                            {stop.job.school.address.city},{" "}
-                            {stop.job.school.address.state}{" "}
-                            {stop.job.school.address.postalCode}
+                            <a
+                              href={buildMapsUrl(
+                                stop.job.school.address,
+                                stop.job.school.name,
+                              )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-accent hover:underline"
+                            >
+                              {stop.job.school.address.line1},{" "}
+                              {stop.job.school.address.city},{" "}
+                              {stop.job.school.address.state}{" "}
+                              {stop.job.school.address.postalCode} ↗
+                            </a>
                           </div>
                         )}
                         <ul className="mt-2 space-y-1 text-xs">
@@ -338,4 +348,31 @@ function StopStatusPill({ status }: { status: JobStatus }) {
       {status}
     </span>
   );
+}
+
+/**
+ * Build a map URL a phone can hand off to Google / Apple Maps. Uses
+ * `geo:lat,lng?q=...` when coordinates are available (phones route
+ * this to whichever map app is set as the default), otherwise
+ * falls back to a Google Maps search URL so tablets and desktops
+ * still get a click target.
+ */
+function buildMapsUrl(
+  address: {
+    line1: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    latitude: number | null;
+    longitude: number | null;
+  },
+  schoolName: string,
+): string {
+  const textQuery = `${schoolName}, ${address.line1}, ${address.city}, ${address.state} ${address.postalCode}`;
+  if (address.latitude != null && address.longitude != null) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      `${address.latitude},${address.longitude}`,
+    )}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(textQuery)}`;
 }

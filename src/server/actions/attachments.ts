@@ -43,23 +43,56 @@ export async function uploadAttachmentAction(formData: FormData) {
   const quoteId = formData.get("quoteId")?.toString() || null;
   const returnTo = formData.get("returnTo")?.toString() || "/";
 
+  // Two input shapes supported:
+  //   1. `file` — a regular <input type="file"> upload
+  //   2. `signatureDataUrl` — a base64 PNG data URL from the
+  //      SignaturePad canvas component
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
+  const signatureDataUrl = formData.get("signatureDataUrl")?.toString() ?? "";
+
+  let bytes: Buffer;
+  let filename: string;
+  let mimeType: string;
+
+  if (signatureDataUrl && signatureDataUrl.startsWith("data:image/png;base64,")) {
+    const b64 = signatureDataUrl.slice("data:image/png;base64,".length);
+    try {
+      bytes = Buffer.from(b64, "base64");
+    } catch {
+      redirect(
+        `${returnTo}?error=${encodeURIComponent("Invalid signature payload")}`,
+      );
+    }
+    if (bytes.length === 0) {
+      redirect(
+        `${returnTo}?error=${encodeURIComponent("Signature is empty — please sign before submitting")}`,
+      );
+    }
+    if (bytes.length > MAX_ATTACHMENT_BYTES) {
+      redirect(`${returnTo}?error=${encodeURIComponent("Signature too large")}`);
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    filename = `signature-${stamp}.png`;
+    mimeType = "image/png";
+  } else if (file instanceof File && file.size > 0) {
+    const upload = file;
+    if (upload.size > MAX_ATTACHMENT_BYTES) {
+      redirect(
+        `${returnTo}?error=${encodeURIComponent("File is too large")}`,
+      );
+    }
+    bytes = Buffer.from(await upload.arrayBuffer());
+    filename = upload.name;
+    mimeType = upload.type || "application/octet-stream";
+  } else {
     redirect(`${returnTo}?error=${encodeURIComponent("No file uploaded")}`);
-  }
-  const upload = file as File;
-  if (upload.size > MAX_ATTACHMENT_BYTES) {
-    redirect(
-      `${returnTo}?error=${encodeURIComponent("File is too large")}`,
-    );
   }
 
   let errorMessage: string | null = null;
   try {
-    const bytes = Buffer.from(await upload.arrayBuffer());
     const stored = await storeFile({
-      filename: upload.name,
-      mimeType: upload.type || "application/octet-stream",
+      filename,
+      mimeType,
       bytes,
     });
     const row = await prisma.attachment.create({

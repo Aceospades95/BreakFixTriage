@@ -16,6 +16,7 @@ const ADMIN_LINKS = [
   { href: "/admin/device-models", label: "Device models" },
   { href: "/admin/parts", label: "Parts" },
   { href: "/admin/loaners", label: "Loaners" },
+  { href: "/admin/templates", label: "Templates" },
   { href: "/admin/settings", label: "Settings" },
   { href: "/audit", label: "Audit log" },
 ] as const;

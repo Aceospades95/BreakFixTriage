@@ -8,7 +8,9 @@ import {
   getHoldDays,
   getSlaThresholds,
 } from "@/lib/settings/settings";
+import { ConfirmButton } from "@/components/confirm-button";
 import { updateSettingsAction } from "@/server/actions/settings";
+import { bulkCloseStaleAction } from "@/server/actions/maintenance";
 
 export const dynamic = "force-dynamic";
 
@@ -161,6 +163,73 @@ export default async function SettingsPage({
           </button>
         </div>
       </form>
+
+      <section className="mt-10 rounded-lg border border-red-500/30 bg-red-500/5 p-5">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-red-200">
+          Bulk close stale tickets
+        </h2>
+        <p className="mb-4 text-xs text-slate-400">
+          Closes every ticket in the selected state whose
+          <code className="mx-1 font-mono">stateEnteredAt</code>
+          is older than the supplied day threshold. Runs through the
+          state machine, so guards still apply. Maximum 500 tickets per
+          run.
+        </p>
+        <form
+          action={bulkCloseStaleAction}
+          className="grid gap-3 sm:grid-cols-[1fr_120px_2fr_auto]"
+        >
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              State
+            </span>
+            <select
+              name="state"
+              required
+              defaultValue={TicketState.OUT_OF_SCOPE}
+              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            >
+              {Object.values(TicketState)
+                .filter((s) => s !== "CLOSED" && s !== "ON_HOLD")
+                .map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              Days old
+            </span>
+            <input
+              type="number"
+              name="daysOld"
+              required
+              min={1}
+              max={3650}
+              defaultValue={90}
+              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              Reason (optional)
+            </span>
+            <input
+              type="text"
+              name="reason"
+              placeholder="e.g. Annual cleanup, 2026"
+              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            />
+          </label>
+          <div className="flex items-end">
+            <ConfirmButton message="Close every matching stale ticket? This transitions them through the state machine and writes audit rows.">
+              Close stale
+            </ConfirmButton>
+          </div>
+        </form>
+      </section>
     </>
   );
 }

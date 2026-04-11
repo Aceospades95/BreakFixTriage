@@ -12,16 +12,86 @@
  * Bootstrap is intentionally separate from `prisma/seed.ts`. Seed creates
  * demo districts, schools, and example tickets for local exploration.
  * Bootstrap only creates the absolute minimum for production use.
+ *
+ * Self-contained by design: the Docker runner image only copies
+ * `prisma/`, not the full `src/` tree, so bootstrap must not import
+ * anything from `src/`. The password policy below is duplicated from
+ * `src/lib/auth/password-policy.ts` — keep the two in sync.
  */
 
 import { PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import {
-  MIN_PASSWORD_LENGTH,
-  validatePassword,
-} from "../src/lib/auth/password-policy";
 
 const prisma = new PrismaClient();
+
+// ---------------------------------------------------------------------------
+// Password policy (duplicate of src/lib/auth/password-policy.ts — see note
+// above). Kept minimal: bootstrap only needs validatePassword + the minimum
+// length constant for its log line.
+// ---------------------------------------------------------------------------
+
+const MIN_PASSWORD_LENGTH = 10;
+const MAX_PASSWORD_LENGTH = 128;
+
+const COMMON_PASSWORDS = new Set<string>([
+  "password",
+  "password1",
+  "password123",
+  "passw0rd",
+  "12345678",
+  "123456789",
+  "1234567890",
+  "qwerty",
+  "qwerty123",
+  "qwertyuiop",
+  "letmein",
+  "welcome",
+  "welcome1",
+  "admin",
+  "admin123",
+  "administrator",
+  "breakfix",
+  "breakfix1",
+  "changeme",
+  "iloveyou",
+  "monkey",
+  "dragon",
+  "abc12345",
+  "test1234",
+]);
+
+type PasswordPolicyResult =
+  | { ok: true }
+  | { ok: false; errors: string[] };
+
+function validatePassword(raw: string): PasswordPolicyResult {
+  const errors: string[] = [];
+  if (typeof raw !== "string") {
+    return { ok: false, errors: ["password must be a string"] };
+  }
+  if (raw.length < MIN_PASSWORD_LENGTH) {
+    errors.push(`must be at least ${MIN_PASSWORD_LENGTH} characters`);
+  }
+  if (raw.length > MAX_PASSWORD_LENGTH) {
+    errors.push(`must be at most ${MAX_PASSWORD_LENGTH} characters`);
+  }
+  if (/^(.)\1+$/.test(raw)) {
+    errors.push("cannot be a single repeated character");
+  }
+  if (COMMON_PASSWORDS.has(raw.toLowerCase())) {
+    errors.push("is on the list of obviously-guessable passwords");
+  }
+  const classes = [
+    /[a-z]/.test(raw),
+    /[A-Z]/.test(raw),
+    /[0-9]/.test(raw),
+    /[^a-zA-Z0-9]/.test(raw),
+  ].filter(Boolean).length;
+  if (classes < 2) {
+    errors.push("must mix at least two of: lowercase, uppercase, digit, symbol");
+  }
+  return errors.length > 0 ? { ok: false, errors } : { ok: true };
+}
 
 async function main() {
   const userCount = await prisma.user.count();

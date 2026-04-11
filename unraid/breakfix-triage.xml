@@ -34,4 +34,6 @@
   <Config Name="GOOGLE_CLIENT_ID" Target="GOOGLE_CLIENT_ID" Default="" Mode="" Description="Google Workspace OAuth client ID (optional, for SSO in Phase 1)." Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="GOOGLE_CLIENT_SECRET" Target="GOOGLE_CLIENT_SECRET" Default="" Mode="" Description="Google Workspace OAuth client secret (optional)." Type="Variable" Display="advanced" Required="false" Mask="true"/>
   <Config Name="GOOGLE_ROUTES_API_KEY" Target="GOOGLE_ROUTES_API_KEY" Default="" Mode="" Description="Google Routes API key (optional, for Phase 4 route optimization)." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="Attachments" Target="/app/data/attachments" Default="/mnt/user/appdata/breakfix/attachments" Mode="rw" Description="Where uploaded ticket photos and PDFs are stored. Bind-mount to appdata so uploads survive container rebuilds. Phase 6." Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/breakfix/attachments</Config>
+  <Config Name="READ_ONLY_MODE" Target="READ_ONLY_MODE" Default="false" Mode="" Description="Set to 'true' to reject all writes at the middleware layer during a cutover window. An amber banner will appear on every page." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
 </Container>

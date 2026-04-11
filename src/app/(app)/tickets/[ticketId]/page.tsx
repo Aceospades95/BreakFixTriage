@@ -1,13 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { QuoteStatus } from "@prisma/client";
+import { QuoteStatus, TicketPriority } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
+import { SlaBadge } from "@/components/sla-badge";
+import { CommentThread } from "@/components/comment-thread";
+import { AttachmentList } from "@/components/attachment-list";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { allowedNextStates } from "@/lib/workflow";
-import { transitionTicketAction } from "@/server/actions/tickets";
+import {
+  transitionTicketAction,
+  updateTicketAction,
+} from "@/server/actions/tickets";
 import {
   cancelQuoteAction,
   createQuoteAction,
@@ -27,41 +33,108 @@ export default async function TicketDetailPage({
 }) {
   const session = await requireRole(PERMISSIONS.TICKETS_READ);
   const canTransition = can(session.role, PERMISSIONS.TICKETS_TRANSITION);
+  const canWrite = can(session.role, PERMISSIONS.TICKETS_WRITE);
   const canWriteQuotes = can(session.role, PERMISSIONS.QUOTES_WRITE);
 
-  const ticket = await prisma.ticket.findUnique({
-    where: { id: params.ticketId },
-    include: {
-      school: { include: { district: true, address: true } },
-      device: { include: { model: true } },
-      events: {
-        orderBy: { createdAt: "desc" },
-        take: 50,
-        include: { actor: { select: { name: true, email: true } } },
-      },
-      quotes: {
-        orderBy: { createdAt: "desc" },
-        include: {
-          purchaseOrder: true,
-          activities: {
-            orderBy: { createdAt: "desc" },
-            take: 10,
-            include: { actor: { select: { name: true } } },
+  const [ticket, assignableUsers, siblingTickets] = await Promise.all([
+    prisma.ticket.findUnique({
+      where: { id: params.ticketId },
+      include: {
+        school: { include: { district: true, address: true } },
+        device: { include: { model: true } },
+        assignee: { select: { id: true, name: true, email: true } },
+        events: {
+          orderBy: { createdAt: "desc" },
+          take: 50,
+          include: { actor: { select: { name: true, email: true } } },
+        },
+        quotes: {
+          orderBy: { createdAt: "desc" },
+          include: {
+            purchaseOrder: true,
+            activities: {
+              orderBy: { createdAt: "desc" },
+              take: 10,
+              include: { actor: { select: { name: true } } },
+            },
           },
         },
+        comments: {
+          orderBy: { createdAt: "asc" },
+          include: { author: { select: { id: true, name: true } } },
+        },
+        attachments: {
+          orderBy: { createdAt: "desc" },
+          include: { uploadedBy: { select: { name: true } } },
+        },
       },
-    },
-  });
+    }),
+    prisma.user.findMany({
+      where: {
+        active: true,
+        role: { in: ["TECHNICIAN", "WAREHOUSE", "DISPATCHER", "OPS_MANAGER", "ADMIN"] },
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, role: true },
+    }),
+    prisma.ticket.findMany({
+      where: {
+        NOT: { id: params.ticketId },
+        OR: [{ schoolId: { in: [] } }],
+      },
+      take: 0,
+    }),
+  ]);
   if (!ticket) notFound();
 
+  // Related tickets: same device (if any), same school excluding this ticket.
+  const [deviceTickets, schoolOpenTickets] = await Promise.all([
+    ticket.deviceId
+      ? prisma.ticket.findMany({
+          where: { deviceId: ticket.deviceId, NOT: { id: ticket.id } },
+          orderBy: { reportedAt: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            incidentNumber: true,
+            state: true,
+            reportedAt: true,
+          },
+        })
+      : Promise.resolve([]),
+    prisma.ticket.findMany({
+      where: {
+        schoolId: ticket.schoolId,
+        state: { not: "CLOSED" },
+        NOT: { id: ticket.id },
+      },
+      orderBy: { reportedAt: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        incidentNumber: true,
+        state: true,
+        reportedAt: true,
+      },
+    }),
+  ]);
+
+  void siblingTickets;
+
   const nextStates = allowedNextStates(ticket.state);
+  const returnTo = `/tickets/${ticket.id}`;
 
   return (
     <>
       <PageHeader
         title={ticket.incidentNumber}
         subtitle={ticket.shortDescription}
-        actions={<StatePill state={ticket.state} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <SlaBadge ticket={ticket} />
+            <StatePill state={ticket.state} />
+          </div>
+        }
       />
 
       {searchParams?.error && (
@@ -72,15 +145,77 @@ export default async function TicketDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="lg:col-span-2 space-y-6">
-          <Card title="Summary">
+          <Card title="Details">
             <dl className="grid grid-cols-2 gap-y-2 text-sm">
               <Dt>Reported</Dt>
-              <Dd>{ticket.reportedAt.toISOString().slice(0, 16).replace("T", " ")}</Dd>
+              <Dd>
+                {ticket.reportedAt.toISOString().slice(0, 16).replace("T", " ")}
+              </Dd>
               <Dt>Priority</Dt>
-              <Dd>{ticket.priority}</Dd>
+              <Dd>
+                {canWrite ? (
+                  <form action={updateTicketAction} className="inline-flex items-center gap-2">
+                    <input type="hidden" name="ticketId" value={ticket.id} />
+                    <select
+                      name="priority"
+                      defaultValue={ticket.priority}
+                      className="rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
+                    >
+                      {Object.values(TicketPriority).map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      className="text-[10px] text-accent hover:underline"
+                    >
+                      save
+                    </button>
+                  </form>
+                ) : (
+                  ticket.priority
+                )}
+              </Dd>
+              <Dt>Assignee</Dt>
+              <Dd>
+                {canWrite ? (
+                  <form action={updateTicketAction} className="inline-flex items-center gap-2">
+                    <input type="hidden" name="ticketId" value={ticket.id} />
+                    <select
+                      name="assignedUserId"
+                      defaultValue={ticket.assignedUserId ?? ""}
+                      className="rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
+                    >
+                      <option value="">— unassigned —</option>
+                      {assignableUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      className="text-[10px] text-accent hover:underline"
+                    >
+                      save
+                    </button>
+                  </form>
+                ) : (
+                  ticket.assignee?.name ?? (
+                    <span className="text-slate-500">—</span>
+                  )
+                )}
+              </Dd>
               <Dt>School</Dt>
               <Dd>
-                {ticket.school.name}
+                <Link
+                  href={`/admin/schools/${ticket.schoolId}`}
+                  className="text-accent hover:underline"
+                >
+                  {ticket.school.name}
+                </Link>
                 <span className="ml-2 font-mono text-xs text-slate-500">
                   {ticket.school.code}
                 </span>
@@ -92,9 +227,12 @@ export default async function TicketDetailPage({
               <Dd>
                 {ticket.device ? (
                   <>
-                    <span className="font-mono">
+                    <Link
+                      href={`/admin/devices/${ticket.device.id}`}
+                      className="font-mono text-accent hover:underline"
+                    >
                       {ticket.device.serialNumber}
-                    </span>
+                    </Link>
                     {ticket.device.model && (
                       <div className="text-xs text-slate-500">
                         {ticket.device.model.manufacturer}{" "}
@@ -111,19 +249,95 @@ export default async function TicketDetailPage({
                 {ticket.serviceNowSysId ?? "—"}
               </Dd>
               <Dt>Invoice required</Dt>
-              <Dd>{ticket.invoiceRequired ? "Yes" : "No"}</Dd>
+              <Dd>
+                {canWrite ? (
+                  <form action={updateTicketAction} className="inline-flex items-center gap-2">
+                    <input type="hidden" name="ticketId" value={ticket.id} />
+                    <select
+                      name="invoiceRequired"
+                      defaultValue={String(ticket.invoiceRequired)}
+                      className="rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
+                    >
+                      <option value="false">No</option>
+                      <option value="true">Yes</option>
+                    </select>
+                    <button
+                      type="submit"
+                      className="text-[10px] text-accent hover:underline"
+                    >
+                      save
+                    </button>
+                  </form>
+                ) : (
+                  ticket.invoiceRequired ? "Yes" : "No"
+                )}
+              </Dd>
             </dl>
 
-            {ticket.longDescription && (
-              <>
-                <div className="mt-4 text-xs uppercase tracking-wide text-slate-400">
-                  Description
-                </div>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">
-                  {ticket.longDescription}
-                </p>
-              </>
+            {canWrite ? (
+              <form
+                action={updateTicketAction}
+                className="mt-4 space-y-2 border-t border-surface-border pt-3"
+              >
+                <input type="hidden" name="ticketId" value={ticket.id} />
+                <label className="block text-[10px] uppercase tracking-wide text-slate-400">
+                  Short description
+                </label>
+                <input
+                  type="text"
+                  name="shortDescription"
+                  defaultValue={ticket.shortDescription}
+                  maxLength={500}
+                  className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                />
+                <label className="block text-[10px] uppercase tracking-wide text-slate-400">
+                  Long description
+                </label>
+                <textarea
+                  name="longDescription"
+                  rows={4}
+                  defaultValue={ticket.longDescription ?? ""}
+                  className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded bg-accent px-3 py-1 text-xs font-semibold hover:bg-accent-strong"
+                >
+                  Save description
+                </button>
+              </form>
+            ) : (
+              ticket.longDescription && (
+                <>
+                  <div className="mt-4 text-xs uppercase tracking-wide text-slate-400">
+                    Description
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">
+                    {ticket.longDescription}
+                  </p>
+                </>
+              )
             )}
+          </Card>
+
+          <Card title={`Comments (${ticket.comments.length})`}>
+            <CommentThread
+              ticketId={ticket.id}
+              comments={ticket.comments}
+              currentUserId={session.userId}
+              currentUserRole={session.role}
+              canWrite={canWrite}
+            />
+          </Card>
+
+          <Card title={`Attachments (${ticket.attachments.length})`}>
+            <AttachmentList
+              attachments={ticket.attachments}
+              ownerKind="TICKET"
+              ownerId={ticket.id}
+              returnTo={returnTo}
+              canWrite={canWrite}
+            />
           </Card>
 
           <Card title="Event timeline">
@@ -181,11 +395,7 @@ export default async function TicketDetailPage({
                       action={transitionTicketAction}
                       className="flex flex-col gap-2 rounded border border-surface-border bg-surface p-2"
                     >
-                      <input
-                        type="hidden"
-                        name="ticketId"
-                        value={ticket.id}
-                      />
+                      <input type="hidden" name="ticketId" value={ticket.id} />
                       <input type="hidden" name="to" value={to} />
                       <div className="flex items-center justify-between gap-2">
                         <StatePill state={to} />
@@ -263,38 +473,12 @@ export default async function TicketDetailPage({
                         </div>
                       </div>
                     )}
-
                     {canWriteQuotes && (
                       <QuoteActions
                         ticketId={ticket.id}
                         quoteId={q.id}
                         status={q.status}
                       />
-                    )}
-
-                    {q.activities.length > 0 && (
-                      <details className="mt-2 text-xs text-slate-400">
-                        <summary className="cursor-pointer select-none">
-                          Activity ({q.activities.length})
-                        </summary>
-                        <ul className="mt-1 space-y-0.5">
-                          {q.activities.map((a) => (
-                            <li key={a.id}>
-                              <span className="font-mono">{a.kind}</span>
-                              <span className="mx-1">·</span>
-                              {a.createdAt
-                                .toISOString()
-                                .replace("T", " ")
-                                .slice(0, 16)}
-                              {a.actor && (
-                                <span className="ml-1 text-slate-500">
-                                  by {a.actor.name}
-                                </span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
                     )}
                   </li>
                 ))}
@@ -328,7 +512,7 @@ export default async function TicketDetailPage({
                     name="diagnosticOnly"
                     className="accent-accent"
                   />
-                  Diagnostic only (no repair amount)
+                  Diagnostic only
                 </label>
                 <textarea
                   name="notes"
@@ -345,6 +529,51 @@ export default async function TicketDetailPage({
               </form>
             )}
           </Card>
+
+          {(deviceTickets.length > 0 || schoolOpenTickets.length > 0) && (
+            <Card title="Related">
+              {deviceTickets.length > 0 && (
+                <div>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">
+                    Same device
+                  </div>
+                  <ul className="space-y-0.5">
+                    {deviceTickets.map((t) => (
+                      <li key={t.id} className="truncate text-xs">
+                        <Link
+                          href={`/tickets/${t.id}`}
+                          className="font-mono text-accent hover:underline"
+                        >
+                          {t.incidentNumber}
+                        </Link>{" "}
+                        <StatePill state={t.state} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {schoolOpenTickets.length > 0 && (
+                <div className="mt-3">
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">
+                    Other open tickets at this school
+                  </div>
+                  <ul className="space-y-0.5">
+                    {schoolOpenTickets.map((t) => (
+                      <li key={t.id} className="truncate text-xs">
+                        <Link
+                          href={`/tickets/${t.id}`}
+                          className="font-mono text-accent hover:underline"
+                        >
+                          {t.incidentNumber}
+                        </Link>{" "}
+                        <StatePill state={t.state} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Card>
+          )}
 
           <Link
             href="/tickets"
@@ -406,11 +635,6 @@ function QuoteStatusPill({ status }: { status: QuoteStatus }) {
   );
 }
 
-/**
- * Per-quote action buttons. Contextual: DRAFT quotes can be edited /
- * sent / cancelled; SENT quotes can be approved, declined, or
- * cancelled; terminal quotes show nothing.
- */
 function QuoteActions({
   ticketId,
   quoteId,
@@ -487,7 +711,6 @@ function QuoteActions({
       </div>
     );
   }
-
   if (status === "SENT") {
     return (
       <div className="mt-3 flex flex-wrap gap-2 border-t border-surface-border pt-2">
@@ -526,6 +749,5 @@ function QuoteActions({
       </div>
     );
   }
-
   return null;
 }

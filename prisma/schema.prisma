@@ -44,8 +44,11 @@ model User {
   importBatches     ImportBatch[]
   resolvedDupes     DuplicateConflict[] @relation("DupeResolver")
   auditLogs         AuditLog[]
+  assignedTickets   Ticket[]           @relation("TicketAssignee")
   assignedRoutes    Route[]            @relation("RouteAssignee")
   quoteActivities   QuoteActivity[]
+  comments          Comment[]          @relation("CommentAuthor")
+  uploadedAttachments Attachment[]     @relation("AttachmentUploader")
 
   @@index([role])
 }
@@ -226,9 +229,11 @@ model Ticket {
   meta             Json?
   invoiceRequired  Boolean        @default(false)
   closedAt         DateTime?
+  stateEnteredAt   DateTime       @default(now())
 
   device           Device?  @relation(fields: [deviceId], references: [id])
   school           School   @relation(fields: [schoolId], references: [id])
+  assignee         User?    @relation("TicketAssignee", fields: [assignedUserId], references: [id])
 
   events           TicketEvent[]
   quotes           Quote[]
@@ -237,6 +242,8 @@ model Ticket {
   duplicateRights  DuplicateConflict[] @relation("DupeRight")
   importRows       ImportRow[]
   notifications    Notification[]
+  comments         Comment[]
+  attachments      Attachment[]
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -244,6 +251,7 @@ model Ticket {
   @@index([state])
   @@index([schoolId])
   @@index([deviceId])
+  @@index([assignedUserId])
 }
 
 model TicketEvent {
@@ -459,6 +467,7 @@ model RouteStop {
 
   route            Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
   job              Job   @relation(fields: [jobId], references: [id])
+  attachments      Attachment[]
 
   @@index([routeId])
 }
@@ -490,6 +499,7 @@ model Quote {
   ticket         Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   activities     QuoteActivity[]
   purchaseOrder  PurchaseOrder?
+  attachments    Attachment[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -582,4 +592,62 @@ model Notification {
 
   @@index([status])
   @@index([kind])
+}
+
+// ---------------------------------------------------------------------------
+// Collaboration: comments & attachments (Phase 6)
+// ---------------------------------------------------------------------------
+
+/// A free-text comment on a ticket. Used by ops, techs, and drivers to
+/// talk to each other about a specific ticket without leaving the app.
+/// Editing is intentionally limited (no rich text, no @mentions yet) —
+/// the point is to capture context that lives with the ticket instead
+/// of in Slack DMs.
+model Comment {
+  id           String   @id @default(cuid())
+  ticketId     String
+  authorUserId String
+  body         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  editedAt     DateTime?
+
+  ticket       Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author       User   @relation("CommentAuthor", fields: [authorUserId], references: [id])
+
+  @@index([ticketId])
+  @@index([createdAt])
+}
+
+enum AttachmentKind {
+  TICKET
+  ROUTE_STOP
+  QUOTE
+}
+
+/// Binary blobs uploaded by users. Stored on the app's local volume
+/// (ATTACHMENTS_DIR) with a sanitized filename, referenced here by
+/// relative path. Polymorphic: exactly one of ticketId / routeStopId
+/// / quoteId is set, chosen by the `kind` discriminator.
+model Attachment {
+  id               String         @id @default(cuid())
+  kind             AttachmentKind
+  ticketId         String?
+  routeStopId      String?
+  quoteId          String?
+  uploadedByUserId String
+  filename         String
+  storedPath       String
+  mimeType         String
+  sizeBytes        Int
+  createdAt        DateTime       @default(now())
+
+  ticket     Ticket?    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  routeStop  RouteStop? @relation(fields: [routeStopId], references: [id], onDelete: Cascade)
+  quote      Quote?     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  uploadedBy User       @relation("AttachmentUploader", fields: [uploadedByUserId], references: [id])
+
+  @@index([ticketId])
+  @@index([routeStopId])
+  @@index([quoteId])
 }

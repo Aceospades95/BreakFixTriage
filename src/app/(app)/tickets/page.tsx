@@ -2,6 +2,7 @@ import Link from "next/link";
 import { TicketState, type Prisma } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
+import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
@@ -128,6 +129,7 @@ export default async function TicketsPage({
             <tr>
               <th className="px-3 py-2 font-medium">Incident</th>
               <th className="px-3 py-2 font-medium">State</th>
+              <th className="px-3 py-2 font-medium">SLA</th>
               <th className="px-3 py-2 font-medium">School</th>
               <th className="px-3 py-2 font-medium">Device</th>
               <th className="px-3 py-2 font-medium">Reported</th>
@@ -151,6 +153,9 @@ export default async function TicketsPage({
                 <td className="px-3 py-2">
                   <StatePill state={t.state} />
                 </td>
+                <td className="px-3 py-2">
+                  <SlaBadge ticket={t} compact />
+                </td>
                 <td className="px-3 py-2">{t.school.name}</td>
                 <td className="px-3 py-2 font-mono text-xs text-slate-400">
                   {t.device?.serialNumber ?? "—"}
@@ -166,7 +171,7 @@ export default async function TicketsPage({
             {tickets.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-3 py-8 text-center text-slate-400"
                 >
                   No tickets match the current filters. Try clearing them or

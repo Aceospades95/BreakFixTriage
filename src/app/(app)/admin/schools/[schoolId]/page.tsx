@@ -1,0 +1,326 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { PageHeader } from "@/components/page-header";
+import { StatePill } from "@/components/state-pill";
+import { prisma } from "@/lib/db/prisma";
+import { requireRole } from "@/lib/auth/session";
+import { PERMISSIONS } from "@/lib/auth/rbac";
+import {
+  createContactAction,
+  setMainContactAction,
+  updateSchoolAction,
+} from "@/server/actions/admin";
+
+export const dynamic = "force-dynamic";
+
+export default async function SchoolProfilePage({
+  params,
+  searchParams,
+}: {
+  params: { schoolId: string };
+  searchParams?: { error?: string; ok?: string };
+}) {
+  await requireRole(PERMISSIONS.DISTRICTS_MANAGE);
+
+  const school = await prisma.school.findUnique({
+    where: { id: params.schoolId },
+    include: {
+      district: true,
+      address: true,
+      mainContact: true,
+      contacts: { orderBy: [{ isPrimary: "desc" }, { name: "asc" }] },
+      devices: {
+        include: { model: true },
+        orderBy: { serialNumber: "asc" },
+        take: 100,
+      },
+      tickets: {
+        orderBy: { reportedAt: "desc" },
+        take: 25,
+        include: { device: true },
+      },
+      _count: { select: { devices: true, tickets: true } },
+    },
+  });
+  if (!school) notFound();
+
+  return (
+    <>
+      <PageHeader
+        title={school.name}
+        subtitle={`${school.district.name}${school.code ? ` · ${school.code}` : ""}`}
+        actions={
+          <Link
+            href="/admin/schools"
+            className="text-sm text-slate-400 hover:text-white"
+          >
+            ← Schools
+          </Link>
+        }
+      />
+
+      {searchParams?.error && (
+        <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          {searchParams.error}
+        </div>
+      )}
+      {searchParams?.ok && (
+        <div className="mb-4 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+          {searchParams.ok}
+        </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="rounded-lg border border-surface-border bg-surface-muted p-6">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-300">
+            Address
+          </h2>
+          <form action={updateSchoolAction} className="space-y-3">
+            <input type="hidden" name="id" value={school.id} />
+            <input
+              type="text"
+              name="line1"
+              defaultValue={school.address?.line1 ?? ""}
+              placeholder="Line 1"
+              required
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            />
+            <input
+              type="text"
+              name="line2"
+              defaultValue={school.address?.line2 ?? ""}
+              placeholder="Line 2"
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            />
+            <div className="grid grid-cols-[1fr_80px_120px] gap-2">
+              <input
+                type="text"
+                name="city"
+                defaultValue={school.address?.city ?? ""}
+                placeholder="City"
+                required
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              />
+              <input
+                type="text"
+                name="state"
+                defaultValue={school.address?.state ?? ""}
+                maxLength={2}
+                required
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm uppercase focus:border-accent focus:outline-none"
+              />
+              <input
+                type="text"
+                name="postalCode"
+                defaultValue={school.address?.postalCode ?? ""}
+                placeholder="ZIP"
+                required
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                name="latitude"
+                defaultValue={school.address?.latitude?.toString() ?? ""}
+                placeholder="Latitude"
+                inputMode="decimal"
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono focus:border-accent focus:outline-none"
+              />
+              <input
+                type="text"
+                name="longitude"
+                defaultValue={school.address?.longitude?.toString() ?? ""}
+                placeholder="Longitude"
+                inputMode="decimal"
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono focus:border-accent focus:outline-none"
+              />
+            </div>
+            <button
+              type="submit"
+              className="rounded bg-accent px-3 py-1.5 text-sm font-semibold hover:bg-accent-strong"
+            >
+              Save address
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-lg border border-surface-border bg-surface-muted p-6">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-300">
+            Contacts
+          </h2>
+          {school.contacts.length === 0 ? (
+            <p className="mb-3 text-sm text-slate-400">
+              No contacts yet. Add one below so notifications have somewhere to
+              land.
+            </p>
+          ) : (
+            <ul className="mb-4 space-y-2">
+              {school.contacts.map((c) => (
+                <li
+                  key={c.id}
+                  className="rounded border border-surface-border bg-surface px-3 py-2 text-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-medium">{c.name}</span>
+                      {c.title && (
+                        <span className="ml-2 text-xs text-slate-400">
+                          {c.title}
+                        </span>
+                      )}
+                      {school.mainContactId === c.id && (
+                        <span className="ml-2 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] text-emerald-200">
+                          primary
+                        </span>
+                      )}
+                    </div>
+                    {school.mainContactId !== c.id && (
+                      <form action={setMainContactAction}>
+                        <input
+                          type="hidden"
+                          name="schoolId"
+                          value={school.id}
+                        />
+                        <input type="hidden" name="contactId" value={c.id} />
+                        <button
+                          type="submit"
+                          className="text-[10px] text-slate-400 hover:text-white"
+                        >
+                          make primary
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-400">
+                    {c.email ?? "no email"} · {c.phone ?? "no phone"}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form
+            action={createContactAction}
+            className="space-y-2 border-t border-surface-border pt-3"
+          >
+            <input type="hidden" name="schoolId" value={school.id} />
+            <input
+              type="text"
+              name="name"
+              required
+              placeholder="Full name"
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                name="title"
+                placeholder="Title"
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              />
+              <input
+                type="text"
+                name="phone"
+                placeholder="Phone"
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              />
+            </div>
+            <input
+              type="email"
+              name="email"
+              placeholder="Email"
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            />
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                name="isPrimary"
+                className="accent-accent"
+              />
+              Set as primary contact
+            </label>
+            <button
+              type="submit"
+              className="rounded bg-accent px-3 py-1.5 text-xs font-semibold hover:bg-accent-strong"
+            >
+              Add contact
+            </button>
+          </form>
+        </section>
+      </div>
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Recent tickets{" "}
+          <span className="font-mono text-xs text-slate-500">
+            {school._count.tickets} total
+          </span>
+        </h2>
+        {school.tickets.length === 0 ? (
+          <p className="text-sm text-slate-400">No tickets yet.</p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {school.tickets.map((t) => (
+              <li
+                key={t.id}
+                className="flex items-center justify-between rounded border border-surface-border bg-surface-muted/40 px-3 py-1.5"
+              >
+                <Link
+                  href={`/tickets/${t.id}`}
+                  className="font-mono text-accent hover:underline"
+                >
+                  {t.incidentNumber}
+                </Link>
+                <StatePill state={t.state} />
+                <span className="flex-1 px-3 truncate text-slate-400">
+                  {t.shortDescription}
+                </span>
+                <span className="text-xs text-slate-500">
+                  {t.reportedAt.toISOString().slice(0, 10)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Devices{" "}
+          <span className="font-mono text-xs text-slate-500">
+            {school._count.devices} total
+          </span>
+        </h2>
+        {school.devices.length === 0 ? (
+          <p className="text-sm text-slate-400">No devices yet.</p>
+        ) : (
+          <ul className="grid gap-1 text-sm md:grid-cols-2">
+            {school.devices.map((d) => (
+              <li
+                key={d.id}
+                className="rounded border border-surface-border bg-surface-muted/40 px-3 py-1.5"
+              >
+                <Link
+                  href={`/admin/devices/${d.id}`}
+                  className="font-mono text-accent hover:underline"
+                >
+                  {d.serialNumber}
+                </Link>
+                {d.assetTag && (
+                  <span className="ml-2 font-mono text-xs text-slate-500">
+                    {d.assetTag}
+                  </span>
+                )}
+                {d.model && (
+                  <span className="ml-2 text-xs text-slate-400">
+                    {d.model.manufacturer} {d.model.modelName}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
+  );
+}

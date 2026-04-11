@@ -30,10 +30,18 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV ATTACHMENTS_DIR=/app/data/attachments
 
 # Non-root user for runtime.
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nextjs
+
+# Attachments volume. Bind-mount this path on the host (or use a
+# Docker named volume) to persist uploaded photos and PDFs across
+# container rebuilds. Created empty at build time so the non-root
+# user owns it.
+RUN mkdir -p /app/data/attachments \
+ && chown -R nextjs:nodejs /app/data
 
 # Copy the built app + node_modules (needed for next start + prisma CLI).
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
@@ -44,6 +52,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./next.config.mjs
 
 USER nextjs
+VOLUME ["/app/data/attachments"]
 EXPOSE 3000
 
 # tini is PID 1 so Next.js gets clean SIGTERMs from docker stop.

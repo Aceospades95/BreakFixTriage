@@ -29,11 +29,12 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 **Phase 2 — Scheduling & dispatch** ✓ complete.
 **Phase 3 — Quotes, OOW, invoices, hold-window automation** ✓ complete.
 **Phase 4 — Email, Google Routes, ServiceNow API** ✓ complete.
-**Phase 5 — Cutover tooling and runbook** ✓ complete in this commit.
+**Phase 5 — Cutover tooling and runbook** ✓ complete.
+**Phase 6 — Adoption (admin UIs, comments, attachments, SLAs, search, profile)** ✓ complete in this commit.
 
-All five phases from `docs/MIGRATION_PLAN.md` are now shipped. What
-ops does next is an operational exercise; see `docs/CUTOVER_PLAN.md`
-for the step-by-step runbook.
+All five migration-plan phases plus the Phase 6 adoption release are
+shipped. See `docs/CUTOVER_PLAN.md` for the operational cutover
+runbook.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
   routes, quotes, imports, duplicates, audit, and notifications
@@ -137,6 +138,59 @@ for the step-by-step runbook.
 - New vitest coverage: notification templates (8 cases), Google
   Routes response parser + body builder (7 cases), ServiceNow row
   normalizer (6 cases).
+
+**Added in Phase 6 — Adoption release:**
+
+This phase closes every P0 item from the adoption analysis — the
+ten "must-have for real use" gaps between deployable and actually
+used. The foundation built in Phases 0–5 stays put; Phase 6 makes
+it comfortable.
+
+- **Admin CRUD surface** at `/admin`: users, districts, schools
+  (with address + contacts + ticket + device history), and
+  devices (with per-device ticket history). Admins can finally
+  onboard a new district from the UI without touching SQL.
+- **Editable ticket fields**: priority, description, assignee,
+  invoiceRequired — all inline on the ticket detail page. Every
+  change writes an AuditLog row.
+- **Comments thread** on every ticket. Ops, techs, and drivers
+  can leave notes visible to the team instead of sending Slack
+  DMs that get lost. Authors and admins can delete.
+- **File/photo attachments** on tickets and route stops, stored on
+  a local volume (`ATTACHMENTS_DIR`) with mime + size allowlists
+  and a sanitized filename pipeline. Served through an
+  authenticated API route at `/api/attachments/[id]`.
+- **SLA timer badges** next to every ticket's state, on both the
+  list and detail views. Color-coded on-track / approaching /
+  breached with per-state default thresholds editable in one
+  file until a DB-backed config lands.
+- **Global search bar** in the header. Matches incident number,
+  ticket description, school name/code, device serial/asset tag,
+  contact name/email/phone, user name/email, all in one
+  debounced dropdown. Press `/` from anywhere to focus.
+- **Audit log viewer** at `/audit` with filters on entity type,
+  entity id, action, and actor email. Paged, admin-only.
+- **User profile page** at `/profile` with self-service password
+  change (SSO-only accounts skip the form gracefully).
+- **Loading skeletons + error boundaries** for every route in the
+  `(app)` group, so slow queries show structure immediately and
+  a thrown server component gets a recovery page instead of a
+  crash.
+- **Related tickets panel** on ticket detail: other open tickets
+  at the same school, all tickets on the same device.
+- **Device profile page** showing every ticket ever opened on a
+  serial, open and closed.
+- **School profile page** with address, contacts, devices, ticket
+  history, and inline "add contact" form.
+- **Editable `stateEnteredAt`** stamp on every ticket, updated
+  whenever the state machine transitions. Powers the SLA badges
+  accurately (not just time since `reportedAt`).
+- **Confirm button** reusable component for the handful of
+  destructive actions that previously submitted on one click.
+- New schema: `Comment`, `Attachment`, `AttachmentKind` enum,
+  `stateEnteredAt` column on Ticket, `assignee` relation on Ticket.
+- New tests: SLA helpers (8 cases), attachment validation +
+  filename sanitizer (20 cases).
 
 **Added in Phase 5:**
 

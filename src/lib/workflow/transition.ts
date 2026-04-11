@@ -164,11 +164,13 @@ async function transitionInTx(
     payload.resumeState = from;
   }
 
+  const now = new Date();
   const updated = await tx.ticket.update({
     where: { id: ticketId },
     data: {
       state: to,
-      closedAt: to === "CLOSED" ? new Date() : ticket.closedAt,
+      stateEnteredAt: now,
+      closedAt: to === "CLOSED" ? now : ticket.closedAt,
     },
   });
 

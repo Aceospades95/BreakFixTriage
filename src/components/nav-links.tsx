@@ -15,11 +15,17 @@ const LINKS = [
   { href: "/dashboards", label: "Dashboards" },
 ] as const;
 
-export function NavLinks() {
+export function NavLinks({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname() ?? "";
+  const links = [
+    ...LINKS,
+    ...(isAdmin
+      ? ([{ href: "/admin", label: "Admin" }] as const)
+      : ([] as const)),
+  ];
   return (
-    <nav className="flex gap-5 text-sm">
-      {LINKS.map((link) => {
+    <nav className="flex flex-wrap gap-4 text-sm">
+      {links.map((link) => {
         const active =
           pathname === link.href || pathname.startsWith(`${link.href}/`);
         return (

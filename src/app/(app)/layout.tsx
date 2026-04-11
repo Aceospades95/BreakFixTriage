@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GlobalSearch } from "@/components/global-search";
 import { NavLinks } from "@/components/nav-links";
 import { SignOutButton } from "@/components/sign-out-button";
 import { requireSession } from "@/lib/auth/session";
@@ -10,6 +11,7 @@ export default async function AppLayout({
 }) {
   const session = await requireSession();
   const readOnly = process.env.READ_ONLY_MODE === "true";
+  const isAdmin = session.role === "ADMIN";
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -21,21 +23,25 @@ export default async function AppLayout({
         </div>
       )}
       <header className="border-b border-surface-border bg-surface-muted/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-3">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-3">
           <Link
             href="/"
             className="text-sm font-semibold tracking-tight text-slate-100"
           >
             BreakFix Triage
           </Link>
-          <NavLinks />
+          <NavLinks isAdmin={isAdmin} />
           <div className="flex items-center gap-3">
-            <div className="text-right text-xs">
+            <GlobalSearch />
+            <Link
+              href="/profile"
+              className="text-right text-xs transition hover:text-white"
+            >
               <div className="font-medium text-slate-100">{session.name}</div>
               <div className="font-mono uppercase tracking-wide text-slate-400">
                 {session.role}
               </div>
-            </div>
+            </Link>
             <SignOutButton />
           </div>
         </div>

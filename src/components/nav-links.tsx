@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/duplicates", label: "Duplicates" },
   { href: "/scheduling", label: "Scheduling" },
   { href: "/my-day", label: "My Day" },
+  { href: "/scan", label: "Scan" },
   { href: "/quotes", label: "Quotes" },
   { href: "/invoices", label: "Invoices" },
   { href: "/shift-notes", label: "Shift notes" },

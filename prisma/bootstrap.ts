@@ -16,6 +16,10 @@
 
 import { PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import {
+  MIN_PASSWORD_LENGTH,
+  validatePassword,
+} from "../src/lib/auth/password-policy";
 
 const prisma = new PrismaClient();
 
@@ -32,12 +36,22 @@ async function main() {
   const name = (process.env.BOOTSTRAP_ADMIN_NAME ?? "BreakFix Admin").trim();
   const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
 
-  if (!password || password.length < 8) {
+  if (!password) {
     console.warn(
-      "[bootstrap] No users exist and BOOTSTRAP_ADMIN_PASSWORD is not set " +
-        "(or is shorter than 8 characters). Skipping admin creation. Set " +
-        "BOOTSTRAP_ADMIN_PASSWORD in the container environment and restart " +
-        "this container to provision an initial admin user.",
+      "[bootstrap] No users exist and BOOTSTRAP_ADMIN_PASSWORD is not set. " +
+        "Skipping admin creation. Set BOOTSTRAP_ADMIN_PASSWORD in the " +
+        "container environment and restart this container to provision " +
+        "an initial admin user.",
+    );
+    return;
+  }
+
+  const policyCheck = validatePassword(password);
+  if (!policyCheck.ok) {
+    console.warn(
+      `[bootstrap] BOOTSTRAP_ADMIN_PASSWORD does not satisfy the password policy:\n  - ${policyCheck.errors.join(
+        "\n  - ",
+      )}\nIt must be at least ${MIN_PASSWORD_LENGTH} characters and mix multiple character classes. Skipping admin creation.`,
     );
     return;
   }

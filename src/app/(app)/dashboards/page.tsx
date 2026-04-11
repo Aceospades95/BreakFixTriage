@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { requireRole } from "@/lib/auth/session";
@@ -33,12 +34,18 @@ export default async function DashboardsPage() {
         title="Dashboards"
         subtitle="Operational health snapshot"
         actions={
-          <Link
-            href="/dashboards/finance"
-            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-          >
-            Finance →
-          </Link>
+          <div className="flex items-center gap-3">
+            <AutoRefresh
+              storageKey="dashboards-auto-refresh"
+              intervalSeconds={60}
+            />
+            <Link
+              href="/dashboards/finance"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              Finance →
+            </Link>
+          </div>
         }
       />
 

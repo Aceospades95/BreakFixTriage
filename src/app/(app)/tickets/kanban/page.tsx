@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { TicketState } from "@prisma/client";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { PageHeader } from "@/components/page-header";
 import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
@@ -61,12 +62,15 @@ export default async function KanbanPage() {
         title="Kanban"
         subtitle={`${tickets.length} active tickets across ${COLUMNS.length} columns`}
         actions={
-          <Link
-            href="/tickets"
-            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-          >
-            Table view
-          </Link>
+          <div className="flex items-center gap-3">
+            <AutoRefresh storageKey="kanban-auto-refresh" intervalSeconds={30} />
+            <Link
+              href="/tickets"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              Table view
+            </Link>
+          </div>
         }
       />
 

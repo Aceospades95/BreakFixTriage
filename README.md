@@ -32,11 +32,12 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 **Phase 5 — Cutover tooling and runbook** ✓ complete.
 **Phase 6 — Adoption (admin UIs, comments, attachments, SLAs, search, profile)** ✓ complete.
 **Phase 7 — Workflow (bulk, kanban, bench, loaners, escalation, digest, settings)** ✓ complete.
-**Phase 8 — Business features (parts, RMA, finance, portal, KB, calendar, shift notes)** ✓ complete in this commit.
+**Phase 8 — Business features (parts, RMA, finance, portal, KB, calendar, shift notes)** ✓ complete.
+**Phase 9 — Polish & platform (QR scan, shortcuts, a11y, health, rate-limit, CSP)** ✓ complete in this commit.
 
-All five migration-plan phases plus the Phase 6–8 adoption/workflow/
-business releases are shipped. See `docs/CUTOVER_PLAN.md` for the
-operational cutover runbook.
+All migration-plan phases plus the Phase 6–9 adoption / workflow /
+business / hardening releases are shipped. See `docs/CUTOVER_PLAN.md`
+for the operational cutover runbook.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
   routes, quotes, imports, duplicates, audit, and notifications
@@ -140,6 +141,103 @@ operational cutover runbook.
 - New vitest coverage: notification templates (8 cases), Google
   Routes response parser + body builder (7 cases), ServiceNow row
   normalizer (6 cases).
+
+**Added in Phase 9 — Polish & platform hardening release:**
+
+Smaller than Phase 6–8 but focused on the things that separate a
+demo-quality app from one people actually trust with production
+data: scanning, keyboard shortcuts, accessibility, health checks,
+rate limiting, a real password policy, session expiry, and proper
+HTTP security headers.
+
+- **QR + barcode scanning** (`/scan`):
+  - `QrScanner` client component wrapping `html5-qrcode` with
+    lazy import, back-camera auto-select, 1.5s same-value debounce,
+    and permission/error states
+  - `/scan` page opens the camera and posts decoded values to
+    `/api/scan`
+  - Scan resolver looks up incident numbers, device serials /
+    asset tags, loaner serials, school codes, and part SKUs in
+    parallel — a single scan returns every matching entity
+  - Single hit auto-navigates; multiple hits show a picker
+  - Normalizer strips full URLs down to the last path segment so
+    labels generated from shareable links still resolve
+  - "Scan" added to the main nav
+- **Keyboard shortcuts** (`KeyboardShortcuts` client component):
+  - `/` focuses the global search (unchanged from Phase 6)
+  - `?` toggles a cheat-sheet overlay listing every shortcut
+  - `g` is a leader key for two-key chords:
+    `g t` tickets, `g q` quotes, `g s` scheduling, `g k` kanban,
+    `g m` my-day, `g b` bench, `g c` scan, `g i` imports,
+    `g d` dashboards, `g n` shift notes
+  - Shortcuts disabled while typing in a form field; `Esc` closes
+    any open overlay
+- **Accessibility pass**:
+  - Skip-to-main-content link that's screen-reader only until
+    focused
+  - `<main>` is focusable (`tabIndex={-1}`) so the skip link can
+    land on it
+  - Focus-visible styles inherit from Tailwind defaults; buttons
+    and links get accent rings on keyboard navigation
+- **Health check endpoint** (`/api/health`):
+  - Runs `SELECT 1` against Postgres and `access(W_OK)` against
+    the attachments volume
+  - Reports SMTP and ServiceNow as `configured` / `stdout` /
+    `disabled`
+  - Returns 200 when DB + attachments are OK, 503 otherwise — use
+    it directly as a Docker health check or in Uptime Kuma
+  - Unauthenticated; added to the middleware matcher exclusion
+- **Auto-refresh** on kanban and dashboards:
+  - `AutoRefresh` client component calls `router.refresh()` on an
+    interval without reloading the page
+  - Off by default; user toggles per-page and the choice persists
+    in localStorage so wall-tablet displays stay alive across
+    power cycles
+- **Password policy**:
+  - `lib/auth/password-policy.ts` — pure `validatePassword` with
+    a 10-char minimum, 2-of-4 character class requirement, rejection
+    of single-character repeats, and a tiny deny list of common
+    passwords
+  - Applied to create user, admin reset, self-service change, and
+    bootstrap — every code path that accepts a password goes
+    through the same validator
+  - Bootstrap no longer creates an admin with a weak password; it
+    logs a clear rejection message and skips instead
+- **Sign-in rate limiting**:
+  - `lib/auth/rate-limit.ts` — in-memory sliding-window limiter
+    with a pure `tick` function for tests
+  - 5 failed attempts per email per 5 minutes on the credentials
+    provider; keyed on attempted email rather than IP so
+    distributed bots can't fly under a per-IP limit
+- **Session expiry**:
+  - NextAuth session `maxAge` = 12 hours with `updateAge` = 30
+    minutes so an active user doesn't get logged out mid-shift
+    but an abandoned tablet expires overnight
+- **HTTP security headers** (`next.config.mjs`):
+  - Content-Security-Policy with `frame-ancestors 'none'`,
+    `script-src 'self'`, `img-src 'self' data: blob:`, and
+    camera-friendly `media-src 'self' blob:` for the QR scanner
+  - X-Frame-Options, X-Content-Type-Options, Referrer-Policy,
+    Permissions-Policy (camera=(self), microphone=(), geolocation=())
+
+New tests (160/160 passing, +18 new):
+- `tests/password-policy.test.ts` — 9 cases (strong passphrase,
+  length, single-class, repeated-char, deny list, multi-error,
+  non-string input, constant export)
+- `tests/rate-limit.test.ts` — 4 cases (budget, window slide,
+  per-key isolation, reset time)
+- `tests/scan-resolve.test.ts` — 5 cases for the normalizer
+  (whitespace, plain value, URL extraction, empty path, malformed)
+
+Deferred to future phases:
+- Real-time updates via SSE (polling ships today instead)
+- Dark / light toggle
+- Onboarding tour
+- i18n
+- Full accessibility audit (skip link + focus-visible lands today;
+  ARIA labels on every icon button is a later sweep)
+- 2FA
+- Prisma migrations committed to git (still on `db push`)
 
 **Added in Phase 8 — Business features release:**
 

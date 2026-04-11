@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { GlobalSearch } from "@/components/global-search";
+import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { NavLinks } from "@/components/nav-links";
 import { NotificationBell } from "@/components/notification-bell";
 import { SignOutButton } from "@/components/sign-out-button";
@@ -22,6 +23,13 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded focus:bg-accent focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-slate-950"
+      >
+        Skip to main content
+      </a>
+      <KeyboardShortcuts />
       {readOnly && (
         <div className="border-b border-amber-500/40 bg-amber-500/20 px-6 py-2 text-center text-xs font-semibold text-amber-100">
           BreakFix Triage is in READ-ONLY MODE — writes are rejected at
@@ -54,7 +62,11 @@ export default async function AppLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
+      <main
+        id="main-content"
+        className="mx-auto w-full max-w-7xl flex-1 px-6 py-8 focus:outline-none"
+        tabIndex={-1}
+      >
         {children}
       </main>
     </div>

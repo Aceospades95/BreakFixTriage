@@ -3,6 +3,10 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
+import {
+  SIGNIN_LIMIT,
+  checkRateLimit,
+} from "@/lib/auth/rate-limit";
 
 /**
  * NextAuth configuration.
@@ -30,6 +34,15 @@ const providers: NextAuthOptions["providers"] = [
     async authorize(credentials) {
       if (!credentials?.email || !credentials?.password) return null;
       const email = credentials.email.trim().toLowerCase();
+
+      // Rate limit per email to stop dictionary attacks. We deliberately
+      // key on the *attempted* email rather than the requester IP so a
+      // bot hitting a hundred inboxes doesn't fly under a per-IP limit.
+      // Five attempts per 5 minutes lets a legitimate typo-er recover
+      // quickly while making serious enumeration slow enough to notice.
+      const limit = checkRateLimit(`signin:${email}`, SIGNIN_LIMIT);
+      if (!limit.allowed) return null;
+
       const user = await prisma.user.findUnique({
         where: { email },
         include: { districts: { select: { districtId: true } } },
@@ -58,7 +71,16 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 }
 
 export const authOptions: NextAuthOptions = {
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    // 12-hour session max age. Ops staff typically work a single shift
+    // and then go home — this makes "walked away from the tablet on
+    // the wall" stop counting as a logged-in session overnight.
+    maxAge: 12 * 60 * 60,
+    // Bump the expiry every 30 minutes of activity so an active user
+    // doesn't get logged out mid-shift.
+    updateAge: 30 * 60,
+  },
   pages: {
     signIn: "/signin",
     error: "/signin",

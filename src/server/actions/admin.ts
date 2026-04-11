@@ -9,6 +9,11 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  validatePassword,
+} from "@/lib/auth/password-policy";
 
 /**
  * Admin CRUD actions.
@@ -34,7 +39,10 @@ const createUserSchema = z.object({
   email: z.string().trim().email(),
   name: z.string().trim().min(1).max(120),
   role: z.nativeEnum(Role),
-  password: z.string().min(8).max(200),
+  password: z
+    .string()
+    .min(MIN_PASSWORD_LENGTH)
+    .max(MAX_PASSWORD_LENGTH),
   districtIds: z.array(z.string()).default([]),
 });
 
@@ -58,6 +66,11 @@ export async function createUserAction(formData: FormData) {
       "/admin/users/new",
       parsed.error.issues.map((i) => i.message).join("; "),
     );
+  }
+
+  const policyCheck = validatePassword(parsed.data.password);
+  if (!policyCheck.ok) {
+    flashError("/admin/users/new", `Password ${policyCheck.errors.join("; ")}`);
   }
 
   let errorMessage: string | null = null;
@@ -190,7 +203,7 @@ export async function updateUserAction(formData: FormData) {
 
 const resetPasswordSchema = z.object({
   id: z.string().min(1),
-  password: z.string().min(8).max(200),
+  password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
 });
 
 export async function resetUserPasswordAction(formData: FormData) {
@@ -201,7 +214,17 @@ export async function resetUserPasswordAction(formData: FormData) {
   });
   if (!parsed.success) {
     const id = formData.get("id")?.toString() ?? "";
-    flashError(`/admin/users/${id}`, "Password must be at least 8 characters");
+    flashError(
+      `/admin/users/${id}`,
+      `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+    );
+  }
+  const policyCheck = validatePassword(parsed.data.password);
+  if (!policyCheck.ok) {
+    flashError(
+      `/admin/users/${parsed.data.id}`,
+      `Password ${policyCheck.errors.join("; ")}`,
+    );
   }
   let errorMessage: string | null = null;
   try {
@@ -233,8 +256,8 @@ export async function resetUserPasswordAction(formData: FormData) {
 const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1),
-    newPassword: z.string().min(8).max(200),
-    confirmPassword: z.string().min(8).max(200),
+    newPassword: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
+    confirmPassword: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
     message: "Passwords do not match",
@@ -253,6 +276,14 @@ export async function changeOwnPasswordAction(formData: FormData) {
     flashError(
       "/profile",
       parsed.error.issues.map((i) => i.message).join("; "),
+    );
+  }
+
+  const policyCheck = validatePassword(parsed.data.newPassword);
+  if (!policyCheck.ok) {
+    flashError(
+      "/profile",
+      `New password ${policyCheck.errors.join("; ")}`,
     );
   }
 

@@ -5,6 +5,7 @@ import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { NavLinks } from "@/components/nav-links";
 import { NotificationBell } from "@/components/notification-bell";
 import { SignOutButton } from "@/components/sign-out-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { ToastHost } from "@/components/toast-host";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
@@ -50,6 +51,7 @@ export default async function AppLayout({
           <NavLinks isAdmin={isAdmin} />
           <div className="flex items-center gap-3">
             <GlobalSearch />
+            <ThemeToggle />
             <NotificationBell notifications={notifications} />
             <Link
               href="/profile"

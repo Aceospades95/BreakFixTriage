@@ -23,6 +23,8 @@ export default async function TicketsPage({
     state?: string;
     q?: string;
     page?: string;
+    sort?: string;
+    dir?: string;
     error?: string;
     ok?: string;
   };
@@ -39,6 +41,31 @@ export default async function TicketsPage({
       : undefined;
   const query = searchParams?.q?.trim() ?? "";
   const page = Math.max(1, parseInt(searchParams?.page ?? "1", 10) || 1);
+
+  // Sort parsing. The `sort` param is the column key; `dir` is asc|desc.
+  // Limits sort keys to the ones with a real database column so
+  // Prisma can execute the orderBy without a join.
+  type SortKey =
+    | "reportedAt"
+    | "state"
+    | "priority"
+    | "incidentNumber"
+    | "stateEnteredAt";
+  const validSortKeys: SortKey[] = [
+    "reportedAt",
+    "state",
+    "priority",
+    "incidentNumber",
+    "stateEnteredAt",
+  ];
+  const sortParam = searchParams?.sort;
+  const sortKey: SortKey = (
+    sortParam && (validSortKeys as string[]).includes(sortParam)
+      ? sortParam
+      : "reportedAt"
+  ) as SortKey;
+  const dirParam = searchParams?.dir;
+  const sortDir: "asc" | "desc" = dirParam === "asc" ? "asc" : "desc";
 
   const where: Prisma.TicketWhereInput = {
     ...(stateFilter ? { state: stateFilter } : {}),
@@ -68,7 +95,7 @@ export default async function TicketsPage({
       where,
       take: PAGE_SIZE,
       skip: (page - 1) * PAGE_SIZE,
-      orderBy: { reportedAt: "desc" },
+      orderBy: { [sortKey]: sortDir },
       include: {
         school: true,
         device: true,
@@ -259,12 +286,26 @@ export default async function TicketsPage({
           tickets={tickets}
           assignableUsers={assignableUsers}
           returnTo={returnTo}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          baseQuery={{
+            ...(stateFilter ? { state: stateFilter } : {}),
+            ...(query ? { q: query } : {}),
+          }}
         />
       )}
 
       {!canTransition && (
         <div className="overflow-hidden rounded-lg border border-surface-border">
-          <TicketTable tickets={tickets} />
+          <TicketTable
+            tickets={tickets}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            baseQuery={{
+              ...(stateFilter ? { state: stateFilter } : {}),
+              ...(query ? { q: query } : {}),
+            }}
+          />
         </div>
       )}
 
@@ -289,6 +330,9 @@ function BulkActionForm({
   tickets,
   assignableUsers,
   returnTo,
+  sortKey,
+  sortDir,
+  baseQuery,
 }: {
   tickets: Array<{
     id: string;
@@ -303,6 +347,9 @@ function BulkActionForm({
   }>;
   assignableUsers: { id: string; name: string; role: string }[];
   returnTo: string;
+  sortKey: string;
+  sortDir: "asc" | "desc";
+  baseQuery: Record<string, string>;
 }) {
   return (
     <form>
@@ -369,7 +416,13 @@ function BulkActionForm({
       </div>
 
       <div className="overflow-hidden rounded-lg border border-surface-border">
-        <TicketTable tickets={tickets} withCheckbox />
+        <TicketTable
+          tickets={tickets}
+          withCheckbox
+          sortKey={sortKey}
+          sortDir={sortDir}
+          baseQuery={baseQuery}
+        />
       </div>
     </form>
   );
@@ -378,6 +431,9 @@ function BulkActionForm({
 function TicketTable({
   tickets,
   withCheckbox = false,
+  sortKey,
+  sortDir,
+  baseQuery,
 }: {
   tickets: Array<{
     id: string;
@@ -391,19 +447,67 @@ function TicketTable({
     assignee: { name: string } | null;
   }>;
   withCheckbox?: boolean;
+  sortKey: string;
+  sortDir: "asc" | "desc";
+  baseQuery: Record<string, string>;
 }) {
+  function sortHref(key: string): string {
+    const sp = new URLSearchParams(baseQuery);
+    const nextDir = sortKey === key && sortDir === "desc" ? "asc" : "desc";
+    sp.set("sort", key);
+    sp.set("dir", nextDir);
+    sp.delete("page");
+    return `/tickets?${sp.toString()}`;
+  }
+  function sortIndicator(key: string): string {
+    if (sortKey !== key) return "";
+    return sortDir === "asc" ? " ↑" : " ↓";
+  }
   return (
     <table className="min-w-full divide-y divide-surface-border text-sm">
       <thead className="bg-surface-muted text-left text-xs uppercase tracking-wide text-slate-400">
         <tr>
           {withCheckbox && <th className="px-2 py-2" />}
-          <th className="px-3 py-2 font-medium">Incident</th>
-          <th className="px-3 py-2 font-medium">State</th>
-          <th className="px-3 py-2 font-medium">SLA</th>
+          <th className="px-3 py-2 font-medium">
+            <Link
+              href={sortHref("incidentNumber")}
+              className="hover:text-white"
+              scroll={false}
+            >
+              Incident{sortIndicator("incidentNumber")}
+            </Link>
+          </th>
+          <th className="px-3 py-2 font-medium">
+            <Link
+              href={sortHref("state")}
+              className="hover:text-white"
+              scroll={false}
+            >
+              State{sortIndicator("state")}
+            </Link>
+          </th>
+          <th className="px-3 py-2 font-medium">
+            <Link
+              href={sortHref("stateEnteredAt")}
+              className="hover:text-white"
+              scroll={false}
+            >
+              SLA{sortIndicator("stateEnteredAt")}
+            </Link>
+          </th>
           <th className="px-3 py-2 font-medium">Assignee</th>
           <th className="px-3 py-2 font-medium">School</th>
           <th className="px-3 py-2 font-medium">Device</th>
-          <th className="px-3 py-2 font-medium">Summary</th>
+          <th className="px-3 py-2 font-medium">
+            <Link
+              href={sortHref("reportedAt")}
+              className="hover:text-white"
+              scroll={false}
+              title="Sort by report date"
+            >
+              Summary{sortIndicator("reportedAt")}
+            </Link>
+          </th>
         </tr>
       </thead>
       <tbody className="divide-y divide-surface-border">

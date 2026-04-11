@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
@@ -93,6 +94,15 @@ export default async function ProfilePage({
               </button>
             </form>
           )}
+
+          <div className="mt-6 border-t border-surface-border pt-4">
+            <Link
+              href="/profile/2fa"
+              className="inline-flex items-center gap-2 rounded border border-surface-border px-3 py-2 text-sm transition hover:border-accent"
+            >
+              Manage two-factor authentication →
+            </Link>
+          </div>
         </section>
       </div>
     </>

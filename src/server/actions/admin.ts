@@ -14,6 +14,7 @@ import {
   MIN_PASSWORD_LENGTH,
   validatePassword,
 } from "@/lib/auth/password-policy";
+import { errorRedirectWithForm } from "@/lib/forms/preserve";
 
 /**
  * Admin CRUD actions.
@@ -61,16 +62,32 @@ export async function createUserAction(formData: FormData) {
     password: formData.get("password"),
     districtIds,
   });
+  // Fields allowed to round-trip through the preserved-form query
+  // param. Password is intentionally excluded so it doesn't leak back
+  // into the URL on validation errors.
+  const preservedFields = ["email", "name", "role", "districtIds"] as const;
+
   if (!parsed.success) {
-    flashError(
-      "/admin/users/new",
-      parsed.error.issues.map((i) => i.message).join("; "),
+    redirect(
+      errorRedirectWithForm(
+        "/admin/users/new",
+        parsed.error.issues.map((i) => i.message).join("; "),
+        formData,
+        preservedFields,
+      ),
     );
   }
 
   const policyCheck = validatePassword(parsed.data.password);
   if (!policyCheck.ok) {
-    flashError("/admin/users/new", `Password ${policyCheck.errors.join("; ")}`);
+    redirect(
+      errorRedirectWithForm(
+        "/admin/users/new",
+        `Password ${policyCheck.errors.join("; ")}`,
+        formData,
+        preservedFields,
+      ),
+    );
   }
 
   let errorMessage: string | null = null;
@@ -403,9 +420,12 @@ export async function createSchoolAction(formData: FormData) {
     longitude: formData.get("longitude") || undefined,
   });
   if (!parsed.success) {
-    flashError(
-      "/admin/schools/new",
-      parsed.error.issues.map((i) => i.message).join("; "),
+    redirect(
+      errorRedirectWithForm(
+        "/admin/schools/new",
+        parsed.error.issues.map((i) => i.message).join("; "),
+        formData,
+      ),
     );
   }
 

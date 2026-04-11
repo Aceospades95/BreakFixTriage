@@ -7,6 +7,10 @@ import {
   SIGNIN_LIMIT,
   checkRateLimit,
 } from "@/lib/auth/rate-limit";
+import {
+  consumeRecoveryCode,
+  verifyTotp,
+} from "@/lib/auth/totp";
 
 /**
  * NextAuth configuration.
@@ -30,6 +34,7 @@ const providers: NextAuthOptions["providers"] = [
     credentials: {
       email: { label: "Email", type: "email" },
       password: { label: "Password", type: "password" },
+      totpCode: { label: "Authenticator code", type: "text" },
     },
     async authorize(credentials) {
       if (!credentials?.email || !credentials?.password) return null;
@@ -38,8 +43,6 @@ const providers: NextAuthOptions["providers"] = [
       // Rate limit per email to stop dictionary attacks. We deliberately
       // key on the *attempted* email rather than the requester IP so a
       // bot hitting a hundred inboxes doesn't fly under a per-IP limit.
-      // Five attempts per 5 minutes lets a legitimate typo-er recover
-      // quickly while making serious enumeration slow enough to notice.
       const limit = checkRateLimit(`signin:${email}`, SIGNIN_LIMIT);
       if (!limit.allowed) return null;
 
@@ -50,6 +53,33 @@ const providers: NextAuthOptions["providers"] = [
       if (!user || !user.active || !user.passwordHash) return null;
       const ok = await bcrypt.compare(credentials.password, user.passwordHash);
       if (!ok) return null;
+
+      // 2FA gate: if the user has TOTP enabled, they must submit either
+      // a valid six-digit code OR a one-use recovery code.
+      if (user.totpEnabledAt && user.totpSecret) {
+        const submitted = (credentials.totpCode ?? "").trim();
+        if (!submitted) return null;
+
+        const totpOk = verifyTotp(submitted, user.totpSecret);
+        if (!totpOk) {
+          // Try as a recovery code.
+          let codes: string[] = [];
+          if (user.backupCodes) {
+            try {
+              codes = JSON.parse(user.backupCodes) as string[];
+            } catch {
+              codes = [];
+            }
+          }
+          const updated = consumeRecoveryCode(submitted, codes);
+          if (updated == null) return null;
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { backupCodes: JSON.stringify(updated) },
+          });
+        }
+      }
+
       return {
         id: user.id,
         email: user.email,

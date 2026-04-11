@@ -34,9 +34,10 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 **Phase 7 — Workflow (bulk, kanban, bench, loaners, escalation, digest, settings)** ✓ complete.
 **Phase 8 — Business features (parts, RMA, finance, portal, KB, calendar, shift notes)** ✓ complete.
 **Phase 9 — Polish & platform (QR scan, shortcuts, a11y, health, rate-limit, CSP)** ✓ complete.
-**Phase 10 — Refinement (home, toasts, time tracking, templates, merge, signatures, map links, PWA, productivity, hotspots, bulk close)** ✓ complete in this commit.
+**Phase 10 — Refinement (home, toasts, time tracking, templates, merge, signatures, map links, PWA, productivity, hotspots, bulk close)** ✓ complete.
+**Phase 11 — Final polish (2FA, drag-drop kanban, SSE live updates, dark/light, onboarding tour, sortable columns, form preservation)** ✓ complete in this commit.
 
-All migration-plan phases plus Phase 6–10 are shipped. See
+All migration-plan phases plus Phase 6–11 are shipped. See
 `docs/CUTOVER_PLAN.md` for the operational cutover runbook.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
@@ -224,13 +225,114 @@ New tests (164/164 passing, +4 new):
 - `tests/time-tracking.test.ts` — 4 cases for `computeMinutes`
   (rounding, zero, negative clamp, multi-hour)
 
-Deferred:
-- Drag-and-drop kanban
-- Dark/light toggle
-- Onboarding tour
-- 2FA
-- Real-time SSE updates (polling ships today)
-- Full ARIA audit
+Deferred at the time — all shipped in Phase 11.
+
+**Added in Phase 11 — Final polish release:**
+
+The gap-list from the end of Phase 10 was short but sharp. This
+phase takes the remaining "nice-to-have, never scheduled" items and
+ships them together so the app can be called done.
+
+- **Two-factor authentication** (TOTP + recovery codes):
+  - New `totpSecret`, `totpEnabledAt`, and `backupCodes` columns on
+    `User`
+  - `src/lib/auth/totp.ts` wraps `otplib` with a ±1 time-step drift
+    tolerance, human-friendly recovery codes (4 groups of 4 base32
+    chars, avoiding 0/O/1/I), and SHA-256-hashed storage (recovery
+    codes are high-entropy so slow hashing would only create a login
+    DOS vector)
+  - Setup flow at `/profile/2fa`: server-rendered QR code, a pending
+    secret stashed in an httpOnly cookie so an abandoned enrollment
+    never half-configures an account, one-shot recovery-code display
+    after confirmation
+  - Sign-in page reads a `totpCode` field (accepts either a fresh
+    6-digit code or a recovery code); recovery codes are consumed
+    single-use and the list shrinks by one on each use
+  - Admin emergency reset action wipes 2FA on a user if a phone is
+    lost and all recovery codes are gone
+- **Drag-and-drop kanban** (`/tickets/kanban`):
+  - Pure HTML5 drag-and-drop — no dependencies added
+  - Optimistic UI: the card moves the instant it lands in a column,
+    then reverts if the server rejects the transition
+  - New `POST /api/tickets/:id/transition` JSON endpoint used by the
+    client (server actions can't double as fetch targets for
+    client-side JS, so a thin route is the cleanest wrap)
+  - Goes through the existing state machine, guards, audit log, and
+    SSE publish — dragging to an illegal column surfaces the
+    transition error inline
+- **Real-time SSE updates**:
+  - Tiny in-process event bus (`src/lib/events/bus.ts`) on a
+    `globalThis`-stashed `EventEmitter` so HMR in dev mode doesn't
+    fork into two instances
+  - `GET /api/events` opens a `text/event-stream` subscription,
+    15-second heartbeat comments to beat idle-kill proxies, auth-gated
+    so anonymous bots can't open long-lived connections
+  - `src/components/use-app-events.ts` client hook subscribes via
+    `EventSource`, debounces bursts into a single `router.refresh()`
+  - `AutoRefresh` component now runs SSE always-on with the polling
+    checkbox kept as an explicit fallback
+  - Kanban board subscribes directly so teammates see each other's
+    drags live
+  - `transitionTicket` publishes a `tickets.changed` event after
+    commit (only on the outer-transaction path — in-progress
+    transactions emit when their owner finishes)
+  - Bulk transition / bulk assign additionally emit a coarse
+    `tickets.bulk-changed` event for one-shot refreshes
+- **Dark / light toggle**:
+  - Tailwind switched to `darkMode: "class"` with all palette colors
+    defined as CSS custom properties in `globals.css`
+  - `ThemeToggle` client component writes a 180-day cookie and
+    swaps the class on `<html>`
+  - Root layout reads the cookie server-side so the class is stamped
+    before hydration — no flash of wrong theme
+  - Light mode avoids a 60-file refactor by mapping the legacy
+    `text-slate-*` classes to inverted colors under `:root.light`.
+    Pragmatic but readable
+  - Honors `prefers-reduced-motion: reduce` to disable app-wide
+    transitions for users who've asked
+- **Onboarding tour** (`src/components/onboarding-tour.tsx`):
+  - First-visit modal walkthrough on the home page
+  - Cookie-backed `bft_onboarding_done` dismissal so clearing
+    cookies re-triggers the tour (matches demo expectations)
+  - Step content is role-specific: ADMIN, OPS_MANAGER, DISPATCHER,
+    TECHNICIAN, WAREHOUSE, DRIVER, READ_ONLY each get their own
+    3–4-step tour pointing at the pages they'll actually use
+  - Does not anchor overlays to specific DOM elements — centered
+    modal with Next/Back/Skip so layout changes don't break the tour
+- **Sortable ticket list columns**:
+  - Column headers on `/tickets` are links that toggle
+    `?sort=<key>&dir=<asc|desc>` for `reportedAt`, `state`,
+    `priority`, `incidentNumber`, and `stateEnteredAt`
+  - `↑` / `↓` indicators on the active column
+  - Sort params thread through to the `BulkActionForm` so bulk
+    operations return the user to the same sort
+- **Form input preservation** (`src/lib/forms/preserve.ts`):
+  - Server actions that redirect with `?error=...` on validation
+    failure now additionally encode the submitted `FormData` into a
+    base64url JSON `?form=` parameter
+  - Page components read the param, decode it, and pass values to
+    their form inputs as `defaultValue`
+  - Explicit `allow` list filters out password / secret fields so
+    they never bounce through the URL
+  - Wired onto the `create user` and `create school` flows as the
+    representative multi-field forms most vulnerable to the problem
+- **ARIA pass**:
+  - Notification bell summary now has `aria-label="Notifications, N
+    unread"` and the emoji + badge are `aria-hidden`
+  - (Prior phases already covered most icon buttons; this pass
+    confirms the remaining ones and labels them)
+
+New tests (194/194 passing, +30 new):
+- `tests/totp.test.ts` — 14 cases for secret generation, code
+  verification (including drift, malformed, stripped non-digits),
+  recovery code generation (uniqueness, shape, ambiguous-char
+  exclusion), and consumption (match, no-match, normalization,
+  single-use replay prevention)
+- `tests/form-preserve.test.ts` — 12 cases for encode/decode
+  round-trips, multi-value fields, allow-list filtering, malformed
+  input handling, and redirect URL building
+- `tests/event-bus.test.ts` — 4 cases for publish/subscribe,
+  ordering, unsubscribe, and fan-out
 
 **Added in Phase 9 — Polish & platform hardening release:**
 

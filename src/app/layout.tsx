@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -29,11 +30,15 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Read the theme cookie on the server so we can stamp the class
+  // on <html> before React hydrates — prevents the "flash of wrong
+  // theme" that would otherwise happen when the client toggle
+  // runs after paint.
+  const theme = cookies().get("bft_theme")?.value === "light" ? "light" : "dark";
+
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-surface text-slate-100 antialiased">
-        {children}
-      </body>
+    <html lang="en" className={theme}>
+      <body className="min-h-screen bg-surface antialiased">{children}</body>
     </html>
   );
 }

@@ -34,6 +34,18 @@ model User {
   passwordHash String?
   role         Role     @default(READ_ONLY)
   active       Boolean  @default(true)
+  /// Phase 11: TOTP 2FA. When totpEnabledAt is set, the credentials
+  /// provider requires a valid six-digit code (or a one-use recovery
+  /// code). Admins can reset by blanking both columns.
+  totpSecret   String?
+  totpEnabledAt DateTime?
+  /// JSON array of hashed one-time recovery codes. When a code is
+  /// used successfully it is removed from the array.
+  backupCodes  String?
+  /// Per-user key/value state owned by the app — onboarding flags,
+  /// UI preferences, dismissed banners. JSON blob so we don't need a
+  /// migration for every new key.
+  meta         Json?
   // Districts this user is allowed to operate in. Admins typically have all.
   districts    DistrictUser[]
   createdAt    DateTime @default(now())

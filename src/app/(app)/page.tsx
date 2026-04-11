@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { QuoteStatus, TicketState } from "@prisma/client";
+import { OnboardingTour } from "@/components/onboarding-tour";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
@@ -125,9 +127,11 @@ export default async function HomePage() {
   });
 
   const firstName = session.name.split(" ")[0] ?? session.name;
+  const onboardingDone = cookies().get("bft_onboarding_done")?.value === "1";
 
   return (
     <>
+      <OnboardingTour role={session.role} alreadyDone={onboardingDone} />
       <PageHeader
         title={`Good to see you, ${firstName}`}
         subtitle={

@@ -2,17 +2,29 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAppEvents } from "./use-app-events";
 
 /**
  * Auto-refresh control.
  *
  * Mounted on "live" pages (kanban, dashboards) so a dispatcher can
  * leave the page open on a wall display and see updates without
- * pressing reload. Calls `router.refresh()` on an interval, which
- * re-runs the server components without a full page reload.
+ * pressing reload.
  *
- * Off by default to avoid surprise DB load; the user toggles it on
- * per page. The choice persists in localStorage so a tablet that
+ * Two mechanisms run in tandem:
+ *
+ *  1. **Server-Sent Events** — always on. Any time a ticket/route
+ *     transition fires on the server, the bus publishes an event,
+ *     the SSE endpoint pushes it, and this component refreshes the
+ *     route. Updates are near-instant and cost nothing when idle.
+ *
+ *  2. **Polling fallback** — off by default. If a user explicitly
+ *     enables the interval checkbox (because they're behind a
+ *     long-poll-hostile proxy, or they just want a visual
+ *     countdown), we also poll every N seconds. The two mechanisms
+ *     are independent — either one can trigger a refresh.
+ *
+ * Polling preference persists in localStorage so a tablet that
  * lives on the wall comes back up in the same state.
  */
 export function AutoRefresh({
@@ -25,6 +37,10 @@ export function AutoRefresh({
   const router = useRouter();
   const [enabled, setEnabled] = useState(false);
   const [countdown, setCountdown] = useState(intervalSeconds);
+
+  // SSE — always on. Ticket list pages and the kanban both care
+  // about both per-ticket and bulk changes.
+  useAppEvents(["tickets.changed", "tickets.bulk-changed", "routes.changed"]);
 
   // Restore persisted preference on mount.
   useEffect(() => {
@@ -45,7 +61,7 @@ export function AutoRefresh({
     }
   }, [enabled, storageKey]);
 
-  // Tick + refresh loop.
+  // Polling tick + refresh loop (optional fallback).
   useEffect(() => {
     if (!enabled) {
       setCountdown(intervalSeconds);
@@ -66,11 +82,17 @@ export function AutoRefresh({
 
   return (
     <label className="flex items-center gap-2 text-xs text-slate-400">
+      <span
+        className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400"
+        title="Live updates via SSE are active"
+        aria-hidden="true"
+      />
       <input
         type="checkbox"
         checked={enabled}
         onChange={(e) => setEnabled(e.target.checked)}
         className="accent-accent"
+        aria-label="Also poll on interval"
       />
       Auto-refresh
       {enabled && (

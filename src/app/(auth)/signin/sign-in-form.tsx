@@ -4,6 +4,15 @@ import { FormEvent, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
+/**
+ * Sign-in form with optional 2FA input.
+ *
+ * The TOTP field is always visible but marked as optional — users
+ * who don't have 2FA enabled just leave it blank. Users who do
+ * have it enabled get rejected with a clear message if they skip
+ * it. We deliberately don't do a two-step "check if 2FA is on
+ * first" UX because that leaks which accounts have 2FA.
+ */
 export function SignInForm({
   callbackUrl,
   initialError,
@@ -14,6 +23,7 @@ export function SignInForm({
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(
     initialError ? mapError(initialError) : null,
@@ -26,6 +36,7 @@ export function SignInForm({
     const result = await signIn("credentials", {
       email: email.trim(),
       password,
+      totpCode: totpCode.trim(),
       redirect: false,
       callbackUrl,
     });
@@ -72,9 +83,31 @@ export function SignInForm({
           className="mt-1 block w-full rounded border border-surface-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
       </label>
+      <label className="block">
+        <span className="text-xs uppercase tracking-wide text-slate-400">
+          Authenticator code
+          <span className="ml-2 normal-case text-slate-500">
+            (leave blank if 2FA is off)
+          </span>
+        </span>
+        <input
+          type="text"
+          name="totpCode"
+          value={totpCode}
+          onChange={(e) => setTotpCode(e.target.value)}
+          autoComplete="one-time-code"
+          inputMode="numeric"
+          pattern="\d{6}|[A-Za-z0-9-]{16,24}"
+          placeholder="123456 or recovery code"
+          className="mt-1 block w-full rounded border border-surface-border bg-surface px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none"
+        />
+      </label>
 
       {error && (
-        <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <div
+          role="alert"
+          className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+        >
           {error}
         </div>
       )}
@@ -93,7 +126,7 @@ export function SignInForm({
 function mapError(code: string): string {
   switch (code) {
     case "CredentialsSignin":
-      return "Invalid email or password.";
+      return "Invalid email, password, or authenticator code.";
     case "AccessDenied":
       return "Your account is not permitted to sign in.";
     default:

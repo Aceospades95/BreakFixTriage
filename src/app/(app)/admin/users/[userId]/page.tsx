@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Role } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { ConfirmButton } from "@/components/confirm-button";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
@@ -9,6 +10,7 @@ import {
   resetUserPasswordAction,
   updateUserAction,
 } from "@/server/actions/admin";
+import { adminResetTotpAction } from "@/server/actions/2fa";
 
 export const dynamic = "force-dynamic";
 
@@ -167,6 +169,38 @@ export default async function EditUserPage({
           </form>
         </section>
       </div>
+
+      <section className="mt-6 max-w-2xl rounded-lg border border-surface-border bg-surface-muted p-6">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Two-factor authentication
+        </h2>
+        {user.totpEnabledAt ? (
+          <div className="space-y-3 text-sm">
+            <p>
+              <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[10px] uppercase text-emerald-200">
+                enabled
+              </span>{" "}
+              on {user.totpEnabledAt.toISOString().slice(0, 10)}
+            </p>
+            <p className="text-xs text-slate-400">
+              Use the button below only as an emergency reset — e.g. the
+              user lost their phone and exhausted their recovery codes.
+              This action is audit-logged.
+            </p>
+            <form action={adminResetTotpAction}>
+              <input type="hidden" name="userId" value={user.id} />
+              <ConfirmButton message="Reset this user's 2FA? They'll be able to sign in with just their password until they re-enroll.">
+                Reset 2FA
+              </ConfirmButton>
+            </form>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">
+            Not enrolled. The user can enroll from their own{" "}
+            <code className="font-mono">/profile/2fa</code> page.
+          </p>
+        )}
+      </section>
     </>
   );
 }

@@ -23,10 +23,20 @@ export function NotificationBell({
   const count = notifications.length;
   return (
     <details className="relative">
-      <summary className="flex cursor-pointer items-center gap-1 rounded border border-transparent px-2 py-1 text-sm text-slate-300 transition hover:border-surface-border hover:text-white">
-        <span className="text-base">🔔</span>
+      <summary
+        aria-label={
+          count > 0
+            ? `Notifications, ${count} unread`
+            : "Notifications"
+        }
+        className="flex cursor-pointer items-center gap-1 rounded border border-transparent px-2 py-1 text-sm text-slate-300 transition hover:border-surface-border hover:text-white"
+      >
+        <span className="text-base" aria-hidden="true">🔔</span>
         {count > 0 && (
-          <span className="rounded-full bg-red-500/80 px-1.5 text-[10px] font-bold text-white">
+          <span
+            aria-hidden="true"
+            className="rounded-full bg-red-500/80 px-1.5 text-[10px] font-bold text-white"
+          >
             {count > 99 ? "99+" : count}
           </span>
         )}

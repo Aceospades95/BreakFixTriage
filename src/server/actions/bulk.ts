@@ -10,6 +10,7 @@ import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { transitionTicket } from "@/lib/workflow";
 import { createInAppNotification } from "@/lib/notifications/in-app";
+import { publish } from "@/lib/events/bus";
 
 /**
  * Bulk operations on the ticket list.
@@ -85,6 +86,10 @@ export async function bulkTransitionAction(formData: FormData) {
   });
 
   revalidatePath("/tickets");
+  // One coarse event — per-ticket events were already emitted inside
+  // transitionTicket, but subscribers listening on just the bulk
+  // topic get a single notification instead of N.
+  publish({ topic: "tickets.bulk-changed", reason: "bulk-transition" });
   const summary = `Moved ${success}/${parsed.data.ticketIds.length} to ${parsed.data.to}${skipped > 0 ? ` (${skipped} skipped)` : ""}`;
   redirect(`${returnTo}?ok=${encodeURIComponent(summary)}`);
 }
@@ -153,6 +158,7 @@ export async function bulkAssignAction(formData: FormData) {
   });
 
   revalidatePath("/tickets");
+  publish({ topic: "tickets.bulk-changed", reason: "bulk-assign" });
   const summary = parsed.data.assigneeUserId
     ? `Assigned ${result.count} tickets`
     : `Unassigned ${result.count} tickets`;

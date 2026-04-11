@@ -5,19 +5,32 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { createUserAction } from "@/server/actions/admin";
+import {
+  decodePreservedForm,
+  preserved,
+} from "@/lib/forms/preserve";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewUserPage({
   searchParams,
 }: {
-  searchParams?: { error?: string };
+  searchParams?: { error?: string; form?: string };
 }) {
   await requireRole(PERMISSIONS.USERS_MANAGE);
   const districts = await prisma.district.findMany({
     where: { active: true },
     orderBy: { name: "asc" },
   });
+
+  const values = decodePreservedForm(searchParams?.form);
+  const selectedDistrictIds = new Set<string>(
+    Array.isArray(values.districtIds)
+      ? values.districtIds
+      : typeof values.districtIds === "string"
+        ? [values.districtIds]
+        : [],
+  );
 
   return (
     <>
@@ -43,8 +56,19 @@ export default async function NewUserPage({
         action={createUserAction}
         className="max-w-xl space-y-4 rounded-lg border border-surface-border bg-surface-muted p-6"
       >
-        <Field label="Full name" name="name" required />
-        <Field label="Email" name="email" type="email" required />
+        <Field
+          label="Full name"
+          name="name"
+          required
+          defaultValue={preserved(values, "name")}
+        />
+        <Field
+          label="Email"
+          name="email"
+          type="email"
+          required
+          defaultValue={preserved(values, "email")}
+        />
         <Field
           label="Temporary password"
           name="password"
@@ -60,7 +84,7 @@ export default async function NewUserPage({
           <select
             name="role"
             required
-            defaultValue={Role.READ_ONLY}
+            defaultValue={preserved(values, "role", Role.READ_ONLY)}
             className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
           >
             {Object.values(Role).map((r) => (
@@ -96,6 +120,7 @@ export default async function NewUserPage({
                     type="checkbox"
                     name="districtIds"
                     value={d.id}
+                    defaultChecked={selectedDistrictIds.has(d.id)}
                     className="accent-accent"
                   />
                   {d.name}{" "}
@@ -125,6 +150,7 @@ function Field({
   required = false,
   minLength,
   hint,
+  defaultValue,
 }: {
   label: string;
   name: string;
@@ -132,6 +158,7 @@ function Field({
   required?: boolean;
   minLength?: number;
   hint?: string;
+  defaultValue?: string;
 }) {
   return (
     <div>
@@ -143,6 +170,7 @@ function Field({
         name={name}
         required={required}
         minLength={minLength}
+        defaultValue={defaultValue}
         className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
       />
       {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}

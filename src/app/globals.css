@@ -2,11 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/*
+ * Theme tokens live here as CSS custom properties so the app can
+ * flip between dark and light by swapping a class on <html>. Tailwind
+ * reads these via `var(--...)` bindings configured in
+ * tailwind.config.ts.
+ *
+ * Dark is the default because this app started that way and every
+ * screen was already painted for it. Light mode is slightly lighter
+ * than pure white to reduce eye strain in a brightly-lit warehouse.
+ */
+:root,
+:root.dark {
   color-scheme: dark;
+  --color-surface: 11 16 32;
+  --color-surface-muted: 17 25 54;
+  --color-surface-border: 31 42 68;
+  --color-accent: 79 140 255;
+  --color-accent-strong: 37 99 235;
+  --color-body: 241 245 249;
 }
 
+:root.light {
+  color-scheme: light;
+  --color-surface: 248 250 252;
+  --color-surface-muted: 241 245 249;
+  --color-surface-border: 203 213 225;
+  --color-accent: 37 99 235;
+  --color-accent-strong: 29 78 216;
+  --color-body: 15 23 42;
+}
+
+/*
+ * Light-mode text overrides. The app was originally written against
+ * hardcoded `text-slate-*` classes, which in dark mode render as
+ * light grey on dark — fine. In light mode, those same classes would
+ * render as light grey on white, which is unreadable. Rather than
+ * sweep every file and replace with semantic classes (a huge,
+ * error-prone refactor), we remap the common text colors in light
+ * mode to their inverted counterparts here. Light mode looks
+ * slightly less polished than dark but stays readable.
+ */
+:root.light .text-slate-100 { color: rgb(15 23 42); }
+:root.light .text-slate-200 { color: rgb(30 41 59); }
+:root.light .text-slate-300 { color: rgb(51 65 85); }
+:root.light .text-slate-400 { color: rgb(71 85 105); }
+:root.light .text-slate-500 { color: rgb(100 116 139); }
+:root.light .text-slate-600 { color: rgb(148 163 184); }
+:root.light .text-white { color: rgb(15 23 42); }
+
+/* Tinted status colors need a darker tint in light mode so they
+ * stay readable against the light-tinted banners. */
+:root.light .text-amber-100,
+:root.light .text-amber-200 { color: rgb(120 53 15); }
+:root.light .text-red-100,
+:root.light .text-red-200 { color: rgb(127 29 29); }
+:root.light .text-emerald-100,
+:root.light .text-emerald-200 { color: rgb(6 78 59); }
+:root.light .text-violet-200 { color: rgb(76 29 149); }
+:root.light .text-indigo-200 { color: rgb(30 27 75); }
+:root.light .text-blue-200 { color: rgb(30 58 138); }
+
 body {
+  color: rgb(var(--color-body));
+  background-color: rgb(var(--color-surface));
   font-family:
     ui-sans-serif,
     system-ui,
@@ -16,4 +75,19 @@ body {
     "Helvetica Neue",
     Arial,
     sans-serif;
+}
+
+/*
+ * Respect prefers-reduced-motion for users who asked for it.
+ * Disables Tailwind's `transition-*` classes app-wide.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

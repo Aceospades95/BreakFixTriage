@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient, Ticket, TicketState } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
+import { publish } from "@/lib/events/bus";
 import {
   GuardFailedError,
   InvalidTransitionError,
@@ -219,9 +220,16 @@ export async function transitionTicket(
   db: PrismaLike = defaultPrisma,
 ): Promise<Ticket> {
   if (isTransactionClient(db)) {
+    // Caller owns the transaction. They're responsible for publishing
+    // after commit — we can't know when the outer tx will settle, and
+    // emitting mid-transaction would fire events for changes that
+    // might still roll back.
     return transitionInTx(db, ticketId, to, opts);
   }
-  return (db as PrismaClient).$transaction((tx) =>
+  const updated = await (db as PrismaClient).$transaction((tx) =>
     transitionInTx(tx, ticketId, to, opts),
   );
+  // Publish after commit so SSE subscribers only see persisted edges.
+  publish({ topic: "tickets.changed", ticketId });
+  return updated;
 }

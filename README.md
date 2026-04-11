@@ -28,7 +28,12 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 **Phase 1 — Auth, UI shell, read-only parity** ✓ complete.
 **Phase 2 — Scheduling & dispatch** ✓ complete.
 **Phase 3 — Quotes, OOW, invoices, hold-window automation** ✓ complete.
-**Phase 4 — Email, Google Routes, ServiceNow API** ✓ complete in this commit.
+**Phase 4 — Email, Google Routes, ServiceNow API** ✓ complete.
+**Phase 5 — Cutover tooling and runbook** ✓ complete in this commit.
+
+All five phases from `docs/MIGRATION_PLAN.md` are now shipped. What
+ops does next is an operational exercise; see `docs/CUTOVER_PLAN.md`
+for the step-by-step runbook.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
   routes, quotes, imports, duplicates, audit, and notifications
@@ -133,9 +138,38 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
   Routes response parser + body builder (7 cases), ServiceNow row
   normalizer (6 cases).
 
-**Not yet wired in Phase 4 (carry-over to Phase 5):**
+**Added in Phase 5:**
 
-- Parallel-run validation against the legacy spreadsheet, cutover
+- `src/lib/cutover/` module:
+  - `compareLegacyToDb` — pure parallel-run comparison joining a
+    legacy spreadsheet against the BreakFix Triage database on
+    incident number. Reports rows only in the sheet, only in the
+    DB, and drift on state / schoolCode / serialNumber.
+  - `runIntegrityScan` / `buildIntegrityReport` — finds CLOSED
+    tickets missing `closedAt`, non-terminal tickets with
+    `closedAt`, `INVOICE_REQUIRED` flag mismatches, schools without
+    addresses or coordinates, devices without serials, orphan
+    quotes and jobs, users without a role.
+  - `formatTicketsCsv` / `exportAllTicketsCsv` — RFC 4180-compliant
+    CSV dump of the full ticket table for manual reconciliation.
+- Standalone scripts wired to npm: `cutover:compare`,
+  `cutover:integrity`, `cutover:export`. Each prints JSON to stdout
+  and exits non-zero when anything looks wrong, so they drop
+  straight into cron or Unraid User Scripts.
+- `READ_ONLY_MODE=true` env flag that rejects every non-GET request
+  at the middleware layer with a 503. The authenticated layout
+  shows a prominent amber banner while the flag is active, giving
+  staff a clear read-only experience during the cutover window
+  without touching individual server actions.
+- `docs/CUTOVER_PLAN.md` — end-to-end cutover runbook with an
+  eight-step checklist covering freeze, final import, integrity
+  scan, parallel run, cutover day, post-cutover monitoring, and
+  rollback.
+- New vitest coverage: comparison (7 cases), integrity report
+  builder (6 cases), CSV export + escaper (12 cases).
+
+**Deferred future work:**
+
 - Drag-and-drop route reordering (up/down buttons ship today)
 - Dry-run preview before committing an import
 - HTML email templates (plain text only today)
@@ -219,21 +253,22 @@ npx tsx scripts/import-sample.ts
 ## Repository layout
 
 ```
-docs/                Architecture, domain, migration plan, open questions
-prisma/              Schema + migrations + seed + sweep-quotes cron entry
+docs/                Architecture, domain, migration plan, cutover runbook
+prisma/              Schema + seed + cron/cutover entry points
 sample-data/         Example ServiceNow export
 src/
   app/               Next.js App Router pages
   lib/
     audit/           Append-only audit log helpers
     auth/            RBAC + session types
+    cutover/         Parallel-run compare, integrity scan, CSV export
     db/              Prisma client singleton
     duplicates/      Duplicate detection + conflict resolution
-    import/          CSV/XLSX parse → map → validate → upsert
+    import/          CSV/XLSX parse → map → validate → upsert, ServiceNow API
     notifications/   Transports (stdout, SMTP), templates, enqueue helper
     quotes/          Quote lifecycle, invoice / PO, hold-window sweep
     reports/         Dashboard queries
-    routing/         Route optimizer abstraction (default: nearest neighbor)
+    routing/         Route optimizer abstraction (default + Google Routes)
     scheduling/      Jobs + routes + dispatch
     workflow/        Ticket state machine + transitions
 tests/               Vitest coverage for pure business logic
@@ -241,12 +276,15 @@ tests/               Vitest coverage for pure business logic
 
 ## Scheduled tasks
 
-Two background jobs ship today. Both can run on a cron, an Unraid User
+Several scripts ship today. Each can run on a cron, an Unraid User
 Script, or whatever scheduler your environment uses:
 
 ```bash
 npm run quotes:sweep       # auto-expire quotes past their hold window
 npm run servicenow:sync    # pull fresh incidents from ServiceNow
+npm run cutover:compare    # parallel-run comparison against a legacy sheet
+npm run cutover:integrity  # scan for data quality issues
+npm run cutover:export     # dump all tickets as CSV
 ```
 
 Each script prints a JSON summary and exits non-zero on unexpected
@@ -283,6 +321,27 @@ delivery or pickup is built, or a quote auto-expires via the
 hold-window sweeper. Recipients come from each school's primary
 `Contact.email`; schools without a contact silently skip the
 notification rather than failing the upstream operation.
+
+## Cutover
+
+Phase 5 ships the tooling and playbook for moving off the legacy
+spreadsheet. See `docs/CUTOVER_PLAN.md` for the full step-by-step
+runbook. The short version:
+
+1. **Freeze the spreadsheet** — revoke edit access, export a snapshot.
+2. **Final import** — upload the snapshot through `/imports/new` or
+   let `npm run servicenow:sync` pull the same data from the API.
+3. **Integrity scan** — `npm run cutover:integrity`. Must exit clean.
+4. **Parallel run** — `npm run cutover:compare -- snapshot.csv` daily
+   for one week. Exit criterion: three consecutive clean runs.
+5. **Cutover day** — set `READ_ONLY_MODE=true`, take the final
+   `npm run cutover:export`, unset the flag, archive the sheet.
+6. **Monitor** — keep running `cutover:integrity` and `quotes:sweep`
+   for two weeks.
+
+`READ_ONLY_MODE=true` is the kill switch: every non-GET request
+returns 503 at the edge, and a banner appears on every page while
+the flag is active. Flip it off and redeploy to resume writes.
 
 ## Testing
 

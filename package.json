@@ -19,7 +19,10 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
     "quotes:sweep": "tsx prisma/sweep-quotes.ts",
-    "servicenow:sync": "tsx prisma/sync-servicenow.ts"
+    "servicenow:sync": "tsx prisma/sync-servicenow.ts",
+    "cutover:compare": "tsx prisma/cutover-compare.ts",
+    "cutover:integrity": "tsx prisma/cutover-integrity.ts",
+    "cutover:export": "tsx prisma/cutover-export.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

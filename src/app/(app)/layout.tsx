@@ -9,9 +9,17 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await requireSession();
+  const readOnly = process.env.READ_ONLY_MODE === "true";
 
   return (
     <div className="flex min-h-screen flex-col">
+      {readOnly && (
+        <div className="border-b border-amber-500/40 bg-amber-500/20 px-6 py-2 text-center text-xs font-semibold text-amber-100">
+          BreakFix Triage is in READ-ONLY MODE — writes are rejected at
+          the edge. Flip <code className="font-mono">READ_ONLY_MODE</code>{" "}
+          off once the cutover window closes.
+        </div>
+      )}
       <header className="border-b border-surface-border bg-surface-muted/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-3">
           <Link

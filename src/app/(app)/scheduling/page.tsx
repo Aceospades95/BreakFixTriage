@@ -73,6 +73,12 @@ export default async function SchedulingPage({
               </Link>
             )}
             <Link
+              href="/scheduling/calendar"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              Calendar
+            </Link>
+            <Link
               href="/my-day"
               className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
             >

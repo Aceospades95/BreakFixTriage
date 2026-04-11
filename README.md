@@ -31,11 +31,12 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 **Phase 4 — Email, Google Routes, ServiceNow API** ✓ complete.
 **Phase 5 — Cutover tooling and runbook** ✓ complete.
 **Phase 6 — Adoption (admin UIs, comments, attachments, SLAs, search, profile)** ✓ complete.
-**Phase 7 — Workflow (bulk, kanban, bench, loaners, escalation, digest, settings)** ✓ complete in this commit.
+**Phase 7 — Workflow (bulk, kanban, bench, loaners, escalation, digest, settings)** ✓ complete.
+**Phase 8 — Business features (parts, RMA, finance, portal, KB, calendar, shift notes)** ✓ complete in this commit.
 
-All five migration-plan phases plus the Phase 6 adoption release and
-the Phase 7 workflow release are shipped. See `docs/CUTOVER_PLAN.md`
-for the operational cutover runbook.
+All five migration-plan phases plus the Phase 6–8 adoption/workflow/
+business releases are shipped. See `docs/CUTOVER_PLAN.md` for the
+operational cutover runbook.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
   routes, quotes, imports, duplicates, audit, and notifications
@@ -139,6 +140,95 @@ for the operational cutover runbook.
 - New vitest coverage: notification templates (8 cases), Google
   Routes response parser + body builder (7 cases), ServiceNow row
   normalizer (6 cases).
+
+**Added in Phase 8 — Business features release:**
+
+The business-side features a real break-fix shop needs: parts
+inventory, manufacturer RMA tracking, financial dashboards, a
+knowledge base per device model, a school-facing status portal,
+shift handover notes, and a calendar view of routes.
+
+- **Parts inventory** (`/admin/parts`):
+  - `Part` model with SKU, name, onHand running total, reorder
+    level, unit cost, shelf location, compatible device models
+  - `PartMovement` append-only log with five kinds: RECEIVED,
+    CONSUMED, ADJUSTMENT, RETURNED, SCRAPPED. The delta is signed
+    so summing the log equals the current onHand.
+  - `applyPartMovement` helper with a non-negative-stock guard
+    (override-able for reconciliation) and audit on every change
+  - `recordPartUsage` wraps a CONSUMED movement with a per-ticket
+    `PartUsage` row so the ticket detail can show a parts list
+  - Parts list page with low-stock warnings (rows at or below
+    reorder level are flagged amber)
+  - Part detail page with full movement history + inline form to
+    record receipts / adjustments
+  - Parts panel on the ticket detail page showing compatible parts
+    (filtered by the ticket's device model when available) with a
+    one-click "use part" form
+- **Manufacturer RMA workflow** (ticket detail panel):
+  - `ManufacturerRma` model with RMA number, vendor, inbound +
+    outbound tracking, shipped/received timestamps
+  - Create RMA form visible when the ticket is in MANUFACTURER_RMA
+  - Mark shipped / mark received forms for the full lifecycle
+- **Knowledge base per device model** (`/admin/device-models`):
+  - New `repairNotes` text field on `DeviceModel`
+  - Admin list + edit page so ops can maintain a shared knowledge
+    base per model
+  - Repair notes auto-surface on the ticket detail page whenever
+    the ticket's device matches the model
+- **Financial dashboard** (`/dashboards/finance`):
+  - Rolling 12-month KPIs: PO issued, invoiced, outstanding,
+    inventory value
+  - Bar chart of PO spend by month
+  - Spend-by-district table
+  - Outstanding POs list (never-invoiced)
+  - Parts cost consumed from the movement log
+- **School status portal** (public, token-gated):
+  - `PortalToken` model with cryptographically random 32-byte
+    magic links that bypass NextAuth
+  - `/portal/[token]` route outside the `(app)` layout — renders
+    a read-only status page for one school
+  - Admin-only token generation + revocation on the school profile
+    page with optional expiry
+  - Soft revoke (keeps history); `lastUsedAt` stamp so ops can see
+    active links
+  - Middleware matcher excludes `/portal/*` so the page renders
+    without a signed-in session
+- **Shift handover notes** (`/shift-notes`):
+  - `ShiftNote` model — plain text, one author, reverse
+    chronological feed
+  - Single page with inline post form; authors and admins can
+    delete
+  - Linked from the main nav for quick handover between shifts
+- **Calendar view of routes** (`/scheduling/calendar`):
+  - Month calendar with every route rendered as a card on its
+    scheduled day
+  - Prev/next/today navigation via `?month=YYYY-MM`
+  - Today's cell is highlighted; overflow cells show "+N more"
+
+New tests (138/138 passing, +8 new):
+- `tests/parts.test.ts` — 9 cases for `signedQuantity` and
+  `wouldGoNegative` including all five movement kinds and edge
+  conditions
+- `tests/portal-tokens.test.ts` — 3 cases validating that
+  `generateTokenString` returns 100 unique base64url strings with
+  ≥ 40 chars of entropy
+
+New schema:
+- `Part`, `PartMovement`, `PartMovementKind`, `PartUsage` (+
+  Part ↔ DeviceModel many-to-many)
+- `ManufacturerRma`
+- `PortalToken` (+ School relation, indexed by school)
+- `ShiftNote`
+- `repairNotes` column on `DeviceModel`
+
+Deferred to future phases:
+- QR / barcode scanning (needs client-side camera access + JS lib)
+- Real-time updates / SSE
+- Dark/light toggle
+- Accessibility audit
+- Onboarding tour
+- i18n
 
 **Added in Phase 7 — Workflow release:**
 

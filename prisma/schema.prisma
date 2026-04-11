@@ -51,6 +51,8 @@ model User {
   uploadedAttachments Attachment[]     @relation("AttachmentUploader")
   inAppNotifications InAppNotification[] @relation("InAppNotificationRecipient")
   loanerCheckouts   LoanerAssignment[] @relation("LoanerCheckedOutBy")
+  partMovements     PartMovement[]     @relation("PartMovementUser")
+  shiftNotes        ShiftNote[]        @relation("ShiftNoteAuthor")
 
   @@index([role])
 }
@@ -109,6 +111,7 @@ model School {
   tickets       Ticket[]
   jobs          Job[]
   loanerAssignments LoanerAssignment[]
+  portalTokens  PortalToken[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -152,8 +155,10 @@ model DeviceModel {
   modelName      String
   formFactor     FormFactor @default(OTHER)
   warrantyMonths Int?
+  repairNotes    String?
   devices        Device[]
   loanerDevices  LoanerDevice[]
+  parts          Part[]     @relation("PartCompatibility")
 
   @@unique([manufacturer, modelName])
 }
@@ -249,6 +254,9 @@ model Ticket {
   comments         Comment[]
   attachments      Attachment[]
   loanerAssignments LoanerAssignment[] @relation("LoanerForTicket")
+  partUsages       PartUsage[]        @relation("PartUsageTicket")
+  partMovements    PartMovement[]     @relation("PartMovementTicket")
+  manufacturerRmas ManufacturerRma[]
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -762,4 +770,159 @@ model AppSetting {
   value          String
   updatedAt      DateTime @updatedAt
   updatedByUserId String?
+}
+
+// ---------------------------------------------------------------------------
+// Parts inventory (Phase 8)
+// ---------------------------------------------------------------------------
+
+/// A physical spare part the warehouse keeps in stock. Parts are
+/// consumed by repairs (recorded as PartUsage + a CONSUMED movement),
+/// received from suppliers (RECEIVED), and periodically reconciled
+/// (ADJUSTMENT).
+///
+/// The `onHand` column is a denormalized running total. Every service
+/// that touches a Part MUST go through the `applyPartMovement` helper
+/// so the running total stays in sync with the movement log — direct
+/// writes are a footgun.
+model Part {
+  id               String         @id @default(cuid())
+  sku              String         @unique
+  name             String
+  description      String?
+  onHand           Int            @default(0)
+  reorderLevel     Int            @default(0)
+  costCents        Int?
+  location         String?
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  compatibleModels DeviceModel[]  @relation("PartCompatibility")
+  movements        PartMovement[]
+  usages           PartUsage[]
+
+  @@index([active])
+  @@index([name])
+}
+
+enum PartMovementKind {
+  RECEIVED
+  CONSUMED
+  ADJUSTMENT
+  RETURNED
+  SCRAPPED
+}
+
+/// Append-only log of every stock change. The delta is signed so a
+/// CONSUMED movement stores `quantity = -N`. Summing all deltas for a
+/// part should always equal `Part.onHand`.
+model PartMovement {
+  id         String           @id @default(cuid())
+  partId     String
+  kind       PartMovementKind
+  quantity   Int
+  ticketId   String?
+  userId     String?
+  reason     String?
+  createdAt  DateTime         @default(now())
+
+  part       Part    @relation(fields: [partId], references: [id], onDelete: Cascade)
+  ticket     Ticket? @relation("PartMovementTicket", fields: [ticketId], references: [id])
+  user       User?   @relation("PartMovementUser", fields: [userId], references: [id])
+
+  @@index([partId])
+  @@index([ticketId])
+  @@index([createdAt])
+}
+
+/// Convenience join: which parts were used on which ticket. Derived
+/// from the movement log but materialized so the ticket detail page
+/// can render a parts list in O(1) queries. Kept in sync by
+/// `recordPartUsage` alongside a CONSUMED movement.
+model PartUsage {
+  id         String   @id @default(cuid())
+  ticketId   String
+  partId     String
+  quantity   Int
+  createdAt  DateTime @default(now())
+
+  ticket     Ticket @relation("PartUsageTicket", fields: [ticketId], references: [id], onDelete: Cascade)
+  part       Part   @relation(fields: [partId], references: [id])
+
+  @@index([ticketId])
+  @@index([partId])
+}
+
+// ---------------------------------------------------------------------------
+// Manufacturer RMA (Phase 8)
+// ---------------------------------------------------------------------------
+
+/// Out-of-warehouse repair tracking. When a device goes back to the
+/// vendor for warranty repair (MANUFACTURER_RMA state), this row
+/// records the paperwork: RMA number, vendor, shipping tracking both
+/// ways, and dates.
+model ManufacturerRma {
+  id           String    @id @default(cuid())
+  ticketId     String
+  rmaNumber    String
+  vendor       String
+  shippedAt    DateTime?
+  receivedAt   DateTime?
+  trackingOut  String?
+  trackingIn   String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  ticket       Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([rmaNumber])
+}
+
+// ---------------------------------------------------------------------------
+// School-facing status portal (Phase 8)
+// ---------------------------------------------------------------------------
+
+/// Magic-link token that grants a school contact read-only access to
+/// their school's tickets without signing in. An admin generates a
+/// token on the school profile page and shares the URL with the
+/// school's IT lead; they bookmark it and use it to check status on
+/// their own instead of emailing operations.
+///
+/// The token is a cryptographically random string stored in the
+/// `token` column. Revocation is soft — we keep the row so we can
+/// tell ops who was using which link and when.
+model PortalToken {
+  id         String    @id @default(cuid())
+  token      String    @unique
+  schoolId   String
+  label      String?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  school     School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+}
+
+// ---------------------------------------------------------------------------
+// Shift handover notes (Phase 8)
+// ---------------------------------------------------------------------------
+
+/// A freeform note ops writes at the end of a shift so the next shift
+/// sees it on login. A tiny feature with an outsized impact on team
+/// continuity — pilot ops staff kept asking for this.
+model ShiftNote {
+  id           String   @id @default(cuid())
+  authorUserId String
+  body         String
+  createdAt    DateTime @default(now())
+
+  author       User @relation("ShiftNoteAuthor", fields: [authorUserId], references: [id])
+
+  @@index([createdAt])
 }

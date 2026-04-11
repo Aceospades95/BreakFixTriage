@@ -32,7 +32,9 @@ export default withAuth(function middleware(req) {
 });
 
 export const config = {
+  // Keep /portal/* OUT of the matcher so the magic-link school
+  // status portal renders without a NextAuth session.
   matcher: [
-    "/((?!signin|api/auth|_next/static|_next/image|favicon.ico).*)",
+    "/((?!signin|api/auth|portal|_next/static|_next/image|favicon.ico).*)",
   ],
 };

@@ -717,3 +717,69 @@ export async function createDeviceAction(formData: FormData) {
   revalidatePath("/admin/devices");
   redirect(createdId ? `/admin/devices/${createdId}` : "/admin/devices");
 }
+
+// ---------------------------------------------------------------------------
+// Device model edits (Phase 8: repair notes / knowledge base)
+// ---------------------------------------------------------------------------
+
+const updateDeviceModelSchema = z.object({
+  id: z.string().min(1),
+  repairNotes: z.string().max(20000).optional(),
+  warrantyMonths: z.coerce.number().int().min(0).max(120).optional(),
+});
+
+/**
+ * Update a device model's repair notes (the per-model knowledge
+ * base) and optionally its warranty months. Admins manage the
+ * shared "how do we fix an Acme EduBook 14" tips here; every tech
+ * sees them on the ticket detail panel when the device model
+ * matches.
+ */
+export async function updateDeviceModelAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.DISTRICTS_MANAGE);
+
+  const parsed = updateDeviceModelSchema.safeParse({
+    id: formData.get("id"),
+    repairNotes: formData.get("repairNotes")?.toString() || undefined,
+    warrantyMonths: formData.get("warrantyMonths") || undefined,
+  });
+  if (!parsed.success) {
+    const id = formData.get("id")?.toString() ?? "";
+    flashError(`/admin/device-models/${id}`, "Invalid update");
+  }
+
+  let errorMessage: string | null = null;
+  try {
+    const existing = await prisma.deviceModel.findUnique({
+      where: { id: parsed.data.id },
+    });
+    if (!existing) {
+      errorMessage = "Device model not found";
+    } else {
+      await prisma.deviceModel.update({
+        where: { id: parsed.data.id },
+        data: {
+          repairNotes:
+            parsed.data.repairNotes !== undefined
+              ? parsed.data.repairNotes || null
+              : undefined,
+          warrantyMonths: parsed.data.warrantyMonths ?? undefined,
+        },
+      });
+      await writeAudit({
+        actorUserId: session.userId,
+        entityType: "DeviceModel",
+        entityId: parsed.data.id,
+        action: "update",
+      });
+    }
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : "Update failed";
+  }
+  if (errorMessage)
+    flashError(`/admin/device-models/${parsed.data.id}`, errorMessage);
+
+  revalidatePath("/admin/device-models");
+  revalidatePath(`/admin/device-models/${parsed.data.id}`);
+  redirect(`/admin/device-models/${parsed.data.id}`);
+}

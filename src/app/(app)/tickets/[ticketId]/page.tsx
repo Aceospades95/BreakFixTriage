@@ -21,6 +21,12 @@ import {
   sendQuoteAction,
   updateDraftQuoteAction,
 } from "@/server/actions/quotes";
+import { recordPartUsageAction } from "@/server/actions/parts";
+import {
+  createRmaAction,
+  markRmaReceivedAction,
+  markRmaShippedAction,
+} from "@/server/actions/rma";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +79,15 @@ export default async function TicketDetailPage({
             loaner: { select: { id: true, serialNumber: true, assetTag: true } },
           },
         },
+        partUsages: {
+          orderBy: { createdAt: "desc" },
+          include: {
+            part: { select: { id: true, sku: true, name: true, costCents: true } },
+          },
+        },
+        manufacturerRmas: {
+          orderBy: { createdAt: "desc" },
+        },
       },
     }),
     prisma.user.findMany({
@@ -92,6 +107,20 @@ export default async function TicketDetailPage({
     }),
   ]);
   if (!ticket) notFound();
+
+  // Parts compatible with this ticket's device model — shown in the
+  // parts usage form so techs pick from a curated list. Falls back to
+  // every active part if the device model is unknown.
+  const compatibleParts = await prisma.part.findMany({
+    where: {
+      active: true,
+      ...(ticket.device?.modelId
+        ? { compatibleModels: { some: { id: ticket.device.modelId } } }
+        : {}),
+    },
+    orderBy: { name: "asc" },
+    take: 100,
+  });
 
   // Related tickets: same device (if any), same school excluding this ticket.
   const [deviceTickets, schoolOpenTickets] = await Promise.all([
@@ -535,6 +564,248 @@ export default async function TicketDetailPage({
               </form>
             )}
           </Card>
+
+          <Card title={`Parts used (${ticket.partUsages.length})`}>
+            {ticket.partUsages.length === 0 ? (
+              <p className="text-sm text-slate-400">No parts used yet.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {ticket.partUsages.map((u) => (
+                  <li
+                    key={u.id}
+                    className="flex items-center justify-between rounded border border-surface-border bg-surface px-3 py-1.5"
+                  >
+                    <div>
+                      <Link
+                        href={`/admin/parts/${u.part.id}`}
+                        className="text-accent hover:underline"
+                      >
+                        {u.part.name}
+                      </Link>
+                      <span className="ml-2 font-mono text-xs text-slate-500">
+                        {u.part.sku}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono text-xs">×{u.quantity}</span>
+                      {u.part.costCents != null && (
+                        <div className="text-[10px] text-slate-500">
+                          $
+                          {((u.part.costCents * u.quantity) / 100).toFixed(2)}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {canWrite && compatibleParts.length > 0 && (
+              <form
+                action={recordPartUsageAction}
+                className="mt-3 space-y-2 border-t border-surface-border pt-3"
+              >
+                <input type="hidden" name="ticketId" value={ticket.id} />
+                <label className="block text-[10px] uppercase tracking-wide text-slate-400">
+                  Record part usage
+                </label>
+                <select
+                  name="partId"
+                  required
+                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                >
+                  <option value="">— pick a part —</option>
+                  {compatibleParts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.sku}) · {p.onHand} on hand
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    name="quantity"
+                    min={1}
+                    defaultValue={1}
+                    className="w-20 rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className="flex-1 rounded bg-accent px-2 py-1 text-xs font-semibold hover:bg-accent-strong"
+                  >
+                    Use part
+                  </button>
+                </div>
+              </form>
+            )}
+            {canWrite && compatibleParts.length === 0 && (
+              <p className="mt-3 border-t border-surface-border pt-3 text-xs text-slate-500">
+                No compatible parts registered. Add some from{" "}
+                <Link href="/admin/parts" className="text-accent hover:underline">
+                  /admin/parts
+                </Link>
+                .
+              </p>
+            )}
+          </Card>
+
+          <Card title={`Manufacturer RMA (${ticket.manufacturerRmas.length})`}>
+            {ticket.manufacturerRmas.length === 0 ? (
+              <p className="text-sm text-slate-400">
+                No RMA records for this ticket.
+              </p>
+            ) : (
+              <ul className="space-y-2 text-sm">
+                {ticket.manufacturerRmas.map((rma) => (
+                  <li
+                    key={rma.id}
+                    className="rounded border border-surface-border bg-surface px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs">
+                        {rma.rmaNumber}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {rma.vendor}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      {rma.shippedAt ? (
+                        <>
+                          shipped{" "}
+                          {rma.shippedAt.toISOString().slice(0, 10)}
+                        </>
+                      ) : (
+                        <span className="text-amber-300">not shipped</span>
+                      )}
+                      {rma.receivedAt && (
+                        <>
+                          {" "}
+                          · received{" "}
+                          {rma.receivedAt.toISOString().slice(0, 10)}
+                        </>
+                      )}
+                    </div>
+                    {(rma.trackingOut || rma.trackingIn) && (
+                      <div className="mt-1 font-mono text-[10px] text-slate-500">
+                        {rma.trackingOut && <>out: {rma.trackingOut}</>}
+                        {rma.trackingIn && (
+                          <>
+                            {rma.trackingOut ? " · " : ""}in: {rma.trackingIn}
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {canWrite && !rma.shippedAt && (
+                      <form
+                        action={markRmaShippedAction}
+                        className="mt-2 flex gap-1"
+                      >
+                        <input type="hidden" name="rmaId" value={rma.id} />
+                        <input
+                          type="hidden"
+                          name="ticketId"
+                          value={ticket.id}
+                        />
+                        <input
+                          type="text"
+                          name="trackingOut"
+                          placeholder="Tracking out"
+                          className="flex-1 rounded border border-surface-border bg-surface-muted px-2 py-0.5 text-[10px] focus:border-accent focus:outline-none"
+                        />
+                        <button
+                          type="submit"
+                          className="rounded bg-accent px-2 text-[10px] font-semibold hover:bg-accent-strong"
+                        >
+                          Mark shipped
+                        </button>
+                      </form>
+                    )}
+                    {canWrite && rma.shippedAt && !rma.receivedAt && (
+                      <form
+                        action={markRmaReceivedAction}
+                        className="mt-2 flex gap-1"
+                      >
+                        <input type="hidden" name="rmaId" value={rma.id} />
+                        <input
+                          type="hidden"
+                          name="ticketId"
+                          value={ticket.id}
+                        />
+                        <input
+                          type="text"
+                          name="trackingIn"
+                          placeholder="Tracking in"
+                          className="flex-1 rounded border border-surface-border bg-surface-muted px-2 py-0.5 text-[10px] focus:border-accent focus:outline-none"
+                        />
+                        <button
+                          type="submit"
+                          className="rounded bg-accent px-2 text-[10px] font-semibold hover:bg-accent-strong"
+                        >
+                          Mark received
+                        </button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {canWrite && ticket.state === "MANUFACTURER_RMA" && (
+              <form
+                action={createRmaAction}
+                className="mt-3 space-y-2 border-t border-surface-border pt-3"
+              >
+                <input type="hidden" name="ticketId" value={ticket.id} />
+                <label className="block text-[10px] uppercase tracking-wide text-slate-400">
+                  Open new RMA
+                </label>
+                <input
+                  type="text"
+                  name="rmaNumber"
+                  required
+                  placeholder="RMA #"
+                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                />
+                <input
+                  type="text"
+                  name="vendor"
+                  required
+                  placeholder="Vendor"
+                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                />
+                <input
+                  type="text"
+                  name="trackingOut"
+                  placeholder="Outbound tracking (optional)"
+                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="w-full rounded bg-accent px-2 py-1 text-xs font-semibold hover:bg-accent-strong"
+                >
+                  Create RMA record
+                </button>
+              </form>
+            )}
+          </Card>
+
+          {ticket.device?.model?.repairNotes && (
+            <Card title={`${ticket.device.model.manufacturer} ${ticket.device.model.modelName} — Repair notes`}>
+              <p className="whitespace-pre-wrap text-xs text-slate-300">
+                {ticket.device.model.repairNotes}
+              </p>
+              <div className="mt-2 text-[10px] text-slate-500">
+                Shared knowledge base from{" "}
+                <Link
+                  href={`/admin/device-models/${ticket.device.model.id}`}
+                  className="text-accent hover:underline"
+                >
+                  device models
+                </Link>
+                .
+              </div>
+            </Card>
+          )}
 
           {ticket.loanerAssignments.length > 0 && (
             <Card title={`Loaners (${ticket.loanerAssignments.length})`}>

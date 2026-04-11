@@ -10,6 +10,10 @@ import {
   setMainContactAction,
   updateSchoolAction,
 } from "@/server/actions/admin";
+import {
+  createPortalTokenAction,
+  revokePortalTokenAction,
+} from "@/server/actions/portal";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +42,10 @@ export default async function SchoolProfilePage({
         orderBy: { reportedAt: "desc" },
         take: 25,
         include: { device: true },
+      },
+      portalTokens: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
       },
       _count: { select: { devices: true, tickets: true } },
     },
@@ -320,6 +328,128 @@ export default async function SchoolProfilePage({
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Status portal links
+        </h2>
+        <p className="mb-3 text-xs text-slate-400">
+          Generate a magic link that lets this school's IT lead view
+          their open and recently-closed tickets without signing in.
+          Each link can be revoked at any time.
+        </p>
+
+        {school.portalTokens.length > 0 && (
+          <ul className="mb-4 space-y-2 text-sm">
+            {school.portalTokens.map((t) => {
+              const revoked = t.revokedAt != null;
+              const expired =
+                t.expiresAt != null && t.expiresAt.getTime() <= Date.now();
+              const active = !revoked && !expired;
+              return (
+                <li
+                  key={t.id}
+                  className={`rounded border bg-surface px-3 py-2 ${active ? "border-surface-border" : "border-surface-border opacity-60"}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium">
+                        {t.label ?? "Unnamed"}
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-slate-500">
+                        created {t.createdAt.toISOString().slice(0, 10)}
+                        {t.expiresAt && (
+                          <>
+                            {" "}
+                            · expires {t.expiresAt.toISOString().slice(0, 10)}
+                          </>
+                        )}
+                        {t.lastUsedAt && (
+                          <>
+                            {" "}
+                            · last used{" "}
+                            {t.lastUsedAt.toISOString().slice(0, 10)}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {revoked && (
+                        <span className="rounded bg-red-500/20 px-2 py-0.5 text-[10px] text-red-200">
+                          revoked
+                        </span>
+                      )}
+                      {expired && !revoked && (
+                        <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] text-amber-200">
+                          expired
+                        </span>
+                      )}
+                      {active && (
+                        <form action={revokePortalTokenAction}>
+                          <input type="hidden" name="tokenId" value={t.id} />
+                          <input
+                            type="hidden"
+                            name="schoolId"
+                            value={school.id}
+                          />
+                          <button
+                            type="submit"
+                            className="text-[10px] text-slate-400 hover:text-red-200"
+                          >
+                            revoke
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  </div>
+                  {active && (
+                    <div className="mt-2 overflow-auto rounded bg-surface-muted px-2 py-1 font-mono text-[10px] text-slate-300">
+                      /portal/{t.token}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <form
+          action={createPortalTokenAction}
+          className="flex flex-wrap items-end gap-2 rounded border border-surface-border bg-surface-muted/60 p-3"
+        >
+          <input type="hidden" name="schoolId" value={school.id} />
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              Label
+            </span>
+            <input
+              type="text"
+              name="label"
+              placeholder="Jane Doe · IT lead"
+              className="w-64 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              Expires in (days, optional)
+            </span>
+            <input
+              type="number"
+              name="expiresInDays"
+              min={1}
+              max={3650}
+              placeholder="e.g. 180"
+              className="w-32 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded bg-accent px-3 py-1.5 text-sm font-semibold hover:bg-accent-strong"
+          >
+            Generate link
+          </button>
+        </form>
       </section>
     </>
   );

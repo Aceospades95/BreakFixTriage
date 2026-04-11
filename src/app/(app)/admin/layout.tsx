@@ -13,6 +13,8 @@ const ADMIN_LINKS = [
   { href: "/admin/districts", label: "Districts" },
   { href: "/admin/schools", label: "Schools" },
   { href: "/admin/devices", label: "Devices" },
+  { href: "/admin/device-models", label: "Device models" },
+  { href: "/admin/parts", label: "Parts" },
   { href: "/admin/loaners", label: "Loaners" },
   { href: "/admin/settings", label: "Settings" },
   { href: "/audit", label: "Audit log" },

@@ -29,7 +29,18 @@ export default async function DashboardsPage() {
 
   return (
     <>
-      <PageHeader title="Dashboards" subtitle="Operational health snapshot" />
+      <PageHeader
+        title="Dashboards"
+        subtitle="Operational health snapshot"
+        actions={
+          <Link
+            href="/dashboards/finance"
+            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+          >
+            Finance →
+          </Link>
+        }
+      />
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="Open tickets" value={openTotal} href="/tickets" />

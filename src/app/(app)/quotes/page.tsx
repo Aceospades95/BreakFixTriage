@@ -71,17 +71,25 @@ export default async function QuotesPage({
         title="Quotes"
         subtitle="Out-of-warranty repairs waiting on customer decisions."
         actions={
-          canWrite && (
-            <form action={sweepQuotesAction}>
-              <button
-                type="submit"
-                className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-                title="Expire any SENT quote whose hold window has passed."
-              >
-                Run hold-window sweep
-              </button>
-            </form>
-          )
+          <div className="flex items-center gap-2">
+            <a
+              href={`/api/exports/quotes${filter ? `?status=${filter}` : ""}`}
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              ⬇ Export CSV
+            </a>
+            {canWrite && (
+              <form action={sweepQuotesAction}>
+                <button
+                  type="submit"
+                  className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+                  title="Expire any SENT quote whose hold window has passed."
+                >
+                  Run hold-window sweep
+                </button>
+              </form>
+            )}
+          </div>
         }
       />
 

@@ -22,7 +22,9 @@
     "servicenow:sync": "tsx prisma/sync-servicenow.ts",
     "cutover:compare": "tsx prisma/cutover-compare.ts",
     "cutover:integrity": "tsx prisma/cutover-integrity.ts",
-    "cutover:export": "tsx prisma/cutover-export.ts"
+    "cutover:export": "tsx prisma/cutover-export.ts",
+    "escalate:stale": "tsx prisma/escalate-stale.ts",
+    "digest": "tsx prisma/send-digest.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -30,11 +30,12 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 **Phase 3 — Quotes, OOW, invoices, hold-window automation** ✓ complete.
 **Phase 4 — Email, Google Routes, ServiceNow API** ✓ complete.
 **Phase 5 — Cutover tooling and runbook** ✓ complete.
-**Phase 6 — Adoption (admin UIs, comments, attachments, SLAs, search, profile)** ✓ complete in this commit.
+**Phase 6 — Adoption (admin UIs, comments, attachments, SLAs, search, profile)** ✓ complete.
+**Phase 7 — Workflow (bulk, kanban, bench, loaners, escalation, digest, settings)** ✓ complete in this commit.
 
-All five migration-plan phases plus the Phase 6 adoption release are
-shipped. See `docs/CUTOVER_PLAN.md` for the operational cutover
-runbook.
+All five migration-plan phases plus the Phase 6 adoption release and
+the Phase 7 workflow release are shipped. See `docs/CUTOVER_PLAN.md`
+for the operational cutover runbook.
 
 - Full Prisma schema covering tickets, devices, schools, districts, jobs,
   routes, quotes, imports, duplicates, audit, and notifications
@@ -138,6 +139,91 @@ runbook.
 - New vitest coverage: notification templates (8 cases), Google
   Routes response parser + body builder (7 cases), ServiceNow row
   normalizer (6 cases).
+
+**Added in Phase 7 — Workflow release:**
+
+The second half of the adoption work. Phase 6 made the app
+comfortable; Phase 7 makes it *faster* for everyone who lives in it.
+
+- **Bulk actions** on the ticket list. Multi-select checkboxes plus
+  a bulk transition and bulk assign bar that applies to the checked
+  rows. Built with a single HTML form and per-button
+  `formAction=` — no client-side JS required.
+- **CSV export** on every major list: tickets (honoring current
+  filters), quotes, invoices, and the audit log. All built on a new
+  pure `rowsToCsv` helper with a shared escaping function.
+- **Tech bench view** at `/bench`. Two modes: "my bench" (the
+  default, shows every active ticket assigned to you, oldest-first
+  with SLA badges) and "all benches" (ops manager view grouping
+  every assignee plus an unassigned bucket).
+- **Kanban board** at `/tickets/kanban`. Eleven columns covering
+  every active operational state with per-card SLA badges. Links
+  from the ticket list header.
+- **Printable route sheet** at `/scheduling/routes/[id]/print`. A
+  clean white-on-black page with checkbox + signature fields for
+  every stop. Drivers who prefer paper get a proper fallback.
+- **Photo capture on route stops**. Any attachment upload path now
+  works for stops, and the driver day view (`/my-day`) has an
+  inline `<input type="file" capture="environment">` for
+  one-tap phone photos — the camera opens directly on mobile
+  browsers.
+- **Loaner device tracking**:
+  - New `LoanerDevice` and `LoanerAssignment` models
+  - `/admin/loaners` pool view with status per unit
+  - `/admin/loaners/new` to add devices
+  - `/admin/loaners/[id]` profile with check-out form, return /
+    mark-lost form, and a full assignment history
+  - Loaner panel on the ticket detail page showing any loaners
+    linked to the current ticket
+- **Editable app settings** at `/admin/settings`:
+  - Default quote hold-window days
+  - Escalation multiplier (SLA × multiplier before auto-escalation)
+  - Per-state SLA threshold overrides
+  - Daily digest recipient list
+  - All reads fall back to hardcoded defaults, so running without
+    the settings table still works
+- **Auto-escalation sweeper** (`npm run escalate:stale`). Scans
+  every non-terminal ticket, compares days-in-state to the
+  configured SLA × multiplier, and creates in-app notifications
+  for the assignee plus all ADMIN / OPS_MANAGER users. Idempotent
+  via `meta.lastEscalatedAt` — a second run within 24 hours is a
+  no-op for the same ticket.
+- **Daily digest** (`npm run digest`). Builds an operational
+  snapshot (open count, SLA breaches, queues, duplicate queue,
+  unscheduled jobs, expiring quotes) and sends it to every email in
+  the configured digest recipient list via the regular notification
+  transport.
+- **In-app notification bell** in the header. Shows unread
+  assignments, escalations, and mentions with a dot badge. Click a
+  notification to mark-read and navigate in one round trip. New
+  `/notifications` page shows the full history (read + unread) with
+  a "mark all read" action.
+- **Assignment notifications**: changing a ticket's assignee (via
+  the inline dropdown on the detail page or the new bulk assign
+  action) automatically creates a `TICKET_ASSIGNED` in-app
+  notification for the new owner.
+- **New tests**:
+  - `tests/csv-export.test.ts` — 9 cases for the generic CSV
+    formatter and filename helper
+  - `tests/escalation.test.ts` — 8 cases for the pure
+    `shouldEscalate` predicate (null / zero / fractional /
+    boundary conditions)
+
+New schema:
+- `LoanerDevice`, `LoanerAssignment`, `LoanerAssignmentStatus`
+- `InAppNotification`, `InAppNotificationKind`
+- `AppSetting` key/value table
+- `stateEnteredAt` index on Ticket (speeds up bench and escalation
+  queries)
+
+Deferred to Phase 8:
+- Saved filter views per user
+- QR / barcode scanning (warehouse checkin/checkout)
+- Drag-and-drop on the kanban board
+- Print CSS to hide the header on the route sheet page
+- Parts inventory
+- Customer-facing school status portal
+- Offline mode / service worker for `/my-day`
 
 **Added in Phase 6 — Adoption release:**
 
@@ -336,6 +422,8 @@ Script, or whatever scheduler your environment uses:
 ```bash
 npm run quotes:sweep       # auto-expire quotes past their hold window
 npm run servicenow:sync    # pull fresh incidents from ServiceNow
+npm run escalate:stale     # push in-app notifications for tickets past (SLA × multiplier)
+npm run digest             # build + email the daily operational digest
 npm run cutover:compare    # parallel-run comparison against a legacy sheet
 npm run cutover:integrity  # scan for data quality issues
 npm run cutover:export     # dump all tickets as CSV

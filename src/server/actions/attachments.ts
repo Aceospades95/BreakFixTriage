@@ -35,7 +35,7 @@ export async function uploadAttachmentAction(formData: FormData) {
       ? PERMISSIONS.TICKETS_WRITE
       : kind === "QUOTE"
         ? PERMISSIONS.QUOTES_WRITE
-        : PERMISSIONS.SCHEDULING_WRITE;
+        : PERMISSIONS.STOPS_UPDATE;
   const session = await requireRole(requiredPermission);
 
   const ticketId = formData.get("ticketId")?.toString() || null;

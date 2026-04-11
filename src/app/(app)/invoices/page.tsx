@@ -43,6 +43,14 @@ export default async function InvoicesPage({
       <PageHeader
         title="Invoices"
         subtitle="Tickets returned to the school that still owe a PO and an invoice."
+        actions={
+          <a
+            href="/api/exports/invoices"
+            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+          >
+            ⬇ Export CSV
+          </a>
+        }
       />
 
       {searchParams?.error && (

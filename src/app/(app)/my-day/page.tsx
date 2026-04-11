@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { updateStopStatusAction } from "@/server/actions/scheduling";
+import { uploadAttachmentAction } from "@/server/actions/attachments";
 
 export const dynamic = "force-dynamic";
 
@@ -199,47 +200,75 @@ export default async function MyDayPage({
                     </div>
 
                     {canUpdateStop && (
-                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        <DriverButton
-                          stopId={stop.id}
-                          routeId={route.id}
-                          target={JobStatus.EN_ROUTE}
-                          label="Start"
-                          enabled={stop.status === JobStatus.SCHEDULED}
-                          tone="primary"
-                        />
-                        <DriverButton
-                          stopId={stop.id}
-                          routeId={route.id}
-                          target={JobStatus.ARRIVED}
-                          label="Arrived"
-                          enabled={stop.status === JobStatus.EN_ROUTE}
-                          tone="primary"
-                        />
-                        <DriverButton
-                          stopId={stop.id}
-                          routeId={route.id}
-                          target={JobStatus.COMPLETED}
-                          label="Complete"
-                          enabled={
-                            stop.status === JobStatus.EN_ROUTE ||
-                            stop.status === JobStatus.ARRIVED
-                          }
-                          tone="primary"
-                        />
-                        <DriverButton
-                          stopId={stop.id}
-                          routeId={route.id}
-                          target={JobStatus.FAILED}
-                          label="Fail"
-                          enabled={
-                            stop.status !== JobStatus.COMPLETED &&
-                            stop.status !== JobStatus.FAILED &&
-                            stop.status !== JobStatus.CANCELLED
-                          }
-                          tone="danger"
-                        />
-                      </div>
+                      <>
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <DriverButton
+                            stopId={stop.id}
+                            routeId={route.id}
+                            target={JobStatus.EN_ROUTE}
+                            label="Start"
+                            enabled={stop.status === JobStatus.SCHEDULED}
+                            tone="primary"
+                          />
+                          <DriverButton
+                            stopId={stop.id}
+                            routeId={route.id}
+                            target={JobStatus.ARRIVED}
+                            label="Arrived"
+                            enabled={stop.status === JobStatus.EN_ROUTE}
+                            tone="primary"
+                          />
+                          <DriverButton
+                            stopId={stop.id}
+                            routeId={route.id}
+                            target={JobStatus.COMPLETED}
+                            label="Complete"
+                            enabled={
+                              stop.status === JobStatus.EN_ROUTE ||
+                              stop.status === JobStatus.ARRIVED
+                            }
+                            tone="primary"
+                          />
+                          <DriverButton
+                            stopId={stop.id}
+                            routeId={route.id}
+                            target={JobStatus.FAILED}
+                            label="Fail"
+                            enabled={
+                              stop.status !== JobStatus.COMPLETED &&
+                              stop.status !== JobStatus.FAILED &&
+                              stop.status !== JobStatus.CANCELLED
+                            }
+                            tone="danger"
+                          />
+                        </div>
+                        <form
+                          action={uploadAttachmentAction}
+                          encType="multipart/form-data"
+                          className="mt-3 flex items-center gap-2 border-t border-surface-border pt-3"
+                        >
+                          <input type="hidden" name="kind" value="ROUTE_STOP" />
+                          <input type="hidden" name="routeStopId" value={stop.id} />
+                          <input type="hidden" name="returnTo" value="/my-day" />
+                          <label className="flex-1 min-w-0">
+                            <span className="sr-only">Upload photo</span>
+                            <input
+                              type="file"
+                              name="file"
+                              required
+                              accept="image/*"
+                              capture="environment"
+                              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-xs file:mr-2 file:rounded file:border-0 file:bg-accent file:px-2 file:py-0.5 file:text-[10px] file:font-semibold file:text-white"
+                            />
+                          </label>
+                          <button
+                            type="submit"
+                            className="rounded bg-accent px-3 py-1 text-xs font-semibold hover:bg-accent-strong"
+                          >
+                            Attach photo
+                          </button>
+                        </form>
+                      </>
                     )}
                   </li>
                 ))}

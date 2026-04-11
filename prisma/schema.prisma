@@ -49,6 +49,8 @@ model User {
   quoteActivities   QuoteActivity[]
   comments          Comment[]          @relation("CommentAuthor")
   uploadedAttachments Attachment[]     @relation("AttachmentUploader")
+  inAppNotifications InAppNotification[] @relation("InAppNotificationRecipient")
+  loanerCheckouts   LoanerAssignment[] @relation("LoanerCheckedOutBy")
 
   @@index([role])
 }
@@ -106,6 +108,7 @@ model School {
   devices       Device[]
   tickets       Ticket[]
   jobs          Job[]
+  loanerAssignments LoanerAssignment[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -150,6 +153,7 @@ model DeviceModel {
   formFactor     FormFactor @default(OTHER)
   warrantyMonths Int?
   devices        Device[]
+  loanerDevices  LoanerDevice[]
 
   @@unique([manufacturer, modelName])
 }
@@ -244,6 +248,7 @@ model Ticket {
   notifications    Notification[]
   comments         Comment[]
   attachments      Attachment[]
+  loanerAssignments LoanerAssignment[] @relation("LoanerForTicket")
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -252,6 +257,7 @@ model Ticket {
   @@index([schoolId])
   @@index([deviceId])
   @@index([assignedUserId])
+  @@index([stateEnteredAt])
 }
 
 model TicketEvent {
@@ -650,4 +656,110 @@ model Attachment {
   @@index([ticketId])
   @@index([routeStopId])
   @@index([quoteId])
+}
+
+// ---------------------------------------------------------------------------
+// Loaner devices (Phase 7)
+// ---------------------------------------------------------------------------
+
+/// A pool of spare devices that the break-fix shop hands out to schools
+/// to keep students productive while their own device is in for repair.
+/// Separate model from Device because loaners belong to the shop, not
+/// to a school, and have a simpler lifecycle.
+model LoanerDevice {
+  id             String             @id @default(cuid())
+  serialNumber   String             @unique
+  assetTag       String?            @unique
+  modelId        String?
+  notes          String?
+  active         Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  model          DeviceModel?       @relation(fields: [modelId], references: [id])
+  assignments    LoanerAssignment[]
+
+  @@index([active])
+}
+
+enum LoanerAssignmentStatus {
+  ACTIVE
+  RETURNED
+  LOST
+}
+
+/// A checkout record for a loaner device. Optionally linked to the
+/// ticket whose original device is being repaired, so when the owning
+/// ticket closes, ops gets a "ready to reclaim the loaner" nudge.
+model LoanerAssignment {
+  id             String                 @id @default(cuid())
+  loanerId       String
+  ticketId       String?
+  schoolId       String
+  contactName    String?
+  status         LoanerAssignmentStatus @default(ACTIVE)
+  checkedOutAt   DateTime               @default(now())
+  checkedOutByUserId String?
+  dueBackAt      DateTime?
+  returnedAt     DateTime?
+  notes          String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  loaner         LoanerDevice @relation(fields: [loanerId], references: [id], onDelete: Cascade)
+  ticket         Ticket?      @relation("LoanerForTicket", fields: [ticketId], references: [id])
+  school         School       @relation(fields: [schoolId], references: [id])
+  checkedOutBy   User?        @relation("LoanerCheckedOutBy", fields: [checkedOutByUserId], references: [id])
+
+  @@index([loanerId])
+  @@index([status])
+  @@index([ticketId])
+  @@index([schoolId])
+}
+
+// ---------------------------------------------------------------------------
+// In-app notifications (Phase 7)
+// ---------------------------------------------------------------------------
+
+enum InAppNotificationKind {
+  TICKET_ASSIGNED
+  TICKET_MENTION
+  SLA_BREACH
+  ESCALATION
+  GENERIC
+}
+
+/// Lightweight notifications shown in the header bell dropdown. Kept
+/// separate from the email-oriented Notification model because they
+/// have very different concerns (no delivery status, no transport, no
+/// bounce tracking — just "unread until you click it").
+model InAppNotification {
+  id              String   @id @default(cuid())
+  recipientUserId String
+  kind            InAppNotificationKind
+  title           String
+  body            String?
+  linkHref        String?
+  readAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  recipient       User @relation("InAppNotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@index([recipientUserId, readAt])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// App-wide settings (Phase 7)
+// ---------------------------------------------------------------------------
+
+/// Key/value store for settings an admin should be able to edit without
+/// a redeploy. Values are JSON-encoded strings so we can store numbers,
+/// arrays, and objects without committing to a column type. The
+/// `lib/settings` helpers parse + validate on read.
+model AppSetting {
+  key            String   @id
+  value          String
+  updatedAt      DateTime @updatedAt
+  updatedByUserId String?
 }

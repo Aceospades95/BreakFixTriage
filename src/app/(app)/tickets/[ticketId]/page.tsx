@@ -67,6 +67,12 @@ export default async function TicketDetailPage({
           orderBy: { createdAt: "desc" },
           include: { uploadedBy: { select: { name: true } } },
         },
+        loanerAssignments: {
+          orderBy: { createdAt: "desc" },
+          include: {
+            loaner: { select: { id: true, serialNumber: true, assetTag: true } },
+          },
+        },
       },
     }),
     prisma.user.findMany({
@@ -529,6 +535,43 @@ export default async function TicketDetailPage({
               </form>
             )}
           </Card>
+
+          {ticket.loanerAssignments.length > 0 && (
+            <Card title={`Loaners (${ticket.loanerAssignments.length})`}>
+              <ul className="space-y-2 text-sm">
+                {ticket.loanerAssignments.map((a) => (
+                  <li
+                    key={a.id}
+                    className="rounded border border-surface-border bg-surface px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <Link
+                        href={`/admin/loaners/${a.loaner.id}`}
+                        className="font-mono text-xs text-accent hover:underline"
+                      >
+                        {a.loaner.serialNumber}
+                      </Link>
+                      <span
+                        className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase ${
+                          a.status === "ACTIVE"
+                            ? "bg-amber-500/20 text-amber-200"
+                            : a.status === "LOST"
+                              ? "bg-red-500/20 text-red-200"
+                              : "bg-emerald-500/20 text-emerald-200"
+                        }`}
+                      >
+                        {a.status}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      since {a.checkedOutAt.toISOString().slice(0, 10)}
+                      {a.contactName && <> · {a.contactName}</>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           {(deviceTickets.length > 0 || schoolOpenTickets.length > 0) && (
             <Card title="Related">

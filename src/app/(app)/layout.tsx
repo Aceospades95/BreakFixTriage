@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { GlobalSearch } from "@/components/global-search";
 import { NavLinks } from "@/components/nav-links";
+import { NotificationBell } from "@/components/notification-bell";
 import { SignOutButton } from "@/components/sign-out-button";
+import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
 
 export default async function AppLayout({
@@ -12,6 +14,11 @@ export default async function AppLayout({
   const session = await requireSession();
   const readOnly = process.env.READ_ONLY_MODE === "true";
   const isAdmin = session.role === "ADMIN";
+  const notifications = await prisma.inAppNotification.findMany({
+    where: { recipientUserId: session.userId, readAt: null },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  });
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -33,6 +40,7 @@ export default async function AppLayout({
           <NavLinks isAdmin={isAdmin} />
           <div className="flex items-center gap-3">
             <GlobalSearch />
+            <NotificationBell notifications={notifications} />
             <Link
               href="/profile"
               className="text-right text-xs transition hover:text-white"

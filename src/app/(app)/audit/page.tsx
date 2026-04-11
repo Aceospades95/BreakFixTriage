@@ -62,6 +62,23 @@ export default async function AuditLogPage({
       <PageHeader
         title="Audit log"
         subtitle={`${total.toLocaleString()} entr${total === 1 ? "y" : "ies"}`}
+        actions={
+          <a
+            href={`/api/exports/audit?${new URLSearchParams({
+              ...(searchParams?.entityType
+                ? { entityType: searchParams.entityType }
+                : {}),
+              ...(searchParams?.entityId
+                ? { entityId: searchParams.entityId }
+                : {}),
+              ...(searchParams?.action ? { action: searchParams.action } : {}),
+              ...(searchParams?.actor ? { actor: searchParams.actor } : {}),
+            }).toString()}`}
+            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+          >
+            ⬇ Export CSV
+          </a>
+        }
       />
 
       <form

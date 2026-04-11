@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
+import { createInAppNotification } from "@/lib/notifications/in-app";
 import {
   GuardFailedError,
   InvalidTransitionError,
@@ -185,6 +186,24 @@ export async function updateTicketAction(formData: FormData) {
           before,
           after,
         });
+
+        // Fire an in-app notification to the new assignee (if the
+        // assignee actually changed to someone other than the actor
+        // themselves — nobody wants to be notified about their own
+        // actions).
+        if (
+          "assignedUserId" in after &&
+          typeof after.assignedUserId === "string" &&
+          after.assignedUserId !== session.userId
+        ) {
+          await createInAppNotification({
+            recipientUserId: after.assignedUserId,
+            kind: "TICKET_ASSIGNED",
+            title: `Assigned: ${existing.incidentNumber}`,
+            body: existing.shortDescription,
+            linkHref: `/tickets/${existing.id}`,
+          });
+        }
       }
     }
   } catch (err) {

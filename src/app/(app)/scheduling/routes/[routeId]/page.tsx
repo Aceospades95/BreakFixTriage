@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { JobStatus, RouteStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
+import { AttachmentList } from "@/components/attachment-list";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
@@ -51,6 +52,10 @@ export default async function RouteDetailPage({
               },
             },
           },
+          attachments: {
+            orderBy: { createdAt: "desc" },
+            include: { uploadedBy: { select: { name: true } } },
+          },
         },
       },
     },
@@ -75,6 +80,13 @@ export default async function RouteDetailPage({
         actions={
           <div className="flex items-center gap-2">
             <RouteStatusPill status={route.status} />
+            <Link
+              href={`/scheduling/routes/${route.id}/print`}
+              target="_blank"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              Print sheet
+            </Link>
             <Link
               href="/scheduling"
               className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
@@ -191,6 +203,21 @@ export default async function RouteDetailPage({
                         )}
                       </>
                     )}
+                  </div>
+                )}
+
+                {(stop.attachments.length > 0 || canUpdateStop) && (
+                  <div className="mt-3 border-t border-surface-border pt-3">
+                    <div className="mb-2 text-[10px] uppercase tracking-wide text-slate-400">
+                      Photos & proof ({stop.attachments.length})
+                    </div>
+                    <AttachmentList
+                      attachments={stop.attachments}
+                      ownerKind="ROUTE_STOP"
+                      ownerId={stop.id}
+                      returnTo={`/scheduling/routes/${route.id}`}
+                      canWrite={canUpdateStop}
+                    />
                   </div>
                 )}
               </li>

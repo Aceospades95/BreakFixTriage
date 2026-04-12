@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { GlobalSearch } from "@/components/global-search";
+import { HelpMenu } from "@/components/help-menu";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { NavLinks } from "@/components/nav-links";
 import { NotificationBell } from "@/components/notification-bell";
@@ -41,28 +42,40 @@ export default async function AppLayout({
         </div>
       )}
       <header className="border-b border-surface-border bg-surface-muted/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-3">
-          <Link
-            href="/"
-            className="text-sm font-semibold tracking-tight text-slate-100"
-          >
-            BreakFix Triage
-          </Link>
-          <NavLinks isAdmin={isAdmin} />
-          <div className="flex items-center gap-3">
-            <GlobalSearch />
-            <ThemeToggle />
-            <NotificationBell notifications={notifications} />
+        <div className="mx-auto max-w-7xl px-6">
+          {/* Top row: brand, search, user controls */}
+          <div className="flex items-center justify-between gap-4 py-3">
             <Link
-              href="/profile"
-              className="text-right text-xs transition hover:text-white"
+              href="/"
+              className="shrink-0 text-base font-bold tracking-tight text-slate-100"
             >
-              <div className="font-medium text-slate-100">{session.name}</div>
-              <div className="font-mono uppercase tracking-wide text-slate-400">
-                {session.role}
-              </div>
+              BreakFix Triage
             </Link>
-            <SignOutButton />
+            <div className="hidden flex-1 justify-center md:flex">
+              <GlobalSearch />
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="md:hidden">
+                <GlobalSearch />
+              </div>
+              <ThemeToggle />
+              <NotificationBell notifications={notifications} />
+              <HelpMenu role={session.role} />
+              <Link
+                href="/profile"
+                className="hidden text-right text-xs transition hover:text-white sm:block"
+              >
+                <div className="font-medium text-slate-100">{session.name}</div>
+                <div className="font-mono uppercase tracking-wide text-slate-400">
+                  {session.role}
+                </div>
+              </Link>
+              <SignOutButton />
+            </div>
+          </div>
+          {/* Nav row */}
+          <div className="border-t border-surface-border/50 py-2">
+            <NavLinks isAdmin={isAdmin} />
           </div>
         </div>
       </header>

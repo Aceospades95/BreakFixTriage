@@ -26,7 +26,7 @@
     {
       "name": "My day",
       "short_name": "My day",
-      "url": "/my-day"
+      "url": "/"
     },
     {
       "name": "Scan",

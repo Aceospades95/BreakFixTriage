@@ -60,7 +60,7 @@ export default async function AppLayout({
               </div>
               <ThemeToggle />
               <NotificationBell notifications={notifications} />
-              <HelpMenu role={session.role} />
+              <HelpMenu />
               <Link
                 href="/profile"
                 className="hidden text-right text-xs transition hover:text-white sm:block"

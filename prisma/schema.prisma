@@ -64,7 +64,6 @@ model User {
   inAppNotifications InAppNotification[] @relation("InAppNotificationRecipient")
   loanerCheckouts   LoanerAssignment[] @relation("LoanerCheckedOutBy")
   partMovements     PartMovement[]     @relation("PartMovementUser")
-  shiftNotes        ShiftNote[]        @relation("ShiftNoteAuthor")
   timeEntries       TimeEntry[]        @relation("UserTimeEntries")
 
   @@index([role])
@@ -445,7 +444,7 @@ model Job {
 
   school      School      @relation(fields: [schoolId], references: [id])
   ticketLinks TicketJob[]
-  routeStop   RouteStop?
+  routeStops  RouteStop[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -495,7 +494,7 @@ model Route {
 model RouteStop {
   id               String    @id @default(cuid())
   routeId          String
-  jobId            String    @unique
+  jobId            String
   sequence         Int
   arrivalEstimate  DateTime?
   status           JobStatus @default(SCHEDULED)
@@ -505,6 +504,7 @@ model RouteStop {
   attachments      Attachment[]
 
   @@index([routeId])
+  @@index([jobId])
 }
 
 // ---------------------------------------------------------------------------
@@ -932,22 +932,6 @@ model PortalToken {
 
 // ---------------------------------------------------------------------------
 // Shift handover notes (Phase 8)
-// ---------------------------------------------------------------------------
-
-/// A freeform note ops writes at the end of a shift so the next shift
-/// sees it on login. A tiny feature with an outsized impact on team
-/// continuity — pilot ops staff kept asking for this.
-model ShiftNote {
-  id           String   @id @default(cuid())
-  authorUserId String
-  body         String
-  createdAt    DateTime @default(now())
-
-  author       User @relation("ShiftNoteAuthor", fields: [authorUserId], references: [id])
-
-  @@index([createdAt])
-}
-
 // ---------------------------------------------------------------------------
 // Phase 10: ticket templates + time tracking
 // ---------------------------------------------------------------------------

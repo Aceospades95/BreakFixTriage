@@ -79,7 +79,7 @@ export default async function SchedulingPage({
               Calendar
             </Link>
             <Link
-              href="/my-day"
+              href="/"
               className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
             >
               My day

@@ -131,7 +131,7 @@ export async function buildRouteAction(formData: FormData) {
 
   revalidatePath("/scheduling");
   revalidatePath("/scheduling/routes/new");
-  revalidatePath("/my-day");
+  revalidatePath("/");
   if (newRouteId) {
     redirect(`/scheduling/routes/${newRouteId}`);
   }
@@ -200,7 +200,7 @@ const updateStopStatusSchema = z.object({
   stopId: z.string().min(1),
   status: z.nativeEnum(JobStatus),
   reason: z.string().max(500).optional(),
-  returnTo: z.enum(["route", "my-day"]).default("route"),
+  returnTo: z.enum(["route", "my-day", "/"]).default("route"),
   routeId: z.string().optional(),
 });
 
@@ -225,8 +225,8 @@ export async function updateStopStatusAction(formData: FormData) {
   }
 
   const fallbackPath =
-    parsed.data.returnTo === "my-day"
-      ? "/my-day"
+    parsed.data.returnTo === "my-day" || parsed.data.returnTo === "/"
+      ? "/"
       : parsed.data.routeId
         ? `/scheduling/routes/${parsed.data.routeId}`
         : "/scheduling";
@@ -249,7 +249,7 @@ export async function updateStopStatusAction(formData: FormData) {
 
   revalidatePath(fallbackPath);
   revalidatePath("/scheduling");
-  revalidatePath("/my-day");
+  revalidatePath("/");
   redirect(fallbackPath);
 }
 

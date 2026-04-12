@@ -125,9 +125,9 @@ const STEPS_BY_ROLE: Partial<Record<Role, Step[]>> = {
   DRIVER: [
     {
       title: "Welcome",
-      body: "Your whole day lives on one page: /my-day. It shows the routes assigned to you with one-tap status buttons per stop.",
-      ctaHref: "/my-day",
-      ctaLabel: "Open My Day →",
+      body: "Your whole day lives on the home page. It shows your routes with one-tap status buttons, your queue, and everything you need.",
+      ctaHref: "/",
+      ctaLabel: "Go home →",
     },
     {
       title: "Map link",

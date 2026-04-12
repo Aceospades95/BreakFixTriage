@@ -30,7 +30,7 @@ const SHORTCUTS: { keys: string; label: string; href?: string; hint?: string }[]
   { keys: "g q", label: "Quotes", href: "/quotes" },
   { keys: "g s", label: "Scheduling", href: "/scheduling" },
   { keys: "g k", label: "Kanban", href: "/tickets/kanban" },
-  { keys: "g m", label: "My day", href: "/my-day" },
+  { keys: "g m", label: "My day", href: "/" },
   { keys: "g b", label: "Bench", href: "/bench" },
   { keys: "g c", label: "Scan", href: "/scan" },
   { keys: "g i", label: "Imports", href: "/imports" },

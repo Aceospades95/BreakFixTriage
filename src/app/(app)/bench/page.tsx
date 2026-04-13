@@ -35,7 +35,8 @@ export default async function BenchPage({
     can(session.role, PERMISSIONS.TICKETS_WRITE) ||
     session.role === "OPS_MANAGER" ||
     session.role === "ADMIN";
-  const scope = canSeeAll && searchParams?.scope === "all" ? "all" : "me";
+  // Default to "all" for managers, "me" for everyone else
+  const scope = canSeeAll && searchParams?.scope !== "me" ? "all" : "me";
 
   const activeStates: TicketState[] = [
     "TRIAGE",

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { TicketState } from "@prisma/client";
 import { getSession } from "@/lib/auth/session";
-import { can, PERMISSIONS } from "@/lib/auth/rbac";
+import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
 import { publish } from "@/lib/events/bus";
 import {
   GuardFailedError,
@@ -33,7 +33,7 @@ export async function POST(
   { params }: { params: { ticketId: string } },
 ) {
   const session = await getSession();
-  if (!session || !can(session.role, PERMISSIONS.TICKETS_TRANSITION)) {
+  if (!session || !(await canAsync(session.role, PERMISSIONS.TICKETS_TRANSITION))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

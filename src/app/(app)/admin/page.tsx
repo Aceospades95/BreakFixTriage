@@ -9,12 +9,11 @@ export const dynamic = "force-dynamic";
 export default async function AdminHomePage() {
   await requireRole(PERMISSIONS.USERS_MANAGE);
 
-  const [users, districts, schools, devices, loaners] = await Promise.all([
+  const [users, districts, schools, devices] = await Promise.all([
     prisma.user.count(),
     prisma.district.count(),
     prisma.school.count(),
     prisma.device.count(),
-    prisma.loanerDevice.count(),
   ]);
 
   const cards = [
@@ -43,10 +42,10 @@ export default async function AdminHomePage() {
       description: "Manual device entries and profile history",
     },
     {
-      href: "/admin/loaners",
-      title: "Loaners",
-      count: loaners,
-      description: "Loaner pool and checkout history",
+      href: "/admin/permissions",
+      title: "Permissions",
+      count: null,
+      description: "Customize what each role can access and do",
     },
     {
       href: "/admin/settings",

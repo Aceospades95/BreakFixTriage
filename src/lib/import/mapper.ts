@@ -1,4 +1,4 @@
-import { NormalizedImportRow } from "./schema";
+import type { NormalizedImportRow, NormalizedSchoolRow, NormalizedDeviceRow } from "./schema";
 
 /**
  * Mapping from a superset of ServiceNow export column names to the canonical
@@ -136,6 +136,105 @@ export function mapRawRow(raw: Record<string, unknown>): {
     if (canonical === "priority") {
       const p = normalizePriorityValue(value);
       if (p) mapped.priority = p as NormalizedImportRow["priority"];
+      continue;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mapped as any)[canonical] = value;
+  }
+
+  return { mapped };
+}
+
+// ---------------------------------------------------------------------------
+// School import mapper
+// ---------------------------------------------------------------------------
+
+const SCHOOL_FIELD_ALIASES: Record<string, keyof NormalizedSchoolRow> = {
+  name: "name",
+  schoolname: "name",
+  school: "name",
+  code: "code",
+  schoolcode: "code",
+  dbn: "code",
+  locationcode: "code",
+  district: "districtName",
+  districtname: "districtName",
+  address: "address",
+  streetaddress: "address",
+  street: "address",
+  city: "city",
+  state: "state",
+  zip: "zip",
+  zipcode: "zip",
+  postalcode: "zip",
+  phone: "phone",
+  phonenumber: "phone",
+  contactname: "contactName",
+  contact: "contactName",
+  contactemail: "contactEmail",
+  email: "contactEmail",
+};
+
+export function mapRawSchoolRow(raw: Record<string, unknown>): {
+  mapped: Partial<NormalizedSchoolRow> & { _extra: Record<string, unknown> };
+} {
+  const mapped: Partial<NormalizedSchoolRow> & {
+    _extra: Record<string, unknown>;
+  } = { _extra: {} };
+
+  for (const [rawKey, value] of Object.entries(raw)) {
+    if (value === "" || value == null) continue;
+    const canonical = SCHOOL_FIELD_ALIASES[normalizeKey(rawKey)];
+    if (!canonical) {
+      mapped._extra[rawKey] = value;
+      continue;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mapped as any)[canonical] = value;
+  }
+
+  return { mapped };
+}
+
+// ---------------------------------------------------------------------------
+// Device import mapper
+// ---------------------------------------------------------------------------
+
+const DEVICE_FIELD_ALIASES: Record<string, keyof NormalizedDeviceRow> = {
+  serialnumber: "serialNumber",
+  serial: "serialNumber",
+  sn: "serialNumber",
+  assettag: "assetTag",
+  asset: "assetTag",
+  tag: "assetTag",
+  manufacturer: "manufacturer",
+  make: "manufacturer",
+  brand: "manufacturer",
+  modelname: "modelName",
+  model: "modelName",
+  schoolcode: "schoolCode",
+  school: "schoolCode",
+  dbn: "schoolCode",
+  locationcode: "schoolCode",
+  warrantyend: "warrantyEnd",
+  warrantyexpiry: "warrantyEnd",
+  warranty: "warrantyEnd",
+  notes: "notes",
+  comments: "notes",
+};
+
+export function mapRawDeviceRow(raw: Record<string, unknown>): {
+  mapped: Partial<NormalizedDeviceRow> & { _extra: Record<string, unknown> };
+} {
+  const mapped: Partial<NormalizedDeviceRow> & {
+    _extra: Record<string, unknown>;
+  } = { _extra: {} };
+
+  for (const [rawKey, value] of Object.entries(raw)) {
+    if (value === "" || value == null) continue;
+    const canonical = DEVICE_FIELD_ALIASES[normalizeKey(rawKey)];
+    if (!canonical) {
+      mapped._extra[rawKey] = value;
       continue;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

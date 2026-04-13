@@ -4,7 +4,7 @@
  * Given a string read from a QR code or barcode, figure out what
  * the shop is looking for and return the canonical href to navigate
  * to. Supports incident numbers, device serial numbers / asset
- * tags, loaner serial numbers, and part SKUs — everything a
+ * tags, and part SKUs — everything a
  * warehouse employee might reasonably scan on the floor.
  *
  * The resolver is exported as a pure function that takes a
@@ -18,7 +18,6 @@ import { prisma as defaultPrisma } from "@/lib/db/prisma";
 export type ScanHit =
   | { kind: "ticket"; id: string; label: string; href: string }
   | { kind: "device"; id: string; label: string; href: string }
-  | { kind: "loaner"; id: string; label: string; href: string }
   | { kind: "part"; id: string; label: string; href: string }
   | { kind: "school"; id: string; label: string; href: string };
 
@@ -57,7 +56,7 @@ export async function resolveScan(
 
   const hits: ScanHit[] = [];
 
-  const [ticket, device, loaner, part, school] = await Promise.all([
+  const [ticket, device, part, school] = await Promise.all([
     db.ticket.findFirst({
       where: {
         OR: [
@@ -68,15 +67,6 @@ export async function resolveScan(
       select: { id: true, incidentNumber: true },
     }),
     db.device.findFirst({
-      where: {
-        OR: [
-          { serialNumber: { equals: value, mode: "insensitive" } },
-          { assetTag: { equals: value, mode: "insensitive" } },
-        ],
-      },
-      select: { id: true, serialNumber: true, assetTag: true },
-    }),
-    db.loanerDevice.findFirst({
       where: {
         OR: [
           { serialNumber: { equals: value, mode: "insensitive" } },
@@ -109,14 +99,6 @@ export async function resolveScan(
       id: device.id,
       label: device.assetTag ?? device.serialNumber,
       href: `/admin/devices/${device.id}`,
-    });
-  }
-  if (loaner) {
-    hits.push({
-      kind: "loaner",
-      id: loaner.id,
-      label: loaner.assetTag ?? loaner.serialNumber,
-      href: `/admin/loaners/${loaner.id}`,
     });
   }
   if (part) {

@@ -31,3 +31,38 @@ export const NormalizedImportRow = z.object({
 });
 
 export type NormalizedImportRow = z.infer<typeof NormalizedImportRow>;
+
+/**
+ * Schema for school imports. Schools can be imported from a CSV with
+ * columns for name, code, district, and address fields.
+ */
+export const NormalizedSchoolRow = z.object({
+  name: z.string().trim().min(1, "name is required"),
+  code: z.string().trim().min(1, "code is required"),
+  districtName: z.string().trim().min(1, "districtName is required"),
+  address: z.string().trim().optional(),
+  city: z.string().trim().optional(),
+  state: z.string().trim().optional(),
+  zip: z.string().trim().optional(),
+  phone: z.string().trim().optional(),
+  contactName: z.string().trim().optional(),
+  contactEmail: z.string().trim().email().optional().or(z.literal("")),
+});
+
+export type NormalizedSchoolRow = z.infer<typeof NormalizedSchoolRow>;
+
+/**
+ * Schema for device imports. Devices can be imported from a CSV with
+ * columns for serial number, asset tag, model, and school assignment.
+ */
+export const NormalizedDeviceRow = z.object({
+  serialNumber: z.string().trim().min(1, "serialNumber is required"),
+  assetTag: z.string().trim().optional(),
+  manufacturer: z.string().trim().optional(),
+  modelName: z.string().trim().optional(),
+  schoolCode: z.string().trim().min(1, "schoolCode is required"),
+  warrantyEnd: z.coerce.date().optional(),
+  notes: z.string().trim().optional(),
+});
+
+export type NormalizedDeviceRow = z.infer<typeof NormalizedDeviceRow>;

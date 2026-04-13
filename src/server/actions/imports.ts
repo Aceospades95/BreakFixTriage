@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
-import { runImport } from "@/lib/import/pipeline";
+import { runImport, runSchoolImport, runDeviceImport } from "@/lib/import/pipeline";
 import {
   loadServiceNowConfigFromEnv,
   runServiceNowSync,
@@ -23,16 +23,17 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
 export async function uploadImportAction(formData: FormData) {
   const session = await requireRole(PERMISSIONS.IMPORTS_RUN);
 
+  const importType = (formData.get("importType") as string) ?? "tickets";
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     redirect(
-      "/imports/new?error=" + encodeURIComponent("No file uploaded."),
+      `/imports/new?type=${importType}&error=` + encodeURIComponent("No file uploaded."),
     );
   }
   const upload = file as File;
   if (upload.size > MAX_UPLOAD_BYTES) {
     redirect(
-      "/imports/new?error=" +
+      `/imports/new?type=${importType}&error=` +
         encodeURIComponent(
           `File is too large (max ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB).`,
         ),
@@ -43,12 +44,20 @@ export async function uploadImportAction(formData: FormData) {
   let batchId: string | null = null;
   let errorMessage: string | null = null;
   try {
-    const result = await runImport({
+    const importInput = {
       filename: upload.name,
       buffer,
       uploadedByUserId: session.userId,
       dryRun: false,
-    });
+    };
+    let result;
+    if (importType === "schools") {
+      result = await runSchoolImport(importInput);
+    } else if (importType === "devices") {
+      result = await runDeviceImport(importInput);
+    } else {
+      result = await runImport(importInput);
+    }
     batchId = result.batchId;
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : "Upload failed.";
@@ -56,7 +65,7 @@ export async function uploadImportAction(formData: FormData) {
 
   if (errorMessage || !batchId) {
     redirect(
-      "/imports/new?error=" +
+      `/imports/new?type=${importType}&error=` +
         encodeURIComponent(errorMessage ?? "Upload failed."),
     );
   }

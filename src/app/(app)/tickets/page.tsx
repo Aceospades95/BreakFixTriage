@@ -25,6 +25,9 @@ export default async function TicketsPage({
     page?: string;
     sort?: string;
     dir?: string;
+    school?: string;
+    manufacturer?: string;
+    assignee?: string;
     error?: string;
     ok?: string;
   };
@@ -67,8 +70,21 @@ export default async function TicketsPage({
   const dirParam = searchParams?.dir;
   const sortDir: "asc" | "desc" = dirParam === "asc" ? "asc" : "desc";
 
+  const schoolFilter = searchParams?.school || undefined;
+  const manufacturerFilter = searchParams?.manufacturer || undefined;
+  const assigneeFilter = searchParams?.assignee || undefined;
+
   const where: Prisma.TicketWhereInput = {
     ...(stateFilter ? { state: stateFilter } : {}),
+    ...(schoolFilter ? { schoolId: schoolFilter } : {}),
+    ...(assigneeFilter
+      ? assigneeFilter === "unassigned"
+        ? { assignedUserId: null }
+        : { assignedUserId: assigneeFilter }
+      : {}),
+    ...(manufacturerFilter
+      ? { device: { model: { manufacturer: manufacturerFilter } } }
+      : {}),
     ...(query
       ? {
           OR: [
@@ -89,7 +105,7 @@ export default async function TicketsPage({
       : {}),
   };
 
-  const [tickets, total, assignableUsers, templates, schoolsForPicker] =
+  const [tickets, total, assignableUsers, templates, schoolsForPicker, manufacturers] =
     await Promise.all([
     prisma.ticket.findMany({
       where,
@@ -121,23 +137,30 @@ export default async function TicketsPage({
           orderBy: { name: "asc" },
         })
       : Promise.resolve([]),
-    canWrite
-      ? prisma.school.findMany({
-          where: { active: true },
-          orderBy: { name: "asc" },
-          select: { id: true, name: true, code: true },
-          take: 500,
-        })
-      : Promise.resolve([]),
+    prisma.school.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, code: true },
+      take: 500,
+    }),
+    prisma.deviceModel.findMany({
+      distinct: ["manufacturer"],
+      select: { manufacturer: true },
+      orderBy: { manufacturer: "asc" },
+    }),
   ]);
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const allStates = Object.values(TicketState);
-  const returnTo = `/tickets?${new URLSearchParams({
+  const activeFilters: Record<string, string> = {
     ...(stateFilter ? { state: stateFilter } : {}),
     ...(query ? { q: query } : {}),
+    ...(schoolFilter ? { school: schoolFilter } : {}),
+    ...(manufacturerFilter ? { manufacturer: manufacturerFilter } : {}),
+    ...(assigneeFilter ? { assignee: assigneeFilter } : {}),
     ...(page > 1 ? { page: String(page) } : {}),
-  }).toString()}`;
+  };
+  const returnTo = `/tickets?${new URLSearchParams(activeFilters).toString()}`;
 
   return (
     <>
@@ -153,10 +176,10 @@ export default async function TicketsPage({
               Kanban view
             </Link>
             <Link
-              href="/bench"
+              href="/bench?scope=all"
               className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
             >
-              Tech bench
+              All benches
             </Link>
           </div>
         }
@@ -222,62 +245,120 @@ export default async function TicketsPage({
 
       <form
         method="get"
-        className="mb-5 flex flex-wrap items-end gap-3 rounded border border-surface-border bg-surface-muted/40 p-3"
+        className="mb-5 space-y-3 rounded border border-surface-border bg-surface-muted/40 p-3"
       >
-        <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-wide text-slate-400">
-            Search
-          </span>
-          <input
-            type="search"
-            name="q"
-            defaultValue={query}
-            placeholder="Incident or description"
-            className="w-64 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-wide text-slate-400">
-            State
-          </span>
-          <select
-            name="state"
-            defaultValue={stateFilter ?? ""}
-            className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              Search
+            </span>
+            <input
+              type="search"
+              name="q"
+              defaultValue={query}
+              placeholder="Incident or description"
+              className="w-56 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              State
+            </span>
+            <select
+              name="state"
+              defaultValue={stateFilter ?? ""}
+              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="">All states</option>
+              {allStates.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              School
+            </span>
+            <select
+              name="school"
+              defaultValue={schoolFilter ?? ""}
+              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="">All schools</option>
+              {schoolsForPicker.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.code && `(${s.code})`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              Manufacturer
+            </span>
+            <select
+              name="manufacturer"
+              defaultValue={manufacturerFilter ?? ""}
+              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="">All manufacturers</option>
+              {manufacturers.map((m) => (
+                <option key={m.manufacturer} value={m.manufacturer}>
+                  {m.manufacturer}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              Assignee
+            </span>
+            <select
+              name="assignee"
+              defaultValue={assigneeFilter ?? ""}
+              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="">All assignees</option>
+              <option value="unassigned">Unassigned</option>
+              {assignableUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            className="rounded bg-accent px-3 py-1 text-sm font-semibold transition hover:bg-accent-strong"
           >
-            <option value="">All states</option>
-            {allStates.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          className="rounded bg-accent px-3 py-1 text-sm font-semibold transition hover:bg-accent-strong"
-        >
-          Apply
-        </button>
-        {(query || stateFilter) && (
-          <Link
-            href="/tickets"
-            className="text-xs text-slate-400 hover:text-white"
-          >
-            Clear filters
-          </Link>
-        )}
-        <div className="ml-auto">
-          <a
-            href={`/api/exports/tickets?${new URLSearchParams({
-              ...(stateFilter ? { state: stateFilter } : {}),
-              ...(query ? { q: query } : {}),
-            }).toString()}`}
-            className="rounded border border-surface-border px-3 py-1 text-sm transition hover:border-accent"
-            title="Download matching tickets as CSV"
-          >
-            ⬇ Export CSV
-          </a>
+            Apply filters
+          </button>
+          {(query || stateFilter || schoolFilter || manufacturerFilter || assigneeFilter) && (
+            <Link
+              href="/tickets"
+              className="text-xs text-slate-400 hover:text-white"
+            >
+              Clear all filters
+            </Link>
+          )}
+          <div className="ml-auto">
+            <a
+              href={`/api/exports/tickets?${new URLSearchParams({
+                ...(stateFilter ? { state: stateFilter } : {}),
+                ...(query ? { q: query } : {}),
+                ...(schoolFilter ? { school: schoolFilter } : {}),
+                ...(manufacturerFilter ? { manufacturer: manufacturerFilter } : {}),
+              }).toString()}`}
+              className="rounded border border-surface-border px-3 py-1 text-sm transition hover:border-accent"
+              title="Download matching tickets as CSV"
+            >
+              Export CSV
+            </a>
+          </div>
         </div>
       </form>
 

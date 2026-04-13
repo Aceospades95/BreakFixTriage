@@ -39,7 +39,7 @@ const STEPS_BY_ROLE: Partial<Record<Role, Step[]>> = {
     },
     {
       title: "Admin lives under /admin",
-      body: "Users, schools, devices, parts, loaners, templates, settings, and the audit log. If something is missing from the workflow, it's probably there.",
+      body: "Users, schools, devices, parts, templates, settings, and the audit log. If something is missing from the workflow, it's probably there.",
       ctaHref: "/admin",
       ctaLabel: "Open admin →",
     },

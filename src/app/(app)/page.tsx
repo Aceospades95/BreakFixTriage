@@ -569,9 +569,10 @@ export default async function HomePage() {
                 .map((row) => {
                   const user = benchUserMap.get(row.assignedUserId!);
                   return (
-                    <div
+                    <Link
                       key={row.assignedUserId}
-                      className="rounded-lg border border-surface-border bg-surface-muted p-3"
+                      href={`/bench?scope=all&highlight=${row.assignedUserId}`}
+                      className="rounded-lg border border-surface-border bg-surface-muted p-3 transition hover:border-accent"
                     >
                       <div className="flex items-center justify-between">
                         <div className="min-w-0">
@@ -586,7 +587,7 @@ export default async function HomePage() {
                           {row._count._all}
                         </span>
                       </div>
-                    </div>
+                    </Link>
                   );
                 })}
             </div>

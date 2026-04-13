@@ -9,19 +9,11 @@ import { useAppEvents } from "@/components/use-app-events";
 import { cn } from "@/lib/cn";
 
 /**
- * Drag-and-drop kanban.
+ * Drag-and-drop kanban with a grid/board toggle.
  *
- * Uses the HTML5 drag-and-drop API so nothing has to be added to
- * the bundle. Each card is draggable; columns are drop zones. On
- * drop, we POST to `/api/tickets/[id]/transition` with the target
- * state. The server action validates the transition through the
- * existing state machine, so an illegal drop gets a toast and the
- * board reverts to the server state.
- *
- * Optimistic UI: the card moves into the target column the instant
- * a drop lands, then we call `router.refresh()` to re-sync with
- * the server. If the server rejected the transition, the refresh
- * snaps the card back.
+ * Board mode: classic horizontal scroll with drag-and-drop.
+ * Grid mode: all columns visible at once in a responsive grid,
+ * with expandable card lists. Better for seeing the full picture.
  */
 
 export interface KanbanColumnDef {
@@ -49,10 +41,8 @@ export function KanbanBoard({
   tickets: KanbanTicket[];
 }) {
   const router = useRouter();
+  const [viewMode, setViewMode] = useState<"grid" | "board">("grid");
 
-  // Live push: any time a ticket changes on the server (someone
-  // else dragged, a bulk action ran, etc.) we refresh the server
-  // component feeding this board.
   useAppEvents(["tickets.changed", "tickets.bulk-changed"]);
 
   const [dragging, setDragging] = useState<string | null>(null);
@@ -61,9 +51,19 @@ export function KanbanBoard({
     () => new Map(),
   );
   const [error, setError] = useState<string | null>(null);
+  const [expandedCols, setExpandedCols] = useState<Set<string>>(() => new Set());
 
   function effectiveState(t: KanbanTicket): TicketState {
     return optimistic.get(t.id) ?? t.state;
+  }
+
+  function toggleExpand(state: string) {
+    setExpandedCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(state)) next.delete(state);
+      else next.add(state);
+      return next;
+    });
   }
 
   function handleDragStart(e: React.DragEvent<HTMLAnchorElement>, id: string) {
@@ -73,7 +73,7 @@ export function KanbanBoard({
       e.dataTransfer.setData("text/plain", id);
       e.dataTransfer.effectAllowed = "move";
     } catch {
-      /* some browsers restrict; optional */
+      /* some browsers restrict */
     }
   }
 
@@ -98,7 +98,6 @@ export function KanbanBoard({
     setDropTarget(null);
     if (!id) return;
 
-    // Optimistic move
     setOptimistic((prev) => {
       const next = new Map(prev);
       next.set(id, target);
@@ -120,11 +119,7 @@ export function KanbanBoard({
         } | null;
         throw new Error(body?.error ?? `Transition failed (${res.status})`);
       }
-      // Server accepted. Ask Next to re-run the server component so
-      // the board reflects the new ticket state from the DB.
       router.refresh();
-      // Clear the optimistic entry after a moment so the refresh
-      // doesn't race with our state.
       setTimeout(() => {
         setOptimistic((prev) => {
           const next = new Map(prev);
@@ -133,7 +128,6 @@ export function KanbanBoard({
         });
       }, 1500);
     } catch (err) {
-      // Revert the optimistic move and surface the error.
       setOptimistic((prev) => {
         const next = new Map(prev);
         next.delete(id);
@@ -162,81 +156,205 @@ export function KanbanBoard({
         </div>
       )}
 
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {columns.map((col) => {
-          const colTickets = byState.get(col.state) ?? [];
-          const isOver = dropTarget === col.state;
-          return (
-            <div
-              key={col.state}
-              onDragOver={(e) => handleDragOver(e, col.state)}
-              onDrop={(e) => handleDrop(e, col.state)}
-              onDragLeave={() => {
-                if (dropTarget === col.state) setDropTarget(null);
-              }}
-              className={cn(
-                "flex min-w-[260px] max-w-[260px] shrink-0 flex-col rounded-lg border bg-surface-muted/40 transition",
-                isOver
-                  ? "border-accent ring-2 ring-accent/60 bg-accent/10"
-                  : "border-surface-border",
-              )}
-              aria-label={`${col.title} column, drop tickets here to transition`}
-            >
-              <div className="flex items-center justify-between border-b border-surface-border px-3 py-2">
-                <div>
-                  <div className="text-sm font-semibold text-slate-100">
-                    {col.title}
-                  </div>
-                  <div className="text-[10px] text-slate-500">{col.hint}</div>
-                </div>
-                <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
-                  {colTickets.length}
-                </span>
-              </div>
-              <ul className="flex-1 space-y-2 overflow-y-auto p-2">
-                {colTickets.slice(0, 40).map((t) => (
-                  <li key={t.id}>
-                    <Link
-                      href={`/tickets/${t.id}`}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, t.id)}
-                      onDragEnd={handleDragEnd}
-                      className={cn(
-                        "block cursor-grab rounded border border-surface-border bg-surface p-2 text-xs transition active:cursor-grabbing hover:border-accent",
-                        dragging === t.id ? "opacity-40" : "",
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-accent">
-                          {t.incidentNumber}
-                        </span>
-                        <SlaBadge ticket={t} compact />
-                      </div>
-                      <div className="mt-1 line-clamp-2 text-slate-300">
-                        {t.shortDescription}
-                      </div>
-                      <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
-                        <span>{t.schoolName}</span>
-                        {t.assigneeName && <span>→ {t.assigneeName}</span>}
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-                {colTickets.length === 0 && (
-                  <li className="text-center text-[11px] text-slate-500">
-                    {isOver ? "drop to transition" : "empty"}
-                  </li>
-                )}
-                {colTickets.length > 40 && (
-                  <li className="text-center text-[10px] text-slate-500">
-                    …and {colTickets.length - 40} more
-                  </li>
-                )}
-              </ul>
-            </div>
-          );
-        })}
+      {/* View toggle */}
+      <div className="mb-4 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setViewMode("grid")}
+          className={cn(
+            "rounded-md px-3 py-1.5 text-xs font-medium transition",
+            viewMode === "grid"
+              ? "bg-accent text-white"
+              : "border border-surface-border text-slate-300 hover:border-accent hover:text-white",
+          )}
+        >
+          Grid view
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("board")}
+          className={cn(
+            "rounded-md px-3 py-1.5 text-xs font-medium transition",
+            viewMode === "board"
+              ? "bg-accent text-white"
+              : "border border-surface-border text-slate-300 hover:border-accent hover:text-white",
+          )}
+        >
+          Board view
+        </button>
+        <span className="ml-2 text-xs text-slate-500">
+          {viewMode === "board" ? "Drag cards between columns to transition" : "Click a column to expand, drag cards in board view"}
+        </span>
       </div>
+
+      {viewMode === "grid" ? (
+        /* Grid mode: responsive grid showing all columns at once */
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {columns.map((col) => {
+            const colTickets = byState.get(col.state) ?? [];
+            const isExpanded = expandedCols.has(col.state);
+            const showCount = isExpanded ? 20 : 3;
+            return (
+              <div
+                key={col.state}
+                onDragOver={(e) => handleDragOver(e, col.state)}
+                onDrop={(e) => handleDrop(e, col.state)}
+                onDragLeave={() => {
+                  if (dropTarget === col.state) setDropTarget(null);
+                }}
+                className={cn(
+                  "rounded-lg border transition",
+                  dropTarget === col.state
+                    ? "border-accent ring-2 ring-accent/60 bg-accent/10"
+                    : "border-surface-border bg-surface-muted/40",
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleExpand(col.state)}
+                  className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">
+                      {col.title}
+                    </div>
+                    <div className="text-[10px] text-slate-500">{col.hint}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
+                      {colTickets.length}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {isExpanded ? "▼" : "▶"}
+                    </span>
+                  </div>
+                </button>
+                {colTickets.length > 0 && (
+                  <ul className="space-y-1.5 border-t border-surface-border/50 p-2">
+                    {colTickets.slice(0, showCount).map((t) => (
+                      <li key={t.id}>
+                        <Link
+                          href={`/tickets/${t.id}`}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, t.id)}
+                          onDragEnd={handleDragEnd}
+                          className={cn(
+                            "block rounded border border-surface-border bg-surface p-2 text-xs transition hover:border-accent",
+                            dragging === t.id ? "opacity-40" : "",
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-accent">
+                              {t.incidentNumber}
+                            </span>
+                            <SlaBadge ticket={t} compact />
+                          </div>
+                          <div className="mt-1 line-clamp-1 text-slate-300">
+                            {t.shortDescription}
+                          </div>
+                          <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
+                            <span>{t.schoolName}</span>
+                            {t.assigneeName && <span>{t.assigneeName}</span>}
+                          </div>
+                        </Link>
+                      </li>
+                    ))}
+                    {colTickets.length > showCount && (
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => toggleExpand(col.state)}
+                          className="w-full rounded px-2 py-1 text-center text-[10px] text-slate-500 hover:text-accent"
+                        >
+                          {isExpanded
+                            ? "show less"
+                            : `+${colTickets.length - showCount} more`}
+                        </button>
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* Board mode: classic horizontal scroll */
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {columns.map((col) => {
+            const colTickets = byState.get(col.state) ?? [];
+            const isOver = dropTarget === col.state;
+            return (
+              <div
+                key={col.state}
+                onDragOver={(e) => handleDragOver(e, col.state)}
+                onDrop={(e) => handleDrop(e, col.state)}
+                onDragLeave={() => {
+                  if (dropTarget === col.state) setDropTarget(null);
+                }}
+                className={cn(
+                  "flex min-w-[260px] max-w-[260px] shrink-0 flex-col rounded-lg border bg-surface-muted/40 transition",
+                  isOver
+                    ? "border-accent ring-2 ring-accent/60 bg-accent/10"
+                    : "border-surface-border",
+                )}
+              >
+                <div className="flex items-center justify-between border-b border-surface-border px-3 py-2">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">
+                      {col.title}
+                    </div>
+                    <div className="text-[10px] text-slate-500">{col.hint}</div>
+                  </div>
+                  <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
+                    {colTickets.length}
+                  </span>
+                </div>
+                <ul className="flex-1 space-y-2 overflow-y-auto p-2">
+                  {colTickets.slice(0, 40).map((t) => (
+                    <li key={t.id}>
+                      <Link
+                        href={`/tickets/${t.id}`}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, t.id)}
+                        onDragEnd={handleDragEnd}
+                        className={cn(
+                          "block cursor-grab rounded border border-surface-border bg-surface p-2 text-xs transition active:cursor-grabbing hover:border-accent",
+                          dragging === t.id ? "opacity-40" : "",
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-accent">
+                            {t.incidentNumber}
+                          </span>
+                          <SlaBadge ticket={t} compact />
+                        </div>
+                        <div className="mt-1 line-clamp-2 text-slate-300">
+                          {t.shortDescription}
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
+                          <span>{t.schoolName}</span>
+                          {t.assigneeName && <span>→ {t.assigneeName}</span>}
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                  {colTickets.length === 0 && (
+                    <li className="text-center text-[11px] text-slate-500">
+                      {isOver ? "drop to transition" : "empty"}
+                    </li>
+                  )}
+                  {colTickets.length > 40 && (
+                    <li className="text-center text-[10px] text-slate-500">
+                      …and {colTickets.length - 40} more
+                    </li>
+                  )}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }

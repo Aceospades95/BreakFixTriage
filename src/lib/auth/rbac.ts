@@ -33,11 +33,11 @@ const READ_ONLY_SET: readonly Permission[] = [
 ];
 
 /**
- * Role → permissions mapping. Intentionally static; changes are code
- * changes, not runtime configuration, because auditability matters more
- * than flexibility here.
+ * Default role → permissions mapping. These are the built-in defaults
+ * which can be overridden per-role via the admin permission editor.
+ * Admin always gets all permissions regardless of overrides.
  */
-export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
+export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ADMIN: Object.values(PERMISSIONS),
   OPS_MANAGER: [
     ...READ_ONLY_SET,
@@ -73,8 +73,86 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   READ_ONLY: READ_ONLY_SET,
 };
 
+/** Backwards compat alias */
+export const ROLE_PERMISSIONS = DEFAULT_ROLE_PERMISSIONS;
+
+/**
+ * Runtime permission overrides loaded from the database.
+ * Set by `loadPermissionOverrides()` on first check or admin save.
+ * `undefined` means "not yet loaded", `null` means "loaded, no overrides".
+ */
+let overrides: Record<string, Permission[]> | null | undefined = undefined;
+let loadPromise: Promise<void> | null = null;
+
+export function setPermissionOverrides(
+  o: Record<string, Permission[]> | null,
+) {
+  overrides = o;
+}
+
+export function getPermissionOverrides(): Record<string, Permission[]> | null {
+  return overrides ?? null;
+}
+
+/**
+ * Lazy-load overrides from the database on first access.
+ * Subsequent calls use the cached value.
+ */
+async function ensureOverridesLoaded() {
+  if (overrides !== undefined) return;
+  if (loadPromise) {
+    await loadPromise;
+    return;
+  }
+  loadPromise = (async () => {
+    try {
+      // Dynamic import to avoid circular deps
+      const { prisma } = await import("@/lib/db/prisma");
+      const setting = await prisma.appSetting.findUnique({
+        where: { key: "role_permission_overrides" },
+      });
+      if (!setting) {
+        overrides = null;
+        return;
+      }
+      const parsed = JSON.parse(setting.value) as Record<string, string[]>;
+      const allPerms = Object.values(PERMISSIONS);
+      const validated: Record<string, Permission[]> = {};
+      for (const [role, perms] of Object.entries(parsed)) {
+        validated[role] = perms.filter((p): p is Permission =>
+          allPerms.includes(p as Permission),
+        );
+      }
+      overrides = validated;
+    } catch {
+      overrides = null;
+    }
+  })();
+  await loadPromise;
+  loadPromise = null;
+}
+
+export function getEffectivePermissions(role: Role): readonly Permission[] {
+  // Admin always has all permissions
+  if (role === "ADMIN") return Object.values(PERMISSIONS);
+  if (overrides && overrides[role]) return overrides[role];
+  return DEFAULT_ROLE_PERMISSIONS[role];
+}
+
+/**
+ * Check if a role has a given permission. Synchronous — uses cached
+ * overrides. Call `ensureOverridesLoaded()` first in async contexts.
+ */
 export function can(role: Role, permission: Permission): boolean {
-  return ROLE_PERMISSIONS[role].includes(permission);
+  return getEffectivePermissions(role).includes(permission);
+}
+
+/**
+ * Async version of `can()` that ensures overrides are loaded first.
+ */
+export async function canAsync(role: Role, permission: Permission): Promise<boolean> {
+  await ensureOverridesLoaded();
+  return can(role, permission);
 }
 
 export class AuthorizationError extends Error {

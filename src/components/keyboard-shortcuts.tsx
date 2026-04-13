@@ -35,7 +35,6 @@ const SHORTCUTS: { keys: string; label: string; href?: string; hint?: string }[]
   { keys: "g c", label: "Scan", href: "/scan" },
   { keys: "g i", label: "Imports", href: "/imports" },
   { keys: "g d", label: "Dashboards", href: "/dashboards" },
-  { keys: "g n", label: "Shift notes", href: "/shift-notes" },
 ];
 
 const ROUTES: Record<string, string> = Object.fromEntries(

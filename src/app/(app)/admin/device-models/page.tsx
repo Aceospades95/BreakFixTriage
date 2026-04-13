@@ -13,7 +13,7 @@ export default async function AdminDeviceModelsPage() {
     orderBy: [{ manufacturer: "asc" }, { modelName: "asc" }],
     include: {
       _count: {
-        select: { devices: true, loanerDevices: true, parts: true },
+        select: { devices: true, parts: true },
       },
     },
   });

@@ -9,12 +9,11 @@ export const dynamic = "force-dynamic";
 export default async function AdminHomePage() {
   await requireRole(PERMISSIONS.USERS_MANAGE);
 
-  const [users, districts, schools, devices, loaners] = await Promise.all([
+  const [users, districts, schools, devices] = await Promise.all([
     prisma.user.count(),
     prisma.district.count(),
     prisma.school.count(),
     prisma.device.count(),
-    prisma.loanerDevice.count(),
   ]);
 
   const cards = [
@@ -43,10 +42,16 @@ export default async function AdminHomePage() {
       description: "Manual device entries and profile history",
     },
     {
-      href: "/admin/loaners",
-      title: "Loaners",
-      count: loaners,
-      description: "Loaner pool and checkout history",
+      href: "/admin/permissions",
+      title: "Permissions",
+      count: null,
+      description: "Customize what each role can access and do",
+    },
+    {
+      href: "/admin/statuses",
+      title: "Statuses",
+      count: null,
+      description: "Configure workflow states, transitions, and SLA thresholds",
     },
     {
       href: "/admin/settings",
@@ -79,7 +84,7 @@ export default async function AdminHomePage() {
             <div className="flex items-center justify-between">
               <div className="text-base font-semibold">{card.title}</div>
               {card.count != null && (
-                <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
+                <span className="rounded bg-surface-border px-2 py-0.5 text-xs tabular-nums">
                   {card.count}
                 </span>
               )}

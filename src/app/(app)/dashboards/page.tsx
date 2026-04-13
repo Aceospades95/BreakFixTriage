@@ -34,32 +34,37 @@ export default async function DashboardsPage() {
         title="Dashboards"
         subtitle="Operational health snapshot"
         actions={
-          <div className="flex items-center gap-3">
-            <AutoRefresh
-              storageKey="dashboards-auto-refresh"
-              intervalSeconds={60}
-            />
-            <Link
-              href="/dashboards/finance"
-              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-            >
-              Finance →
-            </Link>
-            <Link
-              href="/dashboards/productivity"
-              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-            >
-              Productivity →
-            </Link>
-            <Link
-              href="/dashboards/devices"
-              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-            >
-              Device hotspots →
-            </Link>
-          </div>
+          <AutoRefresh
+            storageKey="dashboards-auto-refresh"
+            intervalSeconds={60}
+          />
         }
       />
+
+      {/* Dashboard tabs */}
+      <nav className="mb-6 flex gap-1 rounded-lg border border-surface-border bg-surface-muted/60 p-1">
+        <span className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white">
+          Overview
+        </span>
+        <Link
+          href="/dashboards/finance"
+          className="rounded-md px-4 py-2 text-sm text-slate-300 transition hover:bg-surface-border/40 hover:text-white"
+        >
+          Finance
+        </Link>
+        <Link
+          href="/dashboards/productivity"
+          className="rounded-md px-4 py-2 text-sm text-slate-300 transition hover:bg-surface-border/40 hover:text-white"
+        >
+          Productivity
+        </Link>
+        <Link
+          href="/dashboards/devices"
+          className="rounded-md px-4 py-2 text-sm text-slate-300 transition hover:bg-surface-border/40 hover:text-white"
+        >
+          Device Hotspots
+        </Link>
+      </nav>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="Open tickets" value={openTotal} href="/tickets" />

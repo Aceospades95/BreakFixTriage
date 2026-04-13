@@ -158,12 +158,9 @@ export async function cancelRoute(
         continue;
       }
 
-      // Delete the RouteStop rather than just marking it CANCELLED.
-      // The jobId column has a @unique constraint, so leaving a
-      // cancelled row in place blocks the same job from ever being
-      // rescheduled onto a new route.
-      await tx.routeStop.delete({
+      await tx.routeStop.update({
         where: { id: stop.id },
+        data: { status: JobStatus.CANCELLED },
       });
       await tx.job.update({
         where: { id: stop.jobId },

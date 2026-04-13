@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "./auth";
 import {
   AuthorizationError,
-  can,
+  canAsync,
   type Permission,
 } from "./rbac";
 
@@ -59,7 +59,7 @@ export async function requireRole(
 ): Promise<BreakFixSession> {
   const session = await requireSession();
   for (const perm of permissions) {
-    if (!can(session.role, perm)) {
+    if (!(await canAsync(session.role, perm))) {
       throw new AuthorizationError(session.role, perm);
     }
   }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { Role } from "@prisma/client";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Help menu in the header toolbar. Provides:
@@ -9,8 +9,8 @@ import type { Role } from "@prisma/client";
  * - Quick-reference wiki of how the app works
  * - Keyboard shortcut hint
  *
- * Uses a client-side dropdown so we can clear the onboarding cookie
- * and toggle the wiki panel without navigation.
+ * The dropdown and wiki modal are portaled to document.body so they
+ * aren't clipped or repositioned by the header's flex layout.
  */
 
 const WIKI_SECTIONS = [
@@ -48,97 +48,130 @@ const WIKI_SECTIONS = [
   },
 ];
 
-export function HelpMenu({ role }: { role: Role }) {
+export function HelpMenu() {
   const [open, setOpen] = useState(false);
   const [showWiki, setShowWiki] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  // Close wiki on Escape
+  useEffect(() => {
+    if (!showWiki) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setShowWiki(false);
+      }
+    }
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [showWiki]);
 
   function restartTour() {
-    // Clear the onboarding cookie so the tour shows again on next page load
     document.cookie =
       "bft_onboarding_done=; path=/; max-age=0; samesite=lax";
     setOpen(false);
-    // Reload so the server component sees the cleared cookie
     window.location.href = "/";
   }
 
+  // Calculate dropdown position from button ref
+  const btnRect = btnRef.current?.getBoundingClientRect();
+
   return (
     <>
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1 rounded border border-transparent px-2 py-1 text-sm text-slate-300 transition hover:border-surface-border hover:text-white"
-          aria-label="Help and resources"
-        >
-          <span className="text-base" aria-hidden="true">?</span>
-        </button>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-8 w-8 items-center justify-center rounded border border-surface-border text-sm font-semibold text-slate-300 transition hover:border-accent hover:text-white"
+        aria-label="Help and resources"
+      >
+        ?
+      </button>
 
-        {open && (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setOpen(false)}
-            />
-            <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-surface-border bg-surface-muted shadow-xl">
-              <div className="border-b border-surface-border px-3 py-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-300">
-                  Help
-                </span>
-              </div>
-              <ul className="py-1 text-sm">
-                <li>
-                  <button
-                    type="button"
-                    onClick={restartTour}
-                    className="w-full px-3 py-2 text-left text-slate-300 hover:bg-surface-border/40 hover:text-white"
-                  >
-                    Restart tutorial
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      setShowWiki(true);
-                    }}
-                    className="w-full px-3 py-2 text-left text-slate-300 hover:bg-surface-border/40 hover:text-white"
-                  >
-                    How the app works
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      // Trigger keyboard shortcut overlay via synthetic keydown
-                      document.dispatchEvent(
-                        new KeyboardEvent("keydown", { key: "?" }),
-                      );
-                    }}
-                    className="w-full px-3 py-2 text-left text-slate-300 hover:bg-surface-border/40 hover:text-white"
-                  >
-                    Keyboard shortcuts
-                    <span className="ml-2 font-mono text-xs text-slate-500">
-                      ?
-                    </span>
-                  </button>
-                </li>
-              </ul>
+      {/* Dropdown menu — portaled to body */}
+      {mounted && open && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[60]"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            className="fixed z-[61] w-56 rounded-lg border border-surface-border bg-surface-muted shadow-xl"
+            style={{
+              top: btnRect ? btnRect.bottom + 4 : 48,
+              right: btnRect ? window.innerWidth - btnRect.right : 16,
+            }}
+          >
+            <div className="border-b border-surface-border px-3 py-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+                Help
+              </span>
             </div>
-          </>
-        )}
-      </div>
+            <ul className="py-1 text-sm">
+              <li>
+                <button
+                  type="button"
+                  onClick={restartTour}
+                  className="w-full px-3 py-2 text-left text-slate-300 hover:bg-surface-border/40 hover:text-white"
+                >
+                  Restart tutorial
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setShowWiki(true);
+                  }}
+                  className="w-full px-3 py-2 text-left text-slate-300 hover:bg-surface-border/40 hover:text-white"
+                >
+                  How the app works
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    // Small delay so the button blur doesn't interfere
+                    // with the keyboard-shortcuts component
+                    setTimeout(() => {
+                      document.dispatchEvent(
+                        new KeyboardEvent("keydown", {
+                          key: "?",
+                          bubbles: true,
+                        }),
+                      );
+                    }, 50);
+                  }}
+                  className="w-full px-3 py-2 text-left text-slate-300 hover:bg-surface-border/40 hover:text-white"
+                >
+                  Keyboard shortcuts
+                  <span className="ml-2 font-mono text-xs text-slate-500">
+                    ?
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </>,
+        document.body,
+      )}
 
-      {/* Wiki / how-it-works panel */}
-      {showWiki && (
+      {/* Wiki / how-it-works modal — portaled to body */}
+      {mounted && showWiki && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur"
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur"
           onClick={() => setShowWiki(false)}
         >
           <div
-            className="max-h-[80vh] w-full max-w-2xl overflow-auto rounded-xl border border-surface-border bg-surface-muted p-6 shadow-2xl"
+            className="mx-4 max-h-[80vh] w-full max-w-2xl overflow-auto rounded-xl border border-surface-border bg-surface-muted p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
@@ -148,18 +181,18 @@ export function HelpMenu({ role }: { role: Role }) {
               <button
                 type="button"
                 onClick={() => setShowWiki(false)}
-                className="rounded border border-surface-border px-2 py-0.5 text-xs hover:border-accent"
+                className="rounded border border-surface-border px-3 py-1 text-xs text-slate-300 hover:border-accent hover:text-white"
               >
-                close
+                Close
               </button>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-5">
               {WIKI_SECTIONS.map((section) => (
                 <div key={section.title}>
                   <h3 className="text-sm font-semibold text-slate-200">
                     {section.title}
                   </h3>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <p className="mt-1 text-sm leading-relaxed text-slate-400">
                     {section.body}
                   </p>
                 </div>
@@ -168,13 +201,14 @@ export function HelpMenu({ role }: { role: Role }) {
             <div className="mt-6 border-t border-surface-border pt-4">
               <p className="text-xs text-slate-500">
                 Need more help? Ask your team lead or check with your admin.
-                You can also press{" "}
+                Press{" "}
                 <span className="font-mono text-accent">?</span> anywhere
                 for keyboard shortcuts.
               </p>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

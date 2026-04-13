@@ -21,7 +21,8 @@ export default async function InvoicesPage({
 }: {
   searchParams?: { error?: string };
 }) {
-  const session = await requireRole(PERMISSIONS.QUOTES_READ);
+  // Invoices are only accessible to managers and admins
+  const session = await requireRole(PERMISSIONS.QUOTES_READ, PERMISSIONS.TICKETS_WRITE);
   const canWrite = can(session.role, PERMISSIONS.QUOTES_WRITE);
 
   const tickets = await prisma.ticket.findMany({

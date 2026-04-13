@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { TicketState, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
-import { can, PERMISSIONS } from "@/lib/auth/rbac";
+import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
 import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
 
 /**
@@ -13,7 +13,7 @@ import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
  */
 export async function GET(request: Request) {
   const session = await getSession();
-  if (!session || !can(session.role, PERMISSIONS.TICKETS_READ)) {
+  if (!session || !(await canAsync(session.role, PERMISSIONS.TICKETS_READ))) {
     return new NextResponse("unauthorized", { status: 401 });
   }
 

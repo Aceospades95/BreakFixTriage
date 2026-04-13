@@ -6,7 +6,7 @@ import Link from "next/link";
 import { QrScanner } from "@/components/qr-scanner";
 
 interface ScanHit {
-  kind: "ticket" | "device" | "loaner" | "part" | "school";
+  kind: "ticket" | "device" | "part" | "school";
   id: string;
   label: string;
   href: string;

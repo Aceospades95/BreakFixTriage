@@ -62,9 +62,7 @@ model User {
   comments          Comment[]          @relation("CommentAuthor")
   uploadedAttachments Attachment[]     @relation("AttachmentUploader")
   inAppNotifications InAppNotification[] @relation("InAppNotificationRecipient")
-  loanerCheckouts   LoanerAssignment[] @relation("LoanerCheckedOutBy")
   partMovements     PartMovement[]     @relation("PartMovementUser")
-  shiftNotes        ShiftNote[]        @relation("ShiftNoteAuthor")
   timeEntries       TimeEntry[]        @relation("UserTimeEntries")
 
   @@index([role])
@@ -123,7 +121,6 @@ model School {
   devices       Device[]
   tickets       Ticket[]
   jobs          Job[]
-  loanerAssignments LoanerAssignment[]
   portalTokens  PortalToken[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -170,7 +167,6 @@ model DeviceModel {
   warrantyMonths Int?
   repairNotes    String?
   devices        Device[]
-  loanerDevices  LoanerDevice[]
   parts          Part[]     @relation("PartCompatibility")
 
   @@unique([manufacturer, modelName])
@@ -272,7 +268,6 @@ model Ticket {
   notifications    Notification[]
   comments         Comment[]
   attachments      Attachment[]
-  loanerAssignments LoanerAssignment[] @relation("LoanerForTicket")
   partUsages       PartUsage[]        @relation("PartUsageTicket")
   partMovements    PartMovement[]     @relation("PartMovementTicket")
   manufacturerRmas ManufacturerRma[]
@@ -316,6 +311,15 @@ enum ImportSource {
   MANUAL
 }
 
+enum ImportType {
+  TICKETS
+  SCHOOLS
+  DEVICES
+  USERS
+  PARTS
+  DEVICE_MODELS
+}
+
 enum ImportStatus {
   PENDING
   VALIDATING
@@ -342,6 +346,7 @@ model ImportBatch {
   filename         String
   uploadedByUserId String
   source           ImportSource
+  type             ImportType   @default(TICKETS)
   status           ImportStatus @default(PENDING)
   stats            Json?
   error            String?
@@ -445,7 +450,7 @@ model Job {
 
   school      School      @relation(fields: [schoolId], references: [id])
   ticketLinks TicketJob[]
-  routeStop   RouteStop?
+  routeStops  RouteStop[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -495,7 +500,7 @@ model Route {
 model RouteStop {
   id               String    @id @default(cuid())
   routeId          String
-  jobId            String    @unique
+  jobId            String
   sequence         Int
   arrivalEstimate  DateTime?
   status           JobStatus @default(SCHEDULED)
@@ -505,6 +510,7 @@ model RouteStop {
   attachments      Attachment[]
 
   @@index([routeId])
+  @@index([jobId])
 }
 
 // ---------------------------------------------------------------------------
@@ -685,65 +691,6 @@ model Attachment {
   @@index([ticketId])
   @@index([routeStopId])
   @@index([quoteId])
-}
-
-// ---------------------------------------------------------------------------
-// Loaner devices (Phase 7)
-// ---------------------------------------------------------------------------
-
-/// A pool of spare devices that the break-fix shop hands out to schools
-/// to keep students productive while their own device is in for repair.
-/// Separate model from Device because loaners belong to the shop, not
-/// to a school, and have a simpler lifecycle.
-model LoanerDevice {
-  id             String             @id @default(cuid())
-  serialNumber   String             @unique
-  assetTag       String?            @unique
-  modelId        String?
-  notes          String?
-  active         Boolean            @default(true)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-
-  model          DeviceModel?       @relation(fields: [modelId], references: [id])
-  assignments    LoanerAssignment[]
-
-  @@index([active])
-}
-
-enum LoanerAssignmentStatus {
-  ACTIVE
-  RETURNED
-  LOST
-}
-
-/// A checkout record for a loaner device. Optionally linked to the
-/// ticket whose original device is being repaired, so when the owning
-/// ticket closes, ops gets a "ready to reclaim the loaner" nudge.
-model LoanerAssignment {
-  id             String                 @id @default(cuid())
-  loanerId       String
-  ticketId       String?
-  schoolId       String
-  contactName    String?
-  status         LoanerAssignmentStatus @default(ACTIVE)
-  checkedOutAt   DateTime               @default(now())
-  checkedOutByUserId String?
-  dueBackAt      DateTime?
-  returnedAt     DateTime?
-  notes          String?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-
-  loaner         LoanerDevice @relation(fields: [loanerId], references: [id], onDelete: Cascade)
-  ticket         Ticket?      @relation("LoanerForTicket", fields: [ticketId], references: [id])
-  school         School       @relation(fields: [schoolId], references: [id])
-  checkedOutBy   User?        @relation("LoanerCheckedOutBy", fields: [checkedOutByUserId], references: [id])
-
-  @@index([loanerId])
-  @@index([status])
-  @@index([ticketId])
-  @@index([schoolId])
 }
 
 // ---------------------------------------------------------------------------
@@ -932,22 +879,6 @@ model PortalToken {
 
 // ---------------------------------------------------------------------------
 // Shift handover notes (Phase 8)
-// ---------------------------------------------------------------------------
-
-/// A freeform note ops writes at the end of a shift so the next shift
-/// sees it on login. A tiny feature with an outsized impact on team
-/// continuity — pilot ops staff kept asking for this.
-model ShiftNote {
-  id           String   @id @default(cuid())
-  authorUserId String
-  body         String
-  createdAt    DateTime @default(now())
-
-  author       User @relation("ShiftNoteAuthor", fields: [authorUserId], references: [id])
-
-  @@index([createdAt])
-}
-
 // ---------------------------------------------------------------------------
 // Phase 10: ticket templates + time tracking
 // ---------------------------------------------------------------------------

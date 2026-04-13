@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
-import { runImport, runSchoolImport, runDeviceImport } from "@/lib/import/pipeline";
+import { runImport, runSchoolImport, runDeviceImport, runUserImport, runPartImport, runDeviceModelImport } from "@/lib/import/pipeline";
 import {
   loadServiceNowConfigFromEnv,
   runServiceNowSync,
@@ -55,6 +55,12 @@ export async function uploadImportAction(formData: FormData) {
       result = await runSchoolImport(importInput);
     } else if (importType === "devices") {
       result = await runDeviceImport(importInput);
+    } else if (importType === "users") {
+      result = await runUserImport(importInput);
+    } else if (importType === "parts") {
+      result = await runPartImport(importInput);
+    } else if (importType === "device_models") {
+      result = await runDeviceModelImport(importInput);
     } else {
       result = await runImport(importInput);
     }

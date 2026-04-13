@@ -48,6 +48,12 @@ export default async function AdminHomePage() {
       description: "Customize what each role can access and do",
     },
     {
+      href: "/admin/statuses",
+      title: "Statuses",
+      count: null,
+      description: "Configure workflow states, transitions, and SLA thresholds",
+    },
+    {
       href: "/admin/settings",
       title: "Settings",
       count: null,
@@ -78,7 +84,7 @@ export default async function AdminHomePage() {
             <div className="flex items-center justify-between">
               <div className="text-base font-semibold">{card.title}</div>
               {card.count != null && (
-                <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
+                <span className="rounded bg-surface-border px-2 py-0.5 text-xs tabular-nums">
                   {card.count}
                 </span>
               )}

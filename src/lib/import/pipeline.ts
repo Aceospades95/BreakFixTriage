@@ -9,8 +9,8 @@ import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
 import { detectDuplicates } from "@/lib/duplicates/detect";
 import { parseFile } from "./parse";
-import { mapRawRow, mapRawSchoolRow, mapRawDeviceRow } from "./mapper";
-import { NormalizedImportRow, NormalizedSchoolRow, NormalizedDeviceRow } from "./schema";
+import { mapRawRow, mapRawSchoolRow, mapRawDeviceRow, mapRawUserRow, mapRawPartRow, mapRawDeviceModelRow } from "./mapper";
+import { NormalizedImportRow, NormalizedSchoolRow, NormalizedDeviceRow, NormalizedUserRow, NormalizedPartRow, NormalizedDeviceModelRow } from "./schema";
 
 export interface ImportResult {
   batchId: string;
@@ -681,6 +681,423 @@ export async function runDeviceImport(
   const stats: Prisma.JsonObject = { parsed: parsed.rows.length, invalid: invalidCount, created, updated, duplicates: 0, rejected };
   await db.importBatch.update({ where: { id: batch.id }, data: { status: ImportStatus.COMMITTED, stats } });
   await writeAudit({ actorUserId: input.uploadedByUserId, entityType: "ImportBatch", entityId: batch.id, action: "import:devices:committed", after: stats });
+
+  return { batchId: batch.id, parsed: parsed.rows.length, invalid: invalidCount, created, updated, duplicates: 0, rejected };
+}
+
+// ---------------------------------------------------------------------------
+// User import pipeline
+// ---------------------------------------------------------------------------
+
+export async function runUserImport(
+  input: IngestInput,
+  db: PrismaClient = defaultPrisma,
+): Promise<ImportResult> {
+  const source = detectSource(input.filename);
+  const batch = await db.importBatch.create({
+    data: {
+      filename: input.filename,
+      uploadedByUserId: input.uploadedByUserId,
+      source,
+      ...({ type: "USERS" } as Record<string, unknown>),
+      status: ImportStatus.VALIDATING,
+    },
+  });
+
+  let parsed: { rows: Record<string, unknown>[]; headers: string[] };
+  try {
+    parsed = parseFile(input.filename, input.buffer);
+  } catch (err) {
+    await db.importBatch.update({
+      where: { id: batch.id },
+      data: {
+        status: ImportStatus.FAILED,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+    throw err;
+  }
+
+  let invalidCount = 0;
+  const validRows: { id: string; normalized: NormalizedUserRow }[] = [];
+
+  for (let i = 0; i < parsed.rows.length; i++) {
+    const raw = parsed.rows[i] ?? {};
+    const rowNumber = i + 2;
+    const { mapped } = mapRawUserRow(raw);
+    const parseResult = NormalizedUserRow.safeParse(mapped);
+    if (!parseResult.success) {
+      invalidCount++;
+      await db.importRow.create({
+        data: {
+          batchId: batch.id,
+          rowNumber,
+          raw: raw as Prisma.InputJsonValue,
+          normalized: mapped as Prisma.InputJsonValue,
+          status: ImportRowStatus.INVALID,
+          errors: parseResult.error.issues.map(
+            (issue) => `${issue.path.join(".")}: ${issue.message}`,
+          ),
+        },
+      });
+      continue;
+    }
+    const row = await db.importRow.create({
+      data: {
+        batchId: batch.id,
+        rowNumber,
+        raw: raw as Prisma.InputJsonValue,
+        normalized: parseResult.data as unknown as Prisma.InputJsonValue,
+        status: ImportRowStatus.READY,
+      },
+    });
+    validRows.push({ id: row.id, normalized: parseResult.data });
+  }
+
+  if (input.dryRun) {
+    await db.importBatch.update({
+      where: { id: batch.id },
+      data: {
+        status: ImportStatus.READY,
+        stats: { parsed: parsed.rows.length, invalid: invalidCount, ready: validRows.length },
+      },
+    });
+    return { batchId: batch.id, parsed: parsed.rows.length, invalid: invalidCount, created: 0, updated: 0, duplicates: 0, rejected: 0 };
+  }
+
+  await db.importBatch.update({
+    where: { id: batch.id },
+    data: { status: ImportStatus.COMMITTING },
+  });
+
+  let created = 0;
+  let updated = 0;
+  let rejected = 0;
+
+  for (const row of validRows) {
+    try {
+      const n = row.normalized;
+      const existing = await db.user.findFirst({ where: { email: { equals: n.email, mode: "insensitive" } } });
+      if (existing) {
+        await db.user.update({
+          where: { id: existing.id },
+          data: {
+            name: n.name,
+            role: n.role as never,
+          },
+        });
+        updated++;
+        await db.importRow.update({ where: { id: row.id }, data: { status: ImportRowStatus.UPDATED } });
+      } else {
+        // Hash password if provided, otherwise use a random placeholder
+        const bcrypt = await import("bcryptjs");
+        const passwordHash = await bcrypt.hash(n.password && n.password.length > 0 ? n.password : crypto.randomUUID(), 10);
+        await db.user.create({
+          data: {
+            name: n.name,
+            email: n.email.toLowerCase(),
+            passwordHash,
+            role: n.role as never,
+          },
+        });
+        created++;
+        await db.importRow.update({ where: { id: row.id }, data: { status: ImportRowStatus.CREATED } });
+      }
+    } catch (err) {
+      rejected++;
+      await db.importRow.update({
+        where: { id: row.id },
+        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+      });
+    }
+  }
+
+  const stats: Prisma.JsonObject = { parsed: parsed.rows.length, invalid: invalidCount, created, updated, duplicates: 0, rejected };
+  await db.importBatch.update({ where: { id: batch.id }, data: { status: ImportStatus.COMMITTED, stats } });
+  await writeAudit({ actorUserId: input.uploadedByUserId, entityType: "ImportBatch", entityId: batch.id, action: "import:users:committed", after: stats });
+
+  return { batchId: batch.id, parsed: parsed.rows.length, invalid: invalidCount, created, updated, duplicates: 0, rejected };
+}
+
+// ---------------------------------------------------------------------------
+// Part import pipeline
+// ---------------------------------------------------------------------------
+
+export async function runPartImport(
+  input: IngestInput,
+  db: PrismaClient = defaultPrisma,
+): Promise<ImportResult> {
+  const source = detectSource(input.filename);
+  const batch = await db.importBatch.create({
+    data: {
+      filename: input.filename,
+      uploadedByUserId: input.uploadedByUserId,
+      source,
+      ...({ type: "PARTS" } as Record<string, unknown>),
+      status: ImportStatus.VALIDATING,
+    },
+  });
+
+  let parsed: { rows: Record<string, unknown>[]; headers: string[] };
+  try {
+    parsed = parseFile(input.filename, input.buffer);
+  } catch (err) {
+    await db.importBatch.update({
+      where: { id: batch.id },
+      data: {
+        status: ImportStatus.FAILED,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+    throw err;
+  }
+
+  let invalidCount = 0;
+  const validRows: { id: string; normalized: NormalizedPartRow }[] = [];
+
+  for (let i = 0; i < parsed.rows.length; i++) {
+    const raw = parsed.rows[i] ?? {};
+    const rowNumber = i + 2;
+    const { mapped } = mapRawPartRow(raw);
+    const parseResult = NormalizedPartRow.safeParse(mapped);
+    if (!parseResult.success) {
+      invalidCount++;
+      await db.importRow.create({
+        data: {
+          batchId: batch.id,
+          rowNumber,
+          raw: raw as Prisma.InputJsonValue,
+          normalized: mapped as Prisma.InputJsonValue,
+          status: ImportRowStatus.INVALID,
+          errors: parseResult.error.issues.map(
+            (issue) => `${issue.path.join(".")}: ${issue.message}`,
+          ),
+        },
+      });
+      continue;
+    }
+    const row = await db.importRow.create({
+      data: {
+        batchId: batch.id,
+        rowNumber,
+        raw: raw as Prisma.InputJsonValue,
+        normalized: parseResult.data as unknown as Prisma.InputJsonValue,
+        status: ImportRowStatus.READY,
+      },
+    });
+    validRows.push({ id: row.id, normalized: parseResult.data });
+  }
+
+  if (input.dryRun) {
+    await db.importBatch.update({
+      where: { id: batch.id },
+      data: {
+        status: ImportStatus.READY,
+        stats: { parsed: parsed.rows.length, invalid: invalidCount, ready: validRows.length },
+      },
+    });
+    return { batchId: batch.id, parsed: parsed.rows.length, invalid: invalidCount, created: 0, updated: 0, duplicates: 0, rejected: 0 };
+  }
+
+  await db.importBatch.update({
+    where: { id: batch.id },
+    data: { status: ImportStatus.COMMITTING },
+  });
+
+  let created = 0;
+  let updated = 0;
+  let rejected = 0;
+
+  for (const row of validRows) {
+    try {
+      const n = row.normalized;
+      // Resolve DeviceModel if manufacturer+model provided
+      let deviceModelId: string | undefined;
+      if (n.manufacturer && n.modelName) {
+        const dm = await db.deviceModel.upsert({
+          where: { manufacturer_modelName: { manufacturer: n.manufacturer, modelName: n.modelName } },
+          create: { manufacturer: n.manufacturer, modelName: n.modelName },
+          update: {},
+        });
+        deviceModelId = dm.id;
+      }
+      // Upsert part by SKU
+      const existing = await db.part.findFirst({ where: { sku: { equals: n.sku, mode: "insensitive" } } });
+      if (existing) {
+        await db.part.update({
+          where: { id: existing.id },
+          data: {
+            name: n.name,
+            ...(n.costCents !== undefined ? { costCents: n.costCents } : {}),
+            ...(n.stockQty !== undefined ? { onHand: n.stockQty } : {}),
+            ...(n.minStockQty !== undefined ? { reorderLevel: n.minStockQty } : {}),
+            ...(deviceModelId ? { compatibleModels: { connect: { id: deviceModelId } } } : {}),
+          },
+        });
+        updated++;
+        await db.importRow.update({ where: { id: row.id }, data: { status: ImportRowStatus.UPDATED } });
+      } else {
+        await db.part.create({
+          data: {
+            sku: n.sku,
+            name: n.name,
+            costCents: n.costCents ?? 0,
+            onHand: n.stockQty ?? 0,
+            reorderLevel: n.minStockQty ?? 0,
+            ...(deviceModelId ? { compatibleModels: { connect: { id: deviceModelId } } } : {}),
+          },
+        });
+        created++;
+        await db.importRow.update({ where: { id: row.id }, data: { status: ImportRowStatus.CREATED } });
+      }
+    } catch (err) {
+      rejected++;
+      await db.importRow.update({
+        where: { id: row.id },
+        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+      });
+    }
+  }
+
+  const stats: Prisma.JsonObject = { parsed: parsed.rows.length, invalid: invalidCount, created, updated, duplicates: 0, rejected };
+  await db.importBatch.update({ where: { id: batch.id }, data: { status: ImportStatus.COMMITTED, stats } });
+  await writeAudit({ actorUserId: input.uploadedByUserId, entityType: "ImportBatch", entityId: batch.id, action: "import:parts:committed", after: stats });
+
+  return { batchId: batch.id, parsed: parsed.rows.length, invalid: invalidCount, created, updated, duplicates: 0, rejected };
+}
+
+// ---------------------------------------------------------------------------
+// Device model import pipeline
+// ---------------------------------------------------------------------------
+
+export async function runDeviceModelImport(
+  input: IngestInput,
+  db: PrismaClient = defaultPrisma,
+): Promise<ImportResult> {
+  const source = detectSource(input.filename);
+  const batch = await db.importBatch.create({
+    data: {
+      filename: input.filename,
+      uploadedByUserId: input.uploadedByUserId,
+      source,
+      ...({ type: "DEVICE_MODELS" } as Record<string, unknown>),
+      status: ImportStatus.VALIDATING,
+    },
+  });
+
+  let parsed: { rows: Record<string, unknown>[]; headers: string[] };
+  try {
+    parsed = parseFile(input.filename, input.buffer);
+  } catch (err) {
+    await db.importBatch.update({
+      where: { id: batch.id },
+      data: {
+        status: ImportStatus.FAILED,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+    throw err;
+  }
+
+  let invalidCount = 0;
+  const validRows: { id: string; normalized: NormalizedDeviceModelRow }[] = [];
+
+  for (let i = 0; i < parsed.rows.length; i++) {
+    const raw = parsed.rows[i] ?? {};
+    const rowNumber = i + 2;
+    const { mapped } = mapRawDeviceModelRow(raw);
+    const parseResult = NormalizedDeviceModelRow.safeParse(mapped);
+    if (!parseResult.success) {
+      invalidCount++;
+      await db.importRow.create({
+        data: {
+          batchId: batch.id,
+          rowNumber,
+          raw: raw as Prisma.InputJsonValue,
+          normalized: mapped as Prisma.InputJsonValue,
+          status: ImportRowStatus.INVALID,
+          errors: parseResult.error.issues.map(
+            (issue) => `${issue.path.join(".")}: ${issue.message}`,
+          ),
+        },
+      });
+      continue;
+    }
+    const row = await db.importRow.create({
+      data: {
+        batchId: batch.id,
+        rowNumber,
+        raw: raw as Prisma.InputJsonValue,
+        normalized: parseResult.data as unknown as Prisma.InputJsonValue,
+        status: ImportRowStatus.READY,
+      },
+    });
+    validRows.push({ id: row.id, normalized: parseResult.data });
+  }
+
+  if (input.dryRun) {
+    await db.importBatch.update({
+      where: { id: batch.id },
+      data: {
+        status: ImportStatus.READY,
+        stats: { parsed: parsed.rows.length, invalid: invalidCount, ready: validRows.length },
+      },
+    });
+    return { batchId: batch.id, parsed: parsed.rows.length, invalid: invalidCount, created: 0, updated: 0, duplicates: 0, rejected: 0 };
+  }
+
+  await db.importBatch.update({
+    where: { id: batch.id },
+    data: { status: ImportStatus.COMMITTING },
+  });
+
+  let created = 0;
+  let updated = 0;
+  let rejected = 0;
+
+  for (const row of validRows) {
+    try {
+      const n = row.normalized;
+      // Upsert by manufacturer + model name compound unique
+      const existing = await db.deviceModel.findUnique({
+        where: { manufacturer_modelName: { manufacturer: n.manufacturer, modelName: n.modelName } },
+      });
+      if (existing) {
+        await db.deviceModel.update({
+          where: { id: existing.id },
+          data: {
+            formFactor: n.formFactor as never,
+            ...(n.warrantyMonths !== undefined ? { warrantyMonths: n.warrantyMonths } : {}),
+            ...(n.repairNotes ? { repairNotes: n.repairNotes } : {}),
+          },
+        });
+        updated++;
+        await db.importRow.update({ where: { id: row.id }, data: { status: ImportRowStatus.UPDATED } });
+      } else {
+        await db.deviceModel.create({
+          data: {
+            manufacturer: n.manufacturer,
+            modelName: n.modelName,
+            formFactor: n.formFactor as never,
+            ...(n.warrantyMonths !== undefined ? { warrantyMonths: n.warrantyMonths } : {}),
+            ...(n.repairNotes ? { repairNotes: n.repairNotes } : {}),
+          },
+        });
+        created++;
+        await db.importRow.update({ where: { id: row.id }, data: { status: ImportRowStatus.CREATED } });
+      }
+    } catch (err) {
+      rejected++;
+      await db.importRow.update({
+        where: { id: row.id },
+        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+      });
+    }
+  }
+
+  const stats: Prisma.JsonObject = { parsed: parsed.rows.length, invalid: invalidCount, created, updated, duplicates: 0, rejected };
+  await db.importBatch.update({ where: { id: batch.id }, data: { status: ImportStatus.COMMITTED, stats } });
+  await writeAudit({ actorUserId: input.uploadedByUserId, entityType: "ImportBatch", entityId: batch.id, action: "import:device_models:committed", after: stats });
 
   return { batchId: batch.id, parsed: parsed.rows.length, invalid: invalidCount, created, updated, duplicates: 0, rejected };
 }

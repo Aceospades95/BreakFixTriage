@@ -35,6 +35,30 @@ const IMPORT_TYPES = [
     optionalFields: "Asset Tag, Manufacturer, Model, Warranty End, Notes",
     templateUrl: "/api/imports/templates?type=devices",
   },
+  {
+    value: "users",
+    label: "Users",
+    description: "Import user accounts. Existing users matched by email are updated. New users get a random password if none is provided.",
+    requiredFields: "Name, Email",
+    optionalFields: "Role, Password",
+    templateUrl: "/api/imports/templates?type=users",
+  },
+  {
+    value: "parts",
+    label: "Parts",
+    description: "Import parts inventory. Existing parts matched by SKU are updated. Creates device models automatically if manufacturer and model are provided.",
+    requiredFields: "SKU, Name",
+    optionalFields: "Cost, Stock Qty, Min Stock Qty, Manufacturer, Model, Notes",
+    templateUrl: "/api/imports/templates?type=parts",
+  },
+  {
+    value: "device_models",
+    label: "Device Models",
+    description: "Import device model catalog. Existing models matched by manufacturer + model name are updated.",
+    requiredFields: "Manufacturer, Model Name",
+    optionalFields: "Form Factor, Warranty Months, Repair Notes",
+    templateUrl: "/api/imports/templates?type=device_models",
+  },
 ] as const;
 
 export default async function NewImportPage({
@@ -179,7 +203,13 @@ export default async function NewImportPage({
               ? "Existing tickets are updated; new ones are created; conflicts go to the duplicate queue."
               : selectedType === "schools"
                 ? "Existing schools are updated by code; new schools and districts are created."
-                : "Existing devices are updated by serial number; new devices are created. Schools must exist."}
+                : selectedType === "devices"
+                  ? "Existing devices are updated by serial number; new devices are created. Schools must exist."
+                  : selectedType === "users"
+                    ? "Existing users are updated by email; new users are created with a random password if none provided."
+                    : selectedType === "parts"
+                      ? "Existing parts are updated by SKU; new parts are created."
+                      : "Existing device models are updated by manufacturer + model name; new ones are created."}
           </span>
         </div>
       </form>

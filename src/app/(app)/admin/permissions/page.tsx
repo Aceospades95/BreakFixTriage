@@ -142,7 +142,7 @@ export default async function PermissionsPage({
                         <div className="text-sm text-slate-200">
                           {permLabel(key)}
                         </div>
-                        <div className="font-mono text-[10px] text-slate-500">
+                        <div className="text-[10px] text-slate-500">
                           {perm}
                         </div>
                       </td>

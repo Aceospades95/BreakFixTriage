@@ -173,7 +173,7 @@ export default async function BenchPage({
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <div className="text-sm font-semibold">{u.name}</div>
-                  <div className="text-[10px] font-mono uppercase text-slate-500">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500">
                     {u.role}
                   </div>
                 </div>
@@ -193,7 +193,7 @@ export default async function BenchPage({
           <div className="mb-3 flex items-center justify-between">
             <div>
               <div className="text-sm font-semibold">Unassigned</div>
-              <div className="text-[10px] font-mono uppercase text-slate-500">
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">
                 no owner
               </div>
             </div>

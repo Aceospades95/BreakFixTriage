@@ -10,6 +10,9 @@ const TYPE_LABELS: Record<string, string> = {
   TICKETS: "Tickets",
   SCHOOLS: "Schools",
   DEVICES: "Devices",
+  USERS: "Users",
+  PARTS: "Parts",
+  DEVICE_MODELS: "Device Models",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -57,7 +60,7 @@ export default async function ImportsPage({
     <>
       <PageHeader
         title="Imports"
-        subtitle="Import tickets, schools, and devices from CSV or XLSX files"
+        subtitle="Import tickets, schools, devices, users, parts, and device models from CSV or XLSX files"
         actions={
           canRun && (
             <Link
@@ -82,7 +85,7 @@ export default async function ImportsPage({
         >
           All
         </Link>
-        {(["TICKETS", "SCHOOLS", "DEVICES"] as const).map((t) => (
+        {(["TICKETS", "SCHOOLS", "DEVICES", "USERS", "PARTS", "DEVICE_MODELS"] as const).map((t) => (
           <Link
             key={t}
             href={`/imports?type=${t}`}
@@ -117,6 +120,24 @@ export default async function ImportsPage({
           className="rounded border border-surface-border px-2.5 py-1 text-xs text-slate-300 transition hover:border-accent hover:text-white"
         >
           Devices CSV
+        </a>
+        <a
+          href="/api/imports/templates?type=users"
+          className="rounded border border-surface-border px-2.5 py-1 text-xs text-slate-300 transition hover:border-accent hover:text-white"
+        >
+          Users CSV
+        </a>
+        <a
+          href="/api/imports/templates?type=parts"
+          className="rounded border border-surface-border px-2.5 py-1 text-xs text-slate-300 transition hover:border-accent hover:text-white"
+        >
+          Parts CSV
+        </a>
+        <a
+          href="/api/imports/templates?type=device_models"
+          className="rounded border border-surface-border px-2.5 py-1 text-xs text-slate-300 transition hover:border-accent hover:text-white"
+        >
+          Device Models CSV
         </a>
       </div>
 
@@ -153,14 +174,14 @@ export default async function ImportsPage({
                     </Link>
                   </td>
                   <td className="px-3 py-2">
-                    <span className="rounded bg-surface-border px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                    <span className="rounded bg-surface-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
                       {TYPE_LABELS[b.type ?? "TICKETS"] ?? b.type ?? "Tickets"}
                     </span>
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                  <td className="px-3 py-2 text-xs text-slate-400">
                     {b.source}
                   </td>
-                  <td className={`px-3 py-2 font-mono text-xs ${STATUS_COLORS[b.status] ?? ""}`}>
+                  <td className={`px-3 py-2 text-xs ${STATUS_COLORS[b.status] ?? ""}`}>
                     {b.status}
                   </td>
                   <td className="px-3 py-2">{b._count.rows}</td>

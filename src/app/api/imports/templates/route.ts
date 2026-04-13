@@ -56,6 +56,30 @@ const TEMPLATES: Record<string, { filename: string; headers: string[]; sampleRow
       ["SN-DEF-789", "", "HP", "Chromebook 11 G9", "K002", "2026-12-01", ""],
     ],
   },
+  users: {
+    filename: "user-import-template.csv",
+    headers: ["Name", "Email", "Role", "Password"],
+    sampleRows: [
+      ["Jane Smith", "jane@example.com", "TECHNICIAN", "changeme123"],
+      ["Bob Driver", "bob@example.com", "DRIVER", ""],
+    ],
+  },
+  parts: {
+    filename: "part-import-template.csv",
+    headers: ["SKU", "Name", "Cost", "Stock Qty", "Min Stock Qty", "Manufacturer", "Model", "Notes"],
+    sampleRows: [
+      ["SCR-LCD-11", "11\" LCD Screen Assembly", "89.99", "25", "5", "Lenovo", "100e Gen 4", "OEM replacement"],
+      ["KB-HP-G9", "Keyboard HP G9", "34.50", "10", "3", "HP", "Chromebook 11 G9", ""],
+    ],
+  },
+  device_models: {
+    filename: "device-model-import-template.csv",
+    headers: ["Manufacturer", "Model Name", "Form Factor", "Warranty Months", "Repair Notes"],
+    sampleRows: [
+      ["Lenovo", "100e Gen 4", "CHROMEBOOK", "12", "Easy to open, screws on bottom"],
+      ["HP", "Chromebook 11 G9", "CHROMEBOOK", "24", "Ribbon cable fragile"],
+    ],
+  },
 };
 
 function escapeCsvField(field: string): string {

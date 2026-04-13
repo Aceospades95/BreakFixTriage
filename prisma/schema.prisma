@@ -315,6 +315,9 @@ enum ImportType {
   TICKETS
   SCHOOLS
   DEVICES
+  USERS
+  PARTS
+  DEVICE_MODELS
 }
 
 enum ImportStatus {

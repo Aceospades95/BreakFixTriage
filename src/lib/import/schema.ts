@@ -66,3 +66,50 @@ export const NormalizedDeviceRow = z.object({
 });
 
 export type NormalizedDeviceRow = z.infer<typeof NormalizedDeviceRow>;
+
+/**
+ * Schema for user imports. Users can be imported from a CSV with
+ * name, email, role, and optional password fields.
+ */
+export const NormalizedUserRow = z.object({
+  name: z.string().trim().min(1, "name is required"),
+  email: z.string().trim().email("valid email is required"),
+  role: z
+    .enum(["ADMIN", "OPS_MANAGER", "DISPATCHER", "WAREHOUSE", "TECHNICIAN", "DRIVER", "READ_ONLY"])
+    .default("READ_ONLY"),
+  password: z.string().trim().optional(),
+});
+
+export type NormalizedUserRow = z.infer<typeof NormalizedUserRow>;
+
+/**
+ * Schema for parts imports. Parts can be imported from a CSV with
+ * SKU, name, cost, and stock fields.
+ */
+export const NormalizedPartRow = z.object({
+  sku: z.string().trim().min(1, "sku is required"),
+  name: z.string().trim().min(1, "name is required"),
+  costCents: z.coerce.number().optional(),
+  stockQty: z.coerce.number().int().optional(),
+  minStockQty: z.coerce.number().int().optional(),
+  manufacturer: z.string().trim().optional(),
+  modelName: z.string().trim().optional(),
+  notes: z.string().trim().optional(),
+});
+
+export type NormalizedPartRow = z.infer<typeof NormalizedPartRow>;
+
+/**
+ * Schema for device model imports.
+ */
+export const NormalizedDeviceModelRow = z.object({
+  manufacturer: z.string().trim().min(1, "manufacturer is required"),
+  modelName: z.string().trim().min(1, "modelName is required"),
+  formFactor: z
+    .enum(["LAPTOP", "TABLET", "DESKTOP", "CHROMEBOOK", "OTHER"])
+    .default("OTHER"),
+  warrantyMonths: z.coerce.number().int().optional(),
+  repairNotes: z.string().trim().optional(),
+});
+
+export type NormalizedDeviceModelRow = z.infer<typeof NormalizedDeviceModelRow>;

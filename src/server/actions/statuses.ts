@@ -5,22 +5,10 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { TicketState } from "@prisma/client";
-import {
-  ALLOWED_TRANSITIONS,
-  TERMINAL_STATES,
-} from "@/lib/workflow/states";
-import { DEFAULT_SLA_DAYS } from "@/lib/reports/sla";
+import { TERMINAL_STATES } from "@/lib/workflow/states";
+import { type StatusConfig, getEffectiveTransitions } from "@/lib/workflow/status-config";
 
 const SETTING_KEY = "status_workflow_config";
-
-export interface StatusConfig {
-  /** Overridden transitions. Missing keys fall back to defaults. */
-  transitions: Partial<Record<TicketState, TicketState[]>>;
-  /** Overridden SLA day thresholds. Missing keys fall back to defaults. */
-  sla: Partial<Record<TicketState, number | null>>;
-  /** States hidden from the UI (but still valid in the DB). */
-  disabled: TicketState[];
-}
 
 const ALL_STATES = Object.values(TicketState);
 
@@ -53,32 +41,6 @@ export async function loadStatusConfig(): Promise<{
       hasOverrides: false,
     };
   }
-}
-
-/**
- * Get the effective transitions for a state (override or default).
- */
-export function getEffectiveTransitions(
-  state: TicketState,
-  config: StatusConfig,
-): TicketState[] {
-  if (config.transitions[state]) {
-    return config.transitions[state]!;
-  }
-  return [...ALLOWED_TRANSITIONS[state]];
-}
-
-/**
- * Get the effective SLA threshold for a state (override or default).
- */
-export function getEffectiveSla(
-  state: TicketState,
-  config: StatusConfig,
-): number | null {
-  if (state in config.sla) {
-    return config.sla[state] ?? null;
-  }
-  return DEFAULT_SLA_DAYS[state];
 }
 
 /**

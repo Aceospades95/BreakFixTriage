@@ -9,12 +9,15 @@ export const dynamic = "force-dynamic";
 export default async function AdminHomePage() {
   await requireRole(PERMISSIONS.USERS_MANAGE);
 
-  const [users, districts, schools, devices] = await Promise.all([
-    prisma.user.count(),
-    prisma.district.count(),
-    prisma.school.count(),
-    prisma.device.count(),
-  ]);
+  const [users, districts, schools, devices, deviceModels, parts] =
+    await Promise.all([
+      prisma.user.count(),
+      prisma.district.count(),
+      prisma.school.count(),
+      prisma.device.count(),
+      prisma.deviceModel.count(),
+      prisma.part.count(),
+    ]);
 
   const cards = [
     {
@@ -42,6 +45,18 @@ export default async function AdminHomePage() {
       description: "Manual device entries and profile history",
     },
     {
+      href: "/admin/device-models",
+      title: "Device models",
+      count: deviceModels,
+      description: "Device model catalog, warranty, repair notes",
+    },
+    {
+      href: "/admin/parts",
+      title: "Parts",
+      count: parts,
+      description: "Parts inventory, stock levels, compatibility",
+    },
+    {
       href: "/admin/permissions",
       title: "Permissions",
       count: null,
@@ -52,6 +67,12 @@ export default async function AdminHomePage() {
       title: "Statuses",
       count: null,
       description: "Configure workflow states, transitions, and SLA thresholds",
+    },
+    {
+      href: "/admin/templates",
+      title: "Templates",
+      count: null,
+      description: "Email and notification templates",
     },
     {
       href: "/admin/settings",
@@ -84,12 +105,12 @@ export default async function AdminHomePage() {
             <div className="flex items-center justify-between">
               <div className="text-base font-semibold">{card.title}</div>
               {card.count != null && (
-                <span className="rounded bg-surface-border px-2 py-0.5 text-xs tabular-nums">
+                <span className="rounded bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
                   {card.count}
                 </span>
               )}
             </div>
-            <div className="mt-1 text-xs text-slate-400">
+            <div className="mt-1 text-xs text-muted-foreground">
               {card.description}
             </div>
           </Link>

@@ -4,6 +4,7 @@ import { JobStatus, RouteStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { AttachmentList } from "@/components/attachment-list";
+import { RouteMap } from "@/components/route-map";
 import { SignaturePad } from "@/components/signature-pad";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
@@ -38,7 +39,12 @@ export default async function RouteDetailPage({
           job: {
             include: {
               school: {
-                select: { id: true, name: true, code: true },
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                  address: { select: { latitude: true, longitude: true } },
+                },
               },
               ticketLinks: {
                 include: {
@@ -123,7 +129,21 @@ export default async function RouteDetailPage({
           This route has no stops.
         </div>
       ) : (
-        <ol className="space-y-3">
+        <>
+          <div className="mb-4">
+            <RouteMap
+              stops={route.stops.map((s) => ({
+                id: s.id,
+                sequence: s.sequence,
+                label: s.job.school.name,
+                sublabel: s.job.school.code ?? undefined,
+                latitude: s.job.school.address?.latitude ?? null,
+                longitude: s.job.school.address?.longitude ?? null,
+              }))}
+              title="Route map · auto-optimized by nearest-neighbor haversine distance"
+            />
+          </div>
+          <ol className="space-y-3">
           {route.stops.map((stop, idx) => {
             const canMoveUp = reorderAllowed && idx > 0;
             const canMoveDown = reorderAllowed && idx < route.stops.length - 1;
@@ -253,7 +273,8 @@ export default async function RouteDetailPage({
               </li>
             );
           })}
-        </ol>
+          </ol>
+        </>
       )}
 
       {canReorder && routeOpen && (

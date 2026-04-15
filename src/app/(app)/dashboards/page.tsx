@@ -141,7 +141,7 @@ export default async function DashboardsPage() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
           Aging tickets (&gt; 30 days, open)
         </h2>
-        <div className="overflow-hidden rounded-lg border border-surface-border">
+        <div className="overflow-x-auto rounded-lg border border-surface-border">
           <table className="min-w-full divide-y divide-surface-border text-sm">
             <thead className="bg-surface-muted text-left text-xs uppercase tracking-wide text-slate-400">
               <tr>

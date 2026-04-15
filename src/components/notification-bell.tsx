@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { InAppNotification } from "@prisma/client";
+import { LocalTime } from "@/components/local-time";
 import {
   markAllNotificationsReadAction,
   markNotificationReadAction,
@@ -91,7 +92,7 @@ export function NotificationBell({
                       </div>
                     )}
                     <div className="mt-0.5 text-[10px] text-slate-500">
-                      {n.createdAt.toISOString().replace("T", " ").slice(0, 16)}
+                      <LocalTime date={n.createdAt} mode="relative" />
                     </div>
                   </button>
                 </form>

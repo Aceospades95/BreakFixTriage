@@ -136,21 +136,36 @@ export default async function StatusesPage({
 
   const allStates = Object.values(TicketState);
 
+  // Build reverse lookup: state → default section name (from STAGE_GROUPS)
+  const DEFAULT_SECTION: Record<string, string> = {};
+  for (const group of STAGE_GROUPS) {
+    for (const s of group.states) {
+      DEFAULT_SECTION[s] = group.label;
+    }
+  }
+
   // Build the effective state data for the editor
-  const stateData = allStates.map((state) => ({
-    state,
-    label: STATE_LABELS[state],
-    color: STATE_COLORS[state],
-    isTerminal: TERMINAL_STATES.includes(state),
-    defaultTransitions: [...ALLOWED_TRANSITIONS[state]] as TicketState[],
-    currentTransitions: (config.transitions[state] ??
-      ALLOWED_TRANSITIONS[state]) as TicketState[],
-    defaultSla: DEFAULT_SLA_DAYS[state],
-    currentSla:
-      state in config.sla ? config.sla[state]! : DEFAULT_SLA_DAYS[state],
-    disabled: config.disabled.includes(state),
-    activeTickets: ticketCounts[state] ?? 0,
-  }));
+  const stateData = allStates.map((state) => {
+    const defaultLabel = STATE_LABELS[state];
+    const defaultSection = DEFAULT_SECTION[state] ?? "Special";
+    return {
+      state,
+      label: config.labels?.[state] ?? defaultLabel,
+      defaultLabel,
+      color: STATE_COLORS[state],
+      section: config.sections?.[state] ?? defaultSection,
+      defaultSection,
+      isTerminal: TERMINAL_STATES.includes(state),
+      defaultTransitions: [...ALLOWED_TRANSITIONS[state]] as TicketState[],
+      currentTransitions: (config.transitions[state] ??
+        ALLOWED_TRANSITIONS[state]) as TicketState[],
+      defaultSla: DEFAULT_SLA_DAYS[state],
+      currentSla:
+        state in config.sla ? config.sla[state]! : DEFAULT_SLA_DAYS[state],
+      disabled: config.disabled.includes(state),
+      activeTickets: ticketCounts[state] ?? 0,
+    };
+  });
 
   return (
     <>

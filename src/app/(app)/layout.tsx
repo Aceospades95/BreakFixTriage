@@ -31,18 +31,18 @@ export default async function AppLayout({
 
   const headerContent = (
     <>
-      {/* Center: search */}
-      <div className="hidden flex-1 justify-center px-8 md:flex">
-        <div className="w-full max-w-md">
+      {/* Search — takes available space, capped width, aligned to title */}
+      <div className="hidden flex-1 md:block">
+        <div className="max-w-md">
           <GlobalSearch />
         </div>
       </div>
 
-      {/* Right: utility buttons */}
-      <div className="flex items-center gap-2">
+      {/* Right: utility buttons (always aligned to right edge) */}
+      <div className="ml-auto flex items-center gap-2">
         <Link
           href="/scan"
-          className="flex h-8 items-center gap-1.5 rounded border border-surface-border px-2.5 text-xs font-medium text-slate-300 transition hover:border-accent hover:text-white"
+          className="flex h-8 items-center gap-1.5 rounded border border-border px-2.5 text-xs font-medium text-slate-300 transition hover:border-primary hover:text-white"
           title="Open scanner"
         >
           <svg
@@ -64,7 +64,7 @@ export default async function AppLayout({
           className="hidden text-right text-xs transition hover:text-white sm:block"
         >
           <div className="font-medium text-slate-100">{session.name}</div>
-          <div className="text-[10px] uppercase tracking-wide text-slate-500">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
             {session.role.replace(/_/g, " ")}
           </div>
         </Link>

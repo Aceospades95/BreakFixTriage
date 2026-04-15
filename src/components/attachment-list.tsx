@@ -4,6 +4,7 @@ import {
   deleteAttachmentAction,
   uploadAttachmentAction,
 } from "@/server/actions/attachments";
+import { LocalTime } from "@/components/local-time";
 
 /**
  * Render a list of attachments with an inline upload form.
@@ -57,7 +58,7 @@ export function AttachmentList({
                   {formatSize(a.sizeBytes)} · {a.mimeType}
                   {a.uploadedBy && <> · uploaded by {a.uploadedBy.name}</>}
                   <span className="ml-1">
-                    · {a.createdAt.toISOString().slice(0, 10)}
+                    · <LocalTime date={a.createdAt} mode="date" />
                   </span>
                 </div>
               </div>

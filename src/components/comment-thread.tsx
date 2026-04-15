@@ -3,6 +3,7 @@ import {
   createCommentAction,
   deleteCommentAction,
 } from "@/server/actions/comments";
+import { LocalTime } from "@/components/local-time";
 
 type CommentWithAuthor = Comment & {
   author: { id: string; name: string } | null;
@@ -50,10 +51,7 @@ export function CommentThread({
                       {c.author?.name ?? "Unknown"}
                     </strong>
                     {" · "}
-                    {c.createdAt
-                      .toISOString()
-                      .replace("T", " ")
-                      .slice(0, 16)}
+                    <LocalTime date={c.createdAt} mode="relative" />
                   </span>
                   {canDelete && (
                     <form action={deleteCommentAction}>

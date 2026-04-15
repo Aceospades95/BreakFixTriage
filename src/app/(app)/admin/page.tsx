@@ -79,7 +79,7 @@ export default async function AdminHomePage() {
           <Link
             key={card.href}
             href={card.href}
-            className="rounded-lg border border-surface-border bg-surface-muted p-4 transition hover:border-accent"
+            className="rounded-lg border border-border bg-card p-4 shadow-sm transition-colors hover:border-primary"
           >
             <div className="flex items-center justify-between">
               <div className="text-base font-semibold">{card.title}</div>

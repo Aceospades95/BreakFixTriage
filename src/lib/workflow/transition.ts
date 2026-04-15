@@ -18,6 +18,13 @@ export interface TransitionOptions {
   actorUserId?: string | null;
   /** Optional pre-fetched ticket to skip a round trip. */
   ticket?: Ticket;
+  /**
+   * Admin escape hatch: when true, bypass the state-machine edge check
+   * and the guards. Still writes a TicketEvent + AuditLog row so the
+   * override is traceable. Callers MUST gate this on a proper role check
+   * (ADMIN) before passing `force: true`.
+   */
+  force?: boolean;
 }
 
 export type PrismaLike = PrismaClient | Prisma.TransactionClient;
@@ -152,17 +159,22 @@ async function transitionInTx(
     return ticket;
   }
 
-  if (!canTransition(from, to)) {
+  if (!opts.force && !canTransition(from, to)) {
     throw new InvalidTransitionError(ticketId, from, to);
   }
 
-  for (const guard of Object.values(guards)) {
-    await guard(tx, ticket, to, opts);
+  if (!opts.force) {
+    for (const guard of Object.values(guards)) {
+      await guard(tx, ticket, to, opts);
+    }
   }
 
   const payload: Prisma.JsonObject = { ...(opts.payload ?? {}) };
   if (to === "ON_HOLD") {
     payload.resumeState = from;
+  }
+  if (opts.force) {
+    payload.forced = true;
   }
 
   const now = new Date();
@@ -191,7 +203,9 @@ async function transitionInTx(
       actorUserId: opts.actorUserId ?? null,
       entityType: "Ticket",
       entityId: ticketId,
-      action: `transition:${from}->${to}`,
+      action: opts.force
+        ? `transition:force:${from}->${to}`
+        : `transition:${from}->${to}`,
       before: { state: from },
       after: { state: to },
     },

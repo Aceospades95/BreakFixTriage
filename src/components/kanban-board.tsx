@@ -210,46 +210,30 @@ export function KanbanBoard({
                 )}
               >
                 <div className="flex w-full items-stretch">
-                  <button
-                    type="button"
-                    onClick={() => toggleExpand(col.state)}
-                    className="flex flex-1 items-center justify-between px-3 py-2.5 text-left"
+                  <Link
+                    href={`/tickets?state=${col.state}`}
+                    title={`Open ${col.title} in table view`}
+                    className="flex flex-1 items-center justify-between px-3 py-2.5 text-left transition hover:bg-muted/40"
                   >
                     <div>
-                      <div className="text-sm font-semibold text-slate-100">
+                      <div className="text-sm font-semibold text-slate-100 hover:text-primary">
                         {col.title}
                       </div>
                       <div className="text-[10px] text-slate-500">{col.hint}</div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded bg-muted px-2 py-0.5 text-xs tabular-nums">
-                        {colTickets.length}
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        {isExpanded ? "▼" : "▶"}
-                      </span>
-                    </div>
-                  </button>
-                  <Link
-                    href={`/tickets?state=${col.state}`}
-                    title={`Open ${col.title} in table view`}
-                    className="flex items-center justify-center border-l border-border/40 px-2 text-slate-500 transition hover:bg-muted hover:text-primary"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="h-3.5 w-3.5"
-                      aria-hidden="true"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M5.22 14.78a.75.75 0 001.06 0l7.22-7.22v5.69a.75.75 0 001.5 0v-7.5a.75.75 0 00-.75-.75h-7.5a.75.75 0 000 1.5h5.69l-7.22 7.22a.75.75 0 000 1.06z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
+                    <span className="rounded bg-muted px-2 py-0.5 text-xs tabular-nums">
+                      {colTickets.length}
+                    </span>
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(col.state)}
+                    title={isExpanded ? "Collapse" : "Expand"}
+                    aria-label={isExpanded ? "Collapse" : "Expand"}
+                    className="flex items-center justify-center border-l border-border/40 px-2 text-slate-500 transition hover:bg-muted hover:text-primary"
+                  >
+                    <span className="text-xs">{isExpanded ? "▼" : "▶"}</span>
+                  </button>
                 </div>
                 {colTickets.length > 0 && (
                   <ul className="space-y-1.5 border-t border-surface-border/50 p-2">

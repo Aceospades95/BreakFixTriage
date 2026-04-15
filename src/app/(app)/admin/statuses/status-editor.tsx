@@ -142,31 +142,33 @@ export function StatusEditor({
 
   function handleAddStatus(section: string) {
     if (!newBaseState || !newLabel.trim()) return;
-    setData((prev) =>
-      prev.map((s) =>
-        s.state === newBaseState
-          ? {
-              ...s,
-              disabled: false,
-              label: newLabel.trim(),
-              section,
-            }
-          : s,
-      ),
+    const updated = data.map((s) =>
+      s.state === newBaseState
+        ? {
+            ...s,
+            disabled: false,
+            label: newLabel.trim(),
+            section,
+          }
+        : s,
     );
+    setData(updated);
     setAddingToSection(null);
     setNewLabel("");
     setNewBaseState("");
+    // Auto-persist the new status so it shows up everywhere immediately.
+    // Passing `updated` avoids the stale-state read on the next render.
+    persist(updated);
   }
 
-  function handleSave() {
+  function buildConfig(source: StateInfo[]) {
     const transitions: Record<string, string[]> = {};
     const sla: Record<string, number | null> = {};
     const labels: Record<string, string> = {};
     const sections: Record<string, string> = {};
     const disabled: string[] = [];
 
-    for (const s of data) {
+    for (const s of source) {
       const defaultSet = new Set(s.defaultTransitions);
       const currentSet = new Set(s.currentTransitions);
       const transDiff =
@@ -179,10 +181,18 @@ export function StatusEditor({
       if (s.disabled) disabled.push(s.state);
     }
 
-    const config = { transitions, sla, disabled, labels, sections };
+    return { transitions, sla, disabled, labels, sections };
+  }
+
+  function persist(source: StateInfo[]) {
+    const config = buildConfig(source);
     const formData = new FormData();
     formData.set("config", JSON.stringify(config));
     saveAction(formData);
+  }
+
+  function handleSave() {
+    persist(data);
   }
 
   function isModified(s: StateInfo): boolean {

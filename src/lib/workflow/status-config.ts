@@ -1,6 +1,9 @@
 import type { TicketState } from "@prisma/client";
 import { ALLOWED_TRANSITIONS } from "@/lib/workflow/states";
 import { DEFAULT_SLA_DAYS } from "@/lib/reports/sla";
+import { prisma } from "@/lib/db/prisma";
+
+const SETTING_KEY = "status_workflow_config";
 
 /**
  * Persisted status workflow configuration.
@@ -28,6 +31,24 @@ export interface StatusConfig {
   labels?: Partial<Record<TicketState, string>>;
   /** Custom section assignments (e.g. "Field Work") that override the built-in grouping. */
   sections?: Partial<Record<TicketState, string>>;
+}
+
+/**
+ * Read the current status workflow config from the DB.
+ *
+ * No permission check — callers that gate on role do it themselves.
+ * Returns an empty config when nothing has been saved yet.
+ */
+export async function readStatusConfig(): Promise<StatusConfig> {
+  const setting = await prisma.appSetting.findUnique({
+    where: { key: SETTING_KEY },
+  });
+  if (!setting) return { transitions: {}, sla: {}, disabled: [] };
+  try {
+    return JSON.parse(setting.value) as StatusConfig;
+  } catch {
+    return { transitions: {}, sla: {}, disabled: [] };
+  }
 }
 
 /**

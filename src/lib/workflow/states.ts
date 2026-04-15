@@ -35,7 +35,15 @@ export const ALLOWED_TRANSITIONS: Record<TicketState, readonly TicketState[]> = 
     "QUOTE_REQUIRED",
     "ON_HOLD",
   ],
-  REPAIR_COMPLETED: ["PENDING_DELIVERY", "ON_HOLD"],
+  REPAIR_COMPLETED: [
+    "PENDING_DELIVERY",
+    // Reversions: sometimes QA finds an issue after "completed" is
+    // clicked, or the tech changes their mind. Let them go back
+    // without needing an admin force.
+    "IN_REPAIR",
+    "DIAGNOSIS",
+    "ON_HOLD",
+  ],
   AWAITING_ONSITE: ["ONSITE_IN_PROGRESS", "ON_HOLD"],
   ONSITE_IN_PROGRESS: [
     "REPAIR_COMPLETED",
@@ -56,10 +64,25 @@ export const ALLOWED_TRANSITIONS: Record<TicketState, readonly TicketState[]> = 
   QUOTE_NO_RESPONSE: ["PENDING_DELIVERY", "OUT_OF_SCOPE"],
   MANUFACTURER_RMA: ["PENDING_DELIVERY", "CLOSED", "ON_HOLD"],
   OUT_OF_SCOPE: ["PENDING_DELIVERY", "CLOSED"],
-  PENDING_DELIVERY: ["DELIVERY_SCHEDULED", "ON_HOLD"],
-  DELIVERY_SCHEDULED: ["RETURNED", "PENDING_DELIVERY", "ON_HOLD"],
-  RETURNED: ["INVOICE_REQUIRED", "CLOSED"],
-  INVOICE_REQUIRED: ["CLOSED"],
+  PENDING_DELIVERY: [
+    "DELIVERY_SCHEDULED",
+    // Escape hatches — if a ticket lands here by mistake or a late
+    // failure is discovered, allow walking back into the repair
+    // lifecycle instead of being trapped waiting for a route.
+    "REPAIR_COMPLETED",
+    "IN_REPAIR",
+    "DIAGNOSIS",
+    "OUT_OF_SCOPE",
+    "ON_HOLD",
+  ],
+  DELIVERY_SCHEDULED: [
+    "RETURNED",
+    "PENDING_DELIVERY",
+    "REPAIR_COMPLETED",
+    "ON_HOLD",
+  ],
+  RETURNED: ["INVOICE_REQUIRED", "CLOSED", "REPAIR_COMPLETED"],
+  INVOICE_REQUIRED: ["CLOSED", "RETURNED"],
   CLOSED: ["REOPENED"],
   REOPENED: ["TRIAGE"],
   // ON_HOLD returns via the workflow engine by reading TicketEvent.payload.

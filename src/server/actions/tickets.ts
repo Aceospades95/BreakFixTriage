@@ -64,6 +64,61 @@ export async function transitionTicketAction(formData: FormData) {
   redirect(`/tickets/${parsed.data.ticketId}`);
 }
 
+const forceSchema = z.object({
+  ticketId: z.string().min(1),
+  to: z.nativeEnum(TicketState),
+  reason: z.string().trim().min(3).max(500),
+});
+
+/**
+ * Admin escape hatch: force a ticket into any state, bypassing the
+ * state-machine edge check and the workflow guards.
+ *
+ * Used when the default transitions paint a ticket into a corner —
+ * e.g. a ticket accidentally moved to PENDING_DELIVERY with no
+ * scheduled job and no way back. Every force write is audited and
+ * the reason is required so the override is traceable.
+ *
+ * Gated on `USERS_MANAGE` (ADMIN only by default).
+ */
+export async function forceTransitionTicketAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.USERS_MANAGE);
+
+  const parsed = forceSchema.safeParse({
+    ticketId: formData.get("ticketId"),
+    to: formData.get("to"),
+    reason: formData.get("reason")?.toString().trim() || "",
+  });
+
+  if (!parsed.success) {
+    const id = formData.get("ticketId")?.toString() ?? "";
+    redirect(
+      `/tickets/${id}?error=${encodeURIComponent("A reason (≥3 chars) is required to force a transition.")}`,
+    );
+  }
+
+  let errorMessage: string | null = null;
+  try {
+    await transitionTicket(parsed.data.ticketId, parsed.data.to, {
+      reason: `[forced] ${parsed.data.reason}`,
+      actorUserId: session.userId,
+      force: true,
+    });
+  } catch (err) {
+    errorMessage = formatTransitionError(err);
+  }
+
+  if (errorMessage) {
+    redirect(
+      `/tickets/${parsed.data.ticketId}?error=${encodeURIComponent(errorMessage)}`,
+    );
+  }
+
+  revalidatePath(`/tickets/${parsed.data.ticketId}`);
+  revalidatePath("/tickets");
+  redirect(`/tickets/${parsed.data.ticketId}`);
+}
+
 function formatTransitionError(err: unknown): string {
   if (err instanceof InvalidTransitionError) {
     return `Not allowed: ${err.from} → ${err.to}. Pick a different target state.`;

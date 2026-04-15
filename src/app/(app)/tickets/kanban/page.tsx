@@ -6,36 +6,85 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { readStatusConfig } from "@/lib/workflow/status-config";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Kanban board for tickets.
  *
- * Columns cover every active operational state. Drag a card to a
- * new column and the drag-drop handler calls the transition API,
- * which runs the change through the state machine guards. Illegal
- * transitions land an error toast and snap the card back.
+ * Columns are built dynamically from the admin Status Management
+ * config so renames / disables / new-slots propagate here without
+ * a code change. We still filter down to the operationally useful
+ * states (no CLOSED, no REOPENED, no ON_HOLD, no IMPORTED) so the
+ * board stays focused on in-flight work.
+ *
+ * Drag a card to a new column and the drag-drop handler calls the
+ * transition API, which runs the change through the state machine
+ * guards. Illegal transitions land an error toast and snap the
+ * card back.
  */
-const COLUMNS: KanbanColumnDef[] = [
-  { state: "TRIAGE", title: "Triage", hint: "Incoming, needs routing" },
-  { state: "AWAITING_PICKUP", title: "Awaiting pickup", hint: "Ready to fetch" },
-  { state: "IN_WAREHOUSE", title: "In warehouse", hint: "Arrived but not diagnosed" },
-  { state: "DIAGNOSIS", title: "Diagnosis", hint: "On the bench" },
-  { state: "AWAITING_PARTS", title: "Awaiting parts", hint: "Blocked" },
-  { state: "IN_REPAIR", title: "In repair", hint: "Work in progress" },
-  { state: "QUOTE_REQUIRED", title: "Quote required", hint: "OOW, draft a quote" },
-  { state: "QUOTE_SENT", title: "Quote sent", hint: "Waiting on customer" },
-  { state: "REPAIR_COMPLETED", title: "Repair completed", hint: "Ready to ship back" },
-  { state: "PENDING_DELIVERY", title: "Pending delivery", hint: "Queued for a run" },
-  { state: "INVOICE_REQUIRED", title: "Invoice required", hint: "Needs PO" },
+
+/** Default labels/hints used when the admin hasn't overridden them. */
+const DEFAULT_LABELS: Partial<Record<TicketState, { title: string; hint: string }>> = {
+  TRIAGE: { title: "Triage", hint: "Incoming, needs routing" },
+  AWAITING_PICKUP: { title: "Awaiting pickup", hint: "Ready to fetch" },
+  PICKUP_SCHEDULED: { title: "Pickup scheduled", hint: "On a route" },
+  IN_WAREHOUSE: { title: "In warehouse", hint: "Arrived but not diagnosed" },
+  DIAGNOSIS: { title: "Diagnosis", hint: "On the bench" },
+  AWAITING_PARTS: { title: "Awaiting parts", hint: "Blocked" },
+  PARTS_ORDERED: { title: "Parts ordered", hint: "ETA tracked" },
+  IN_REPAIR: { title: "In repair", hint: "Work in progress" },
+  REPAIR_COMPLETED: { title: "Repair completed", hint: "Ready to ship back" },
+  AWAITING_ONSITE: { title: "Awaiting onsite", hint: "Field visit pending" },
+  ONSITE_IN_PROGRESS: { title: "Onsite in progress", hint: "Tech on site" },
+  QUOTE_REQUIRED: { title: "Quote required", hint: "OOW, draft a quote" },
+  QUOTE_SENT: { title: "Quote sent", hint: "Waiting on customer" },
+  QUOTE_APPROVED: { title: "Quote approved", hint: "Ready to work" },
+  QUOTE_DECLINED: { title: "Quote declined", hint: "Return as-is" },
+  QUOTE_NO_RESPONSE: { title: "Quote no response", hint: "Follow up" },
+  MANUFACTURER_RMA: { title: "Manufacturer RMA", hint: "Sent to vendor" },
+  OUT_OF_SCOPE: { title: "Out of scope", hint: "Not covered" },
+  PENDING_DELIVERY: { title: "Pending delivery", hint: "Queued for a run" },
+  DELIVERY_SCHEDULED: { title: "Delivery scheduled", hint: "On a return route" },
+  RETURNED: { title: "Returned", hint: "Back with customer" },
+  INVOICE_REQUIRED: { title: "Invoice required", hint: "Needs PO" },
+};
+
+/** States that should never appear as kanban columns. */
+const KANBAN_EXCLUDED: readonly TicketState[] = [
+  "IMPORTED",
+  "CLOSED",
+  "REOPENED",
+  "ON_HOLD",
 ];
 
 export default async function KanbanPage() {
   await requireRole(PERMISSIONS.TICKETS_READ);
 
+  const config = await readStatusConfig();
+
+  // Build columns from enabled, non-excluded states. Preserve the order in
+  // DEFAULT_LABELS (which roughly follows the lifecycle) and apply admin
+  // label overrides.
+  const orderedStates = Object.keys(DEFAULT_LABELS) as TicketState[];
+  const columns: KanbanColumnDef[] = orderedStates
+    .filter(
+      (s) =>
+        !KANBAN_EXCLUDED.includes(s) && !config.disabled.includes(s),
+    )
+    .map((s) => {
+      const defaults = DEFAULT_LABELS[s]!;
+      const overrideLabel = config.labels?.[s];
+      return {
+        state: s,
+        title: overrideLabel ?? defaults.title,
+        hint: defaults.hint,
+      };
+    });
+
   const tickets = await prisma.ticket.findMany({
-    where: { state: { in: COLUMNS.map((c) => c.state) } },
+    where: { state: { in: columns.map((c) => c.state) } },
     orderBy: { stateEnteredAt: "asc" },
     include: {
       school: { select: { name: true, code: true } },
@@ -60,7 +109,7 @@ export default async function KanbanPage() {
     <>
       <PageHeader
         title="Kanban"
-        subtitle={`${tickets.length} active tickets across ${COLUMNS.length} columns · drag cards between columns to transition`}
+        subtitle={`${tickets.length} active tickets across ${columns.length} columns · drag cards between columns to transition`}
         actions={
           <div className="flex items-center gap-3">
             <AutoRefresh storageKey="kanban-auto-refresh" intervalSeconds={30} />
@@ -73,7 +122,7 @@ export default async function KanbanPage() {
           </div>
         }
       />
-      <KanbanBoard columns={COLUMNS} tickets={boardTickets} />
+      <KanbanBoard columns={columns} tickets={boardTickets} />
     </>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import type { TicketState } from "@prisma/client";
 import { cn } from "@/lib/cn";
 
@@ -58,10 +58,26 @@ export function StatusEditor({
   const [addingToSection, setAddingToSection] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState("");
   const [newBaseState, setNewBaseState] = useState<TicketState | "">("");
+  const [isSaving, startSaving] = useTransition();
 
-  /** States available to be "added" to a new section — i.e. currently disabled */
+  /**
+   * States available as a "slot" for the + Add status flow.
+   *
+   * The Prisma enum has 26 fixed values, so "adding a new status"
+   * really means repurposing one. A slot is reusable when either:
+   *   - it's currently disabled (admin parked it), OR
+   *   - it has zero active tickets (safe to rename without
+   *     affecting live work).
+   *
+   * Terminal states and the current state of any live ticket are
+   * excluded so you can't accidentally rename CLOSED or steal a
+   * slot someone is relying on.
+   */
   const availableStates = useMemo(
-    () => data.filter((s) => s.disabled),
+    () =>
+      data.filter(
+        (s) => !s.isTerminal && (s.disabled || s.activeTickets === 0),
+      ),
     [data],
   );
 
@@ -188,7 +204,9 @@ export function StatusEditor({
     const config = buildConfig(source);
     const formData = new FormData();
     formData.set("config", JSON.stringify(config));
-    saveAction(formData);
+    startSaving(() => {
+      saveAction(formData);
+    });
   }
 
   function handleSave() {
@@ -256,10 +274,15 @@ export function StatusEditor({
                     onClick={() =>
                       setAddingToSection(isAdding ? null : section)
                     }
-                    className="inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[10px] text-slate-400 transition hover:border-primary hover:text-primary"
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] transition",
+                      availableStates.length === 0 && !isAdding
+                        ? "cursor-not-allowed border-border/40 text-slate-600"
+                        : "border-border text-slate-400 hover:border-primary hover:text-primary",
+                    )}
                     title={
                       availableStates.length === 0
-                        ? "No available slots — disable a state first"
+                        ? "No reusable slots — every state has active tickets. Close or move those tickets first."
                         : `Add a status to ${section}`
                     }
                     disabled={availableStates.length === 0 && !isAdding}
@@ -273,8 +296,9 @@ export function StatusEditor({
                   <div className="mb-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
                     {availableStates.length === 0 ? (
                       <div className="text-xs text-slate-400">
-                        All 26 workflow slots are in use. Disable a state
-                        somewhere else to free up a slot, then come back.
+                        Every state currently has active tickets. Close
+                        or move some tickets first, or disable a state
+                        you don't use, then try again.
                       </div>
                     ) : (
                       <div className="flex flex-wrap items-end gap-2">
@@ -313,10 +337,12 @@ export function StatusEditor({
                         <button
                           type="button"
                           onClick={() => handleAddStatus(section)}
-                          disabled={!newLabel.trim() || !newBaseState}
+                          disabled={
+                            !newLabel.trim() || !newBaseState || isSaving
+                          }
                           className="rounded bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          Add to {section}
+                          {isSaving ? "Saving…" : `Add to ${section}`}
                         </button>
                       </div>
                     )}
@@ -627,9 +653,10 @@ export function StatusEditor({
         <button
           type="button"
           onClick={handleSave}
-          className="rounded bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90"
+          disabled={isSaving}
+          className="rounded bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50"
         >
-          Save configuration
+          {isSaving ? "Saving…" : "Save configuration"}
         </button>
         <span className="text-xs text-muted-foreground">
           * indicates a change from defaults

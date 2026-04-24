@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TicketState } from "@prisma/client";
 import { SlaBadge } from "@/components/sla-badge";
 import { useAppEvents } from "@/components/use-app-events";
 import { cn } from "@/lib/cn";
+
+const HIDE_EMPTY_KEY = "kanban-hide-empty";
 
 /**
  * Drag-and-drop kanban with a grid/board toggle.
@@ -42,8 +44,33 @@ export function KanbanBoard({
 }) {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<"grid" | "board">("grid");
+  const [hideEmpty, setHideEmpty] = useState(false);
 
   useAppEvents(["tickets.changed", "tickets.bulk-changed"]);
+
+  // Restore the "hide empty" preference from localStorage after mount.
+  // We read on an effect (not during state init) so SSR/CSR markup
+  // matches before hydration.
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(HIDE_EMPTY_KEY);
+      if (saved === "1") setHideEmpty(true);
+    } catch {
+      /* localStorage may be disabled */
+    }
+  }, []);
+
+  function toggleHideEmpty() {
+    setHideEmpty((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(HIDE_EMPTY_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<TicketState | null>(null);
@@ -145,6 +172,17 @@ export function KanbanBoard({
     if (bucket) bucket.push(t);
   }
 
+  // When "hide empty" is on, drop columns with no tickets. We keep a
+  // column that's the current drop target so a drag isn't cut off
+  // mid-gesture just because it was empty to start with.
+  const visibleColumns = hideEmpty
+    ? columns.filter(
+        (c) =>
+          (byState.get(c.state)?.length ?? 0) > 0 || dropTarget === c.state,
+      )
+    : columns;
+  const hiddenCount = columns.length - visibleColumns.length;
+
   return (
     <>
       {error && (
@@ -157,7 +195,7 @@ export function KanbanBoard({
       )}
 
       {/* View toggle */}
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setViewMode("grid")}
@@ -182,15 +220,48 @@ export function KanbanBoard({
         >
           Board view
         </button>
+        <label
+          className={cn(
+            "ml-2 inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition",
+            hideEmpty
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-surface-border text-slate-300 hover:border-accent hover:text-white",
+          )}
+          title="Hide columns with zero tickets"
+        >
+          <input
+            type="checkbox"
+            checked={hideEmpty}
+            onChange={toggleHideEmpty}
+            className="h-3 w-3 accent-primary"
+          />
+          Only with tickets
+          {hideEmpty && hiddenCount > 0 && (
+            <span className="ml-1 rounded bg-primary/20 px-1 py-0.5 text-[10px] tabular-nums">
+              {hiddenCount} hidden
+            </span>
+          )}
+        </label>
         <span className="ml-2 text-xs text-slate-500">
           {viewMode === "board" ? "Drag cards between columns to transition" : "Click a column to expand, drag cards in board view"}
         </span>
       </div>
 
-      {viewMode === "grid" ? (
+      {visibleColumns.length === 0 ? (
+        <div className="rounded-lg border border-surface-border bg-surface-muted/40 p-8 text-center text-sm text-slate-400">
+          No tickets in any kanban column right now.
+          <button
+            type="button"
+            onClick={toggleHideEmpty}
+            className="ml-2 underline hover:text-primary"
+          >
+            Show all columns
+          </button>
+        </div>
+      ) : viewMode === "grid" ? (
         /* Grid mode: responsive grid showing all columns at once */
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {columns.map((col) => {
+          {visibleColumns.map((col) => {
             const colTickets = byState.get(col.state) ?? [];
             const isExpanded = expandedCols.has(col.state);
             const showCount = isExpanded ? 20 : 3;
@@ -287,7 +358,7 @@ export function KanbanBoard({
       ) : (
         /* Board mode: classic horizontal scroll */
         <div className="flex gap-4 overflow-x-auto pb-4">
-          {columns.map((col) => {
+          {visibleColumns.map((col) => {
             const colTickets = byState.get(col.state) ?? [];
             const isOver = dropTarget === col.state;
             return (

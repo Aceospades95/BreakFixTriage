@@ -58,7 +58,9 @@ export async function createCommentAction(formData: FormData) {
   }
 
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
-  redirect(`/tickets/${parsed.data.ticketId}#comments`);
+  redirect(
+    `/tickets/${parsed.data.ticketId}?ok=${encodeURIComponent("Comment posted")}#comments`,
+  );
 }
 
 const deleteSchema = z.object({
@@ -117,5 +119,7 @@ export async function deleteCommentAction(formData: FormData) {
   }
 
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
-  redirect(`/tickets/${parsed.data.ticketId}#comments`);
+  redirect(
+    `/tickets/${parsed.data.ticketId}?ok=${encodeURIComponent("Comment deleted")}#comments`,
+  );
 }

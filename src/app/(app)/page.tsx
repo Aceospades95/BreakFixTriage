@@ -18,6 +18,7 @@ import { daysInState, slaHealth } from "@/lib/reports/sla";
 import { getSlaThresholds } from "@/lib/settings/settings";
 import { updateStopStatusAction } from "@/server/actions/scheduling";
 import { uploadAttachmentAction } from "@/server/actions/attachments";
+import { sweepQuotesAction } from "@/server/actions/quotes";
 
 export const dynamic = "force-dynamic";
 
@@ -635,45 +636,94 @@ export default async function HomePage() {
               Ops attention
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {/*
+                Findings §2#9 + §6.MyDay reconciliation:
+                "SLA breached" and "Aging > 30 days" are NOT the same
+                metric. Both are docs/ui-conventions.md §9-aligned,
+                but they answer different questions:
+
+                  SLA breached  = floor(now - stateEnteredAt) >= the
+                                  state's SLA threshold (state-aware,
+                                  state-dependent threshold; see
+                                  src/lib/reports/sla.ts::slaHealth)
+                  Aging > 30d   = floor(now - reportedAt) > 30
+                                  (state-agnostic, anchored at
+                                  reportedAt; see
+                                  src/lib/reports/sla.ts::isAgingOpenTicket)
+
+                A ticket can be one without the other. Tiles now
+                carry a `hint` tooltip so operators can read the
+                definition; the tile clicks anchor to the inline
+                breached panel below.
+              */}
               <Kpi
                 label="SLA breached"
                 value={overdueBreached.length}
-                href="/dashboards"
+                href="#sla-breached"
+                hint="Open tickets where days-in-current-state has crossed that state's SLA threshold."
                 emphasize={overdueBreached.length > 0}
               />
               <Kpi
                 label="Pending duplicates"
                 value={pendingDuplicates}
                 href="/duplicates"
+                hint="Conflicts in the import pipeline awaiting human review."
                 emphasize={pendingDuplicates > 0}
               />
               <Kpi
                 label="Quotes expired"
                 value={expiringQuotes}
-                href="/quotes?status=SENT"
+                href="/quotes"
+                hint="Sent or approved quotes whose hold-window has passed and are ready to sweep."
                 emphasize={expiringQuotes > 0}
               />
               <Kpi
                 label="Invoices needed"
                 value={invoicesPending}
-                href="/invoices"
+                href="/tickets?state=INVOICE_REQUIRED"
+                hint="Tickets in INVOICE_REQUIRED state — billing closes them."
                 emphasize={invoicesPending > 0}
               />
               <Kpi
                 label="Unscheduled jobs"
                 value={unscheduledJobs}
                 href="/scheduling/routes/new"
+                hint="Pickup or delivery jobs not yet on a route."
                 emphasize={unscheduledJobs > 0}
               />
               <Kpi
                 label="Active routes"
                 value={todaysRoutes.length}
                 href="/scheduling"
+                hint="Routes scheduled for today."
               />
             </div>
 
+            {/* Inline sweep action — matches the banner on /quotes,
+                same server action, no duplicated logic. Closes the
+                §6.MyDay "consolidate the action behavior" item. */}
+            {expiringQuotes > 0 && can(session.role, PERMISSIONS.QUOTES_WRITE) && (
+              <div className="mt-3 flex items-center justify-between rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                <span>
+                  <strong>{expiringQuotes}</strong> sent or approved quote
+                  {expiringQuotes === 1 ? "" : "s"} past their hold window.
+                </span>
+                <form action={sweepQuotesAction}>
+                  <button
+                    type="submit"
+                    className="rounded bg-amber-500/30 px-3 py-1 text-xs font-semibold hover:bg-amber-500/50"
+                  >
+                    Sweep now
+                  </button>
+                </form>
+              </div>
+            )}
+
             {overdueBreached.length > 0 && (
-              <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/5 p-4">
+              <div
+                id="sla-breached"
+                className="mt-4 scroll-mt-20 rounded-lg border border-red-500/40 bg-red-500/5 p-4"
+              >
                 <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-red-200">
                   Oldest SLA-breached tickets
                 </h3>
@@ -731,16 +781,21 @@ function Kpi({
   label,
   value,
   href,
+  hint,
   emphasize = false,
 }: {
   label: string;
   value: number;
   href: string;
+  /** Tooltip explaining the metric — closes findings §6.MyDay
+      definition reconciliation requirement. */
+  hint?: string;
   emphasize?: boolean;
 }) {
   return (
     <Link
       href={href}
+      title={hint}
       className={`block rounded-lg border p-4 transition hover:border-accent ${
         emphasize
           ? "border-amber-500/60 bg-amber-500/10"

@@ -74,6 +74,10 @@ model District {
   code     String         @unique
   region   String?
   active   Boolean        @default(true)
+  /// Round-3 §H22: soft-disable timestamp. Preferred over delete
+  /// when schools are attached. The list page shows disabled
+  /// districts greyed-out with a "Re-enable" action.
+  disabledAt DateTime?
   schools  School[]
   users    DistrictUser[]
   createdAt DateTime      @default(now())
@@ -196,6 +200,17 @@ model Device {
   purchaseDate     DateTime?
   warrantyExpires  DateTime?
   notes            String?
+  /// Round-3 §H20: optional MAC address for network-side diagnosis.
+  macAddress       String?
+  /// Round-3 §H20: free-form specs blob (RAM, OS version, screen size).
+  specs            Json?
+  /// Round-3 §H20: fallback for the Age column when purchaseDate is
+  /// null. Set to `now()` on first import or first ticket.
+  firstSeenAt      DateTime?
+  /// Round-3 §H22: soft-retire timestamp. The list page hides
+  /// retired devices behind a "Show retired" toggle.
+  retiredAt        DateTime?
+  retiredReason    String?
   model            DeviceModel? @relation(fields: [modelId], references: [id])
   school           School?      @relation(fields: [ownerSchoolId], references: [id])
   tickets          Ticket[]
@@ -203,6 +218,8 @@ model Device {
   updatedAt        DateTime     @updatedAt
 
   @@index([ownerSchoolId])
+  @@index([macAddress])
+  @@index([retiredAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +280,21 @@ model Ticket {
   invoiceRequired  Boolean        @default(false)
   closedAt         DateTime?
   stateEnteredAt   DateTime       @default(now())
+  /// Round-3 §B / §I: SLA pause state. When `slaPausedAt` is non-null
+  /// the SLA helpers treat the interval [slaPausedAt, now] as
+  /// excluded from age. Resume sets slaPausedAt back to null and
+  /// pushes the paused-duration back into stateEnteredAt so the
+  /// badge shows the correct age. `slaPausedReason` is required
+  /// at the action site; the column is nullable for legacy rows.
+  slaPausedAt      DateTime?
+  slaPausedReason  String?
+  slaPausedByUserId String?
+  /// Round-3 §B5: SLA warning + breach idempotency stamps. The
+  /// cron checks these before firing so a ticket only generates
+  /// `sla_breach_warning` once per warning threshold and
+  /// `sla_breached` once per breach threshold.
+  slaWarningFiredAt DateTime?
+  slaBreachFiredAt  DateTime?
   /// Phase 10: soft ticket merge. When set, the UI shows a "merged
   /// into X" banner and redirects writers to the target, but history
   /// on both rows is preserved.
@@ -738,6 +770,13 @@ model InAppNotification {
   title           String
   body            String?
   linkHref        String?
+  /// Round-3 §A4 / §15: optional entity links so the bell popover
+  /// can deep-link to the right ticket/route/quote without
+  /// reverse-parsing linkHref. Nullable so existing rows still
+  /// work — the bell falls back to linkHref when these are unset.
+  ticketId        String?
+  routeId         String?
+  quoteId         String?
   readAt          DateTime?
   createdAt       DateTime @default(now())
 
@@ -745,6 +784,7 @@ model InAppNotification {
 
   @@index([recipientUserId, readAt])
   @@index([createdAt])
+  @@index([ticketId])
 }
 
 // ---------------------------------------------------------------------------
@@ -943,6 +983,10 @@ model TimeEntry {
   endedAt   DateTime?
   minutes   Int?
   notes     String?
+  /// Round-3 §I24: tags an entry created via the manual-time form
+  /// (vs. the start/stop timer). Lets the productivity dashboard
+  /// distinguish lived-time from back-filled time.
+  manualEntry Boolean @default(false)
   createdAt DateTime @default(now())
 
   ticket    Ticket @relation("TicketTimeEntries", fields: [ticketId], references: [id], onDelete: Cascade)
@@ -1138,4 +1182,41 @@ model UserPreference {
   /// Null = use the system default (currently 07:00).
   digestHour           Int?
   updatedAt            DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Round-3 §C: school-portal request log
+// ---------------------------------------------------------------------------
+//
+// Captures every "Request update" or "Report new issue" action from
+// the public portal. Each row already has a matching audit row
+// (actor labelled `portal:<token-suffix>`); this is a domain-side
+// log so the school-portal admin view can render "your last 5
+// requests" without a join through audit.
+
+enum PortalRequestKind {
+  UPDATE_REQUEST
+  NEW_ISSUE
+}
+
+model PortalRequest {
+  id            String            @id @default(cuid())
+  /// Set when kind=UPDATE_REQUEST and the request lands on an
+  /// existing ticket. Null for NEW_ISSUE kinds (the resulting
+  /// ticket is captured via PortalRequest.createdTicketId).
+  ticketId      String?
+  /// Set when kind=NEW_ISSUE and the action created a new ticket.
+  createdTicketId String?
+  schoolId      String
+  kind          PortalRequestKind
+  body          String
+  contactEmail  String?
+  /// The PortalToken row that was used. Lets ops trace a request
+  /// back to whichever bookmark the school clicked from.
+  portalTokenId String?
+  createdAt     DateTime          @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([ticketId])
+  @@index([createdTicketId])
 }

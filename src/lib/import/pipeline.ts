@@ -11,6 +11,33 @@ import { detectDuplicates } from "@/lib/duplicates/detect";
 import { parseFile } from "./parse";
 import { mapRawRow, mapRawSchoolRow, mapRawDeviceRow, mapRawUserRow, mapRawPartRow, mapRawDeviceModelRow } from "./mapper";
 import { NormalizedImportRow, NormalizedSchoolRow, NormalizedDeviceRow, NormalizedUserRow, NormalizedPartRow, NormalizedDeviceModelRow } from "./schema";
+import { translateImportError, type TranslateContext } from "./error-translate";
+
+/**
+ * Build the row-level context that `translateImportError` uses to
+ * splice human-readable values into operator-facing messages.
+ * Generic over every NormalizedImportRow / Schools / Devices / etc.
+ * shape — only the fields that exist on the given row land in the
+ * context.
+ */
+function importRowContext(row: {
+  rowNumber?: number;
+  normalized?: Record<string, unknown> | null;
+}): TranslateContext {
+  const n = row.normalized ?? {};
+  const get = (key: string): string | null => {
+    const v = (n as Record<string, unknown>)[key];
+    return typeof v === "string" && v.length > 0 ? v : null;
+  };
+  return {
+    rowNumber: row.rowNumber,
+    assetTag: get("assetTag"),
+    serialNumber: get("serialNumber"),
+    schoolCode: get("schoolCode") ?? get("code"),
+    incidentNumber: get("incidentNumber"),
+    email: get("email") ?? get("requesterEmail"),
+  };
+}
 
 export interface ImportResult {
   batchId: string;
@@ -70,7 +97,7 @@ export async function runImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -158,11 +185,12 @@ export async function runImport(
       if (outcome === "REJECTED") rejected++;
     } catch (err) {
       rejected++;
+      const ctx = importRowContext(row);
       await db.importRow.update({
         where: { id: row.id },
         data: {
           status: ImportRowStatus.REJECTED,
-          errors: [err instanceof Error ? err.message : String(err)],
+          errors: [translateImportError(err, ctx)],
         },
       });
     }
@@ -426,7 +454,7 @@ export async function runSchoolImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -522,7 +550,7 @@ export async function runSchoolImport(
       rejected++;
       await db.importRow.update({
         where: { id: row.id },
-        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+        data: { status: ImportRowStatus.REJECTED, errors: [translateImportError(err, importRowContext(row))] },
       });
     }
   }
@@ -562,7 +590,7 @@ export async function runDeviceImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -673,7 +701,7 @@ export async function runDeviceImport(
       rejected++;
       await db.importRow.update({
         where: { id: row.id },
-        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+        data: { status: ImportRowStatus.REJECTED, errors: [translateImportError(err, importRowContext(row))] },
       });
     }
   }
@@ -712,7 +740,7 @@ export async function runUserImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -807,7 +835,7 @@ export async function runUserImport(
       rejected++;
       await db.importRow.update({
         where: { id: row.id },
-        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+        data: { status: ImportRowStatus.REJECTED, errors: [translateImportError(err, importRowContext(row))] },
       });
     }
   }
@@ -846,7 +874,7 @@ export async function runPartImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -954,7 +982,7 @@ export async function runPartImport(
       rejected++;
       await db.importRow.update({
         where: { id: row.id },
-        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+        data: { status: ImportRowStatus.REJECTED, errors: [translateImportError(err, importRowContext(row))] },
       });
     }
   }
@@ -993,7 +1021,7 @@ export async function runDeviceModelImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -1090,7 +1118,7 @@ export async function runDeviceModelImport(
       rejected++;
       await db.importRow.update({
         where: { id: row.id },
-        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+        data: { status: ImportRowStatus.REJECTED, errors: [translateImportError(err, importRowContext(row))] },
       });
     }
   }

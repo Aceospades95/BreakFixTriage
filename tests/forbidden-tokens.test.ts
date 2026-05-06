@@ -103,3 +103,132 @@ describe("forbidden tokens in operator-facing strings (§8 + §3.A3)", () => {
     expect(goesThroughTranslator).toBe(true);
   });
 });
+
+/**
+ * Round-3 §G14 — `font-mono` outside `<code>` / `<pre>` is
+ * forbidden everywhere a user can read text. The brief asks for
+ * a CI grep + a runtime DOM scan; this test covers the grep
+ * surface (the runtime scan lands with the Playwright smoke
+ * once it's wired).
+ *
+ * Allow-list:
+ *   - `<code>` / `<pre>` blocks (inherently monospace).
+ *   - Library files that themselves DEFINE the typography
+ *     (lib/cn.ts, tailwind.config, globals.css).
+ *   - Test files (they may mention the token in assertions).
+ *
+ * Heuristic: scan src/ .ts(x), grep for /\bfont-mono\b/, fail
+ * the build if any match is in a className that isn't on a
+ * `<code>` / `<pre>` element. The full AST analysis is
+ * follow-up work; the substring scan catches every
+ * already-known violator.
+ */
+describe("Round-3 §G14: font-mono confined to <code>/<pre>", () => {
+  const files = walk(ROOT);
+
+  it("no Tailwind `font-mono` className lives in src/ outside <code>/<pre>", () => {
+    const offences: string[] = [];
+    for (const f of files) {
+      if (f.endsWith("/lib/cn.ts")) continue; // typography defs
+      const src = readFileSync(f, "utf8");
+      // Quick filter: skip files that don't mention `font-mono`.
+      if (!src.includes("font-mono")) continue;
+      // Walk lines; each `font-mono` occurrence has to be inside
+      // a <code> or <pre> element (we look for the tag opener
+      // earlier on the same line, since the offending pattern
+      // is always a `<code className="...font-mono...">`).
+      const lines = src.split("\n");
+      lines.forEach((line, i) => {
+        if (!line.includes("font-mono")) return;
+        const allowed = /<\s*(code|pre)\b/.test(line);
+        if (!allowed) {
+          offences.push(`${f}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    if (offences.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "Round-3 §G14 violation: font-mono outside <code>/<pre>:\n" +
+          offences.join("\n"),
+      );
+    }
+    expect(offences).toEqual([]);
+  });
+});
+
+/**
+ * Round-3 §G29 — no ALL_CAPS_UNDERSCORE in user-visible JSX
+ * literal text. The unit test in tests/status-pill-casing.test.ts
+ * already pins TicketState rendering; this one is a broader
+ * scan against literal JSX text nodes.
+ *
+ * Heuristic: walk src/ .tsx files, find JSX text bodies between
+ * `>` and `<`, fail if any contains the [A-Z]{2,}_[A-Z]+ pattern.
+ * Skips obvious code-style contexts (comments, the formatter
+ * source itself, test files, the audit-format helper which
+ * rewrites raw action strings on its way to chips).
+ */
+describe("Round-3 §G29: no ALL_CAPS_UNDERSCORE in JSX text", () => {
+  const files = walk(ROOT).filter((f) => f.endsWith(".tsx"));
+  const RE = /[A-Z]{2,}_[A-Z]+/;
+
+  it("no JSX text literal carries the ALL_CAPS_UNDERSCORE pattern", () => {
+    const offences: string[] = [];
+    const allow = (file: string, line: string): boolean => {
+      // Allow file-internal allow-listing via a /* @scan: ok */
+      // marker on the line. Round-3 doesn't use this today but
+      // it's the escape hatch a future caller can reach for.
+      return /@scan:\s*ok/.test(line);
+    };
+
+    for (const f of files) {
+      // The audit format helper SOURCE refers to action strings
+      // by their raw form; scan exempt.
+      if (f.endsWith("/lib/audit/format.ts")) continue;
+      const src = readFileSync(f, "utf8");
+      const lines = src.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]!;
+        // JSX text nodes are between > and < on the same line —
+        // a strict tokenizer would catch multi-line nodes too,
+        // but those are rare and the substring scan covers them
+        // line-by-line.
+        const matches = line.match(/>([^<>{}]+)</g) ?? [];
+        for (let mi = 0; mi < matches.length; mi++) {
+          const m = matches[mi]!;
+          const text = m.slice(1, -1).trim();
+          if (!text) continue;
+          if (!RE.test(text) || allow(f, line)) continue;
+          // Skip text inside <code> or <pre> — those are explicitly
+          // allowed monospace blocks per docs/ui-conventions.md.
+          // Heuristic: scan the line backwards from the match for
+          // the nearest opening tag; if it's <code> or <pre>,
+          // the text is permitted.
+          const matchIdx = line.indexOf(m);
+          const before = line.slice(0, matchIdx);
+          const lastOpen = before.lastIndexOf("<");
+          if (lastOpen >= 0) {
+            const tagFrag = before.slice(lastOpen).toLowerCase();
+            if (
+              tagFrag.startsWith("<code") ||
+              tagFrag.startsWith("<pre")
+            ) {
+              continue;
+            }
+          }
+          offences.push(`${f}:${i + 1}: ${text}`);
+        }
+      }
+    }
+    if (offences.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "Round-3 §G29 violation: ALL_CAPS_UNDERSCORE in JSX text:\n" +
+          offences.slice(0, 20).join("\n") +
+          (offences.length > 20 ? `\n…and ${offences.length - 20} more` : ""),
+      );
+    }
+    expect(offences).toEqual([]);
+  });
+});

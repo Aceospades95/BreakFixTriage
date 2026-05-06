@@ -51,7 +51,7 @@ export function ScanWarehouseClient() {
             name="serial"
             ref={inputRef}
             placeholder="SN-0001 / AT-0001"
-            className="flex-1 rounded border border-surface-border bg-surface px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none"
+            className="flex-1 rounded border border-surface-border bg-surface px-2 py-1 font-medium tracking-tight text-xs focus:border-accent focus:outline-none"
           />
         </label>
         <button
@@ -64,16 +64,21 @@ export function ScanWarehouseClient() {
 
       {lastScan && (
         <div className="rounded border border-surface-border bg-surface-muted/40 px-3 py-2 text-xs text-slate-400">
-          Last scan: <span className="font-mono">{lastScan}</span>
+          Last scan: <span className="font-medium tracking-tight">{lastScan}</span>
         </div>
       )}
 
       <div className="rounded border border-surface-border bg-surface-muted/40 px-3 py-2 text-xs text-slate-400">
+        {/* Round-3 §G29: state names rendered humanised, not as
+            ALL_CAPS_UNDERSCORE. Round-3 §G14: dropped font-medium tracking-tight. */}
         Tip: point the camera at a device barcode or QR label. The action
-        finds every open ticket on that device in
-        <span className="font-mono"> AWAITING_PICKUP </span>/
-        <span className="font-mono"> PICKUP_SCHEDULED </span>and moves it
-        to <span className="font-mono">IN_WAREHOUSE</span> automatically.
+        finds every open ticket on that device in{" "}
+        <strong className="font-medium text-slate-300">Awaiting pickup</strong> /
+        {" "}
+        <strong className="font-medium text-slate-300">Pickup scheduled</strong>
+        {" "}and moves it to{" "}
+        <strong className="font-medium text-slate-300">In warehouse</strong>{" "}
+        automatically.
       </div>
     </div>
   );

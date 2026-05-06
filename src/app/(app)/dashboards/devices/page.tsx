@@ -87,7 +87,7 @@ export default async function DeviceHotspotsPage({
                 key={h.deviceId}
                 className="transition hover:bg-surface-muted/40"
               >
-                <td className="px-3 py-2 font-mono">
+                <td className="px-3 py-2 font-medium tracking-tight">
                   <Link
                     href={`/admin/devices/${h.deviceId}`}
                     className="text-accent hover:underline"
@@ -95,7 +95,7 @@ export default async function DeviceHotspotsPage({
                     {h.serialNumber}
                   </Link>
                 </td>
-                <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                <td className="px-3 py-2 font-medium tracking-tight text-xs text-slate-400">
                   {h.assetTag ?? "—"}
                 </td>
                 <td className="px-3 py-2 text-xs">{h.modelName ?? "—"}</td>
@@ -103,7 +103,7 @@ export default async function DeviceHotspotsPage({
                   {h.schoolName}
                 </td>
                 <td
-                  className={`px-3 py-2 font-mono text-sm ${h.ticketCount >= threshold * 2 ? "text-red-300" : "text-amber-300"}`}
+                  className={`px-3 py-2 font-medium tracking-tight text-sm ${h.ticketCount >= threshold * 2 ? "text-red-300" : "text-amber-300"}`}
                 >
                   {h.ticketCount}
                 </td>

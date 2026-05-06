@@ -294,7 +294,7 @@ function JobCandidateColumn({
     <div className="rounded-lg border border-surface-border bg-surface-muted/60 p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold">{title}</h3>
-        <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
+        <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-xs">
           {total}
         </span>
       </div>
@@ -312,7 +312,7 @@ function JobCandidateColumn({
               <div className="text-sm font-medium">
                 {g.schoolName}
                 {g.schoolCode && (
-                  <span className="ml-2 font-mono text-xs text-slate-500">
+                  <span className="ml-2 font-medium tracking-tight text-xs text-slate-500">
                     {g.schoolCode}
                   </span>
                 )}
@@ -322,7 +322,7 @@ function JobCandidateColumn({
                   <li key={t.id} className="flex gap-2">
                     <Link
                       href={`/tickets/${t.id}`}
-                      className="font-mono text-accent hover:underline"
+                      className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {t.incidentNumber}
                     </Link>
@@ -413,7 +413,7 @@ function RouteStatusPill({
             : "bg-slate-500/20 text-slate-200 border-slate-500/40";
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls}`}
+      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls}`}
     >
       {status}
     </span>

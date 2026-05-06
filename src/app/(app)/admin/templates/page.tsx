@@ -90,7 +90,7 @@ export default async function AdminTemplatesPage() {
               <tr key={t.id}>
                 <td className="px-3 py-2 font-medium">{t.name}</td>
                 <td className="px-3 py-2 text-slate-300">{t.shortDescription}</td>
-                <td className="px-3 py-2 font-mono text-xs">{t.priority}</td>
+                <td className="px-3 py-2 font-medium tracking-tight text-xs">{t.priority}</td>
                 <td className="px-3 py-2 text-xs">
                   {t.active ? (
                     <span className="text-emerald-300">active</span>

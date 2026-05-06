@@ -124,7 +124,7 @@ export default async function NewUserPage({
                     className="accent-accent"
                   />
                   {d.name}{" "}
-                  <span className="font-mono text-xs text-slate-500">
+                  <span className="font-medium tracking-tight text-xs text-slate-500">
                     {d.code}
                   </span>
                 </label>

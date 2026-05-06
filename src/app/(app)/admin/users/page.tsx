@@ -53,11 +53,11 @@ export default async function AdminUsersPage() {
                     {u.name}
                   </Link>
                 </td>
-                <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                <td className="px-3 py-2 font-medium tracking-tight text-xs text-slate-400">
                   {u.email}
                 </td>
                 <td className="px-3 py-2">
-                  <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-[10px] uppercase">
+                  <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase">
                     {u.role}
                   </span>
                 </td>

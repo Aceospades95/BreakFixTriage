@@ -187,7 +187,7 @@ export default async function BenchPage({
                     {u.id === session.userId && " · you"}
                   </div>
                 </div>
-                <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
+                <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-xs">
                   {tickets.length}
                 </span>
               </div>
@@ -207,7 +207,7 @@ export default async function BenchPage({
                 no owner
               </div>
             </div>
-            <span className="rounded bg-amber-500/20 px-2 py-0.5 font-mono text-xs text-amber-200">
+            <span className="rounded bg-amber-500/20 px-2 py-0.5 font-medium tracking-tight text-xs text-amber-200">
               {unassigned.length}
             </span>
           </div>
@@ -259,14 +259,14 @@ function TicketList({
           <div className="flex items-center gap-3">
             <Link
               href={`/tickets/${t.id}`}
-              className="font-mono text-sm text-accent hover:underline"
+              className="font-medium tracking-tight text-sm text-accent hover:underline"
             >
               {t.incidentNumber}
             </Link>
             <StatePill state={t.state} />
             <SlaBadge ticket={t} compact />
             {t.device && (
-              <span className="font-mono text-xs text-slate-400">
+              <span className="font-medium tracking-tight text-xs text-slate-400">
                 {t.device.serialNumber}
               </span>
             )}
@@ -301,7 +301,7 @@ function CompactTicketList({
         <li key={t.id} className="flex items-center gap-2">
           <Link
             href={`/tickets/${t.id}`}
-            className="font-mono text-accent hover:underline"
+            className="font-medium tracking-tight text-accent hover:underline"
           >
             {t.incidentNumber}
           </Link>

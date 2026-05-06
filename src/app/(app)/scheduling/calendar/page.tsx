@@ -132,7 +132,7 @@ export default async function SchedulingCalendarPage({
               key={i}
               className={`min-h-[100px] space-y-1 p-1.5 ${isToday ? "bg-accent/5 ring-1 ring-accent/60" : "bg-surface-muted/60"}`}
             >
-              <div className="text-[10px] font-mono text-slate-400">
+              <div className="text-[10px] font-medium tracking-tight text-slate-400">
                 {cell.day}
               </div>
               {dayRoutes.slice(0, 4).map((r) => (

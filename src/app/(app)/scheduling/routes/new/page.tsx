@@ -144,12 +144,12 @@ export default async function NewRoutePage({
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2 text-sm font-medium">
-                        <span className="rounded bg-surface-border px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                        <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase">
                           {j.type}
                         </span>
                         <span>{j.school.name}</span>
                         {j.school.code && (
-                          <span className="font-mono text-xs text-slate-500">
+                          <span className="font-medium tracking-tight text-xs text-slate-500">
                             {j.school.code}
                           </span>
                         )}

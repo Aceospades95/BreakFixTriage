@@ -184,7 +184,7 @@ export function OnboardingTour({
     >
       <div className="w-full max-w-md rounded-xl border border-surface-border bg-surface-muted p-6 shadow-2xl">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-mono uppercase tracking-wide text-slate-500">
+          <span className="text-[10px] font-medium tracking-tight uppercase tracking-wide text-slate-500">
             {stepIdx + 1} / {steps.length}
           </span>
           <button

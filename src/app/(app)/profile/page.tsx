@@ -44,10 +44,10 @@ export default async function ProfilePage({
             <dt className="text-slate-400">Name</dt>
             <dd>{session.name}</dd>
             <dt className="text-slate-400">Email</dt>
-            <dd className="font-mono text-xs">{session.email}</dd>
+            <dd className="font-medium tracking-tight text-xs">{session.email}</dd>
             <dt className="text-slate-400">Role</dt>
             <dd>
-              <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-[10px] uppercase">
+              <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase">
                 {session.role}
               </span>
             </dd>

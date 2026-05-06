@@ -118,9 +118,9 @@ export default async function NewImportPage({
           <p className="mt-2 text-xs text-slate-400">
             Calls the ServiceNow Table API and feeds the results through the
             normal import pipeline. Uses{" "}
-            <code className="font-mono">SERVICENOW_BASE_URL</code>,{" "}
-            <code className="font-mono">SERVICENOW_USERNAME</code>, and{" "}
-            <code className="font-mono">SERVICENOW_PASSWORD</code> from the
+            <code className="font-medium tracking-tight">SERVICENOW_BASE_URL</code>,{" "}
+            <code className="font-medium tracking-tight">SERVICENOW_USERNAME</code>, and{" "}
+            <code className="font-medium tracking-tight">SERVICENOW_PASSWORD</code> from the
             environment.
           </p>
           <div className="mt-4">

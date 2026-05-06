@@ -10,6 +10,7 @@ import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { transitionTicket } from "@/lib/workflow";
 import { createInAppNotification } from "@/lib/notifications/in-app";
+import { dispatchEmailEvent } from "@/lib/email";
 import { publish } from "@/lib/events/bus";
 
 /**
@@ -128,11 +129,25 @@ export async function bulkAssignAction(formData: FormData) {
     data: { assignedUserId: parsed.data.assigneeUserId },
   });
 
-  // Fire in-app notifications for the new assignee, if any.
+  // Fire in-app notifications + ticket_assigned email events
+  // for the new assignee, if any. The email goes through
+  // dispatchEmailEvent (Round-2 §B + Round-3 §B) — single choke
+  // point so the audit + log + per-event-disable from
+  // /admin/email-rules all keep working.
   if (parsed.data.assigneeUserId) {
     const tickets = await prisma.ticket.findMany({
       where: { id: { in: parsed.data.ticketIds } },
-      select: { id: true, incidentNumber: true, school: { select: { name: true } } },
+      select: {
+        id: true,
+        incidentNumber: true,
+        schoolId: true,
+        shortDescription: true,
+        school: { select: { name: true } },
+      },
+    });
+    const assignee = await prisma.user.findUnique({
+      where: { id: parsed.data.assigneeUserId },
+      select: { name: true, email: true },
     });
     for (const t of tickets) {
       await createInAppNotification({
@@ -142,6 +157,31 @@ export async function bulkAssignAction(formData: FormData) {
         body: t.school.name,
         linkHref: `/tickets/${t.id}`,
       });
+      try {
+        await dispatchEmailEvent("ticket_assigned", {
+          ticketId: t.id,
+          schoolId: t.schoolId,
+          actorUserId: session.userId,
+          variables: {
+            ticket: {
+              number: t.incidentNumber,
+              summary: t.shortDescription,
+              school: t.school.name,
+            },
+            assignee: {
+              name: assignee?.name ?? "(unknown)",
+              email: assignee?.email ?? "",
+            },
+            link: `/tickets/${t.id}`,
+          },
+        });
+      } catch (err) {
+        // Don't fail the bulk-assign on a downstream email problem.
+        console.warn(
+          `[email] dispatch ticket_assigned failed for ${t.incidentNumber}:`,
+          err,
+        );
+      }
     }
   }
 

@@ -95,7 +95,7 @@ export default async function DeviceProfilePage({
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
           Open tickets{" "}
-          <span className="font-mono text-xs text-slate-500">
+          <span className="font-medium tracking-tight text-xs text-slate-500">
             {openTickets.length}
           </span>
         </h2>
@@ -111,7 +111,7 @@ export default async function DeviceProfilePage({
 
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
           Closed tickets{" "}
-          <span className="font-mono text-xs text-slate-500">
+          <span className="font-medium tracking-tight text-xs text-slate-500">
             {closedTickets.length}
           </span>
         </h2>
@@ -162,7 +162,7 @@ function TicketRow({
     <li className="flex items-center gap-3 rounded border border-surface-border bg-surface-muted/40 px-3 py-1.5">
       <Link
         href={`/tickets/${ticket.id}`}
-        className="font-mono text-accent hover:underline"
+        className="font-medium tracking-tight text-accent hover:underline"
       >
         {ticket.incidentNumber}
       </Link>

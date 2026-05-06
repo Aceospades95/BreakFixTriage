@@ -126,7 +126,7 @@ export default async function EditUserPage({
                       className="accent-accent"
                     />
                     {d.name}{" "}
-                    <span className="font-mono text-xs text-slate-500">
+                    <span className="font-medium tracking-tight text-xs text-slate-500">
                       {d.code}
                     </span>
                   </label>
@@ -177,7 +177,7 @@ export default async function EditUserPage({
         {user.totpEnabledAt ? (
           <div className="space-y-3 text-sm">
             <p>
-              <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[10px] uppercase text-emerald-200">
+              <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase text-emerald-200">
                 enabled
               </span>{" "}
               on {user.totpEnabledAt.toISOString().slice(0, 10)}
@@ -197,7 +197,7 @@ export default async function EditUserPage({
         ) : (
           <p className="text-sm text-slate-400">
             Not enrolled. The user can enroll from their own{" "}
-            <code className="font-mono">/profile/2fa</code> page.
+            <code className="font-medium tracking-tight">/profile/2fa</code> page.
           </p>
         )}
       </section>

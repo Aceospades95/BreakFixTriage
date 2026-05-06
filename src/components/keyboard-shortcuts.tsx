@@ -100,7 +100,7 @@ export function KeyboardShortcuts() {
   return (
     <>
       {leader && (
-        <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-accent/60 bg-surface-muted/90 px-4 py-1.5 text-xs font-mono text-slate-200 shadow-lg backdrop-blur">
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-accent/60 bg-surface-muted/90 px-4 py-1.5 text-xs font-medium tracking-tight text-slate-200 shadow-lg backdrop-blur">
           g _
         </div>
       )}
@@ -132,7 +132,7 @@ export function KeyboardShortcuts() {
                   className="flex items-center justify-between rounded px-2 py-1 hover:bg-surface-border/40"
                 >
                   <span className="text-slate-300">{s.label}</span>
-                  <span className="font-mono text-xs text-accent">
+                  <span className="font-medium tracking-tight text-xs text-accent">
                     {s.keys}
                   </span>
                 </li>
@@ -140,7 +140,7 @@ export function KeyboardShortcuts() {
             </ul>
             <p className="mt-3 text-[10px] text-slate-500">
               Shortcuts are disabled while you're typing in a form field.
-              Press <span className="font-mono text-accent">Esc</span> to
+              Press <span className="font-medium tracking-tight text-accent">Esc</span> to
               close any open overlay.
             </p>
           </div>

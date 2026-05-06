@@ -80,12 +80,12 @@ export default async function DuplicatesPage({
             className="rounded-lg border border-surface-border bg-surface-muted/60 p-4"
           >
             <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="rounded bg-surface-border px-2 py-0.5 font-mono">
+              <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight">
                 {c.kind}
               </span>
               <span>{c.createdAt.toISOString().slice(0, 16).replace("T", " ")}</span>
               {c.resolvedAt && (
-                <span className="ml-auto font-mono text-emerald-300">
+                <span className="ml-auto font-medium tracking-tight text-emerald-300">
                   {c.resolution}
                 </span>
               )}
@@ -183,7 +183,7 @@ function ConflictSide({
         </div>
         <StatePill state={ticket.state} />
       </div>
-      <div className="mt-1 font-mono text-sm text-accent">
+      <div className="mt-1 font-medium tracking-tight text-sm text-accent">
         {ticket.incidentNumber}
       </div>
       <div className="mt-1 text-xs text-slate-400">

@@ -79,7 +79,7 @@ export default async function InvoicesPage({
                     <div className="text-sm">
                       <Link
                         href={`/tickets/${t.id}`}
-                        className="font-mono text-accent hover:underline"
+                        className="font-medium tracking-tight text-accent hover:underline"
                       >
                         {t.incidentNumber}
                       </Link>
@@ -90,7 +90,7 @@ export default async function InvoicesPage({
                     <div className="mt-0.5 text-xs text-slate-400">
                       {t.school.name}
                       {t.school.code && (
-                        <span className="ml-2 font-mono text-slate-500">
+                        <span className="ml-2 font-medium tracking-tight text-slate-500">
                           {t.school.code}
                         </span>
                       )}
@@ -100,7 +100,7 @@ export default async function InvoicesPage({
                     {latestQuote ? (
                       <div className="mt-2 text-xs text-slate-300">
                         Approved quote{" "}
-                        <span className="font-mono text-slate-400">
+                        <span className="font-medium tracking-tight text-slate-400">
                           {latestQuote.id.slice(-6)}
                         </span>
                         {latestQuote.amountCents != null && (
@@ -175,7 +175,7 @@ export default async function InvoicesPage({
                           <div className="text-[10px] uppercase tracking-wide text-slate-400">
                             Attached PO
                           </div>
-                          <div className="mt-1 font-mono text-sm">
+                          <div className="mt-1 font-medium tracking-tight text-sm">
                             {po.poNumber}
                           </div>
                           <div className="mt-1 text-slate-400">

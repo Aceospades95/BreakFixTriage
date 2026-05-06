@@ -322,7 +322,7 @@ export function KanbanBoard({
                           )}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-mono text-accent">
+                            <span className="font-medium tracking-tight text-accent">
                               {t.incidentNumber}
                             </span>
                             <SlaBadge ticket={t} compact />
@@ -427,7 +427,7 @@ export function KanbanBoard({
                         )}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-accent">
+                          <span className="font-medium tracking-tight text-accent">
                             {t.incidentNumber}
                           </span>
                           <SlaBadge ticket={t} compact />

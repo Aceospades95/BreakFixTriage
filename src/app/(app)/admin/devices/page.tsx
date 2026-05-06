@@ -71,7 +71,7 @@ export default async function AdminDevicesPage({
           <tbody className="divide-y divide-surface-border">
             {devices.map((d) => (
               <tr key={d.id} className="transition hover:bg-surface-muted/40">
-                <td className="px-3 py-2 font-mono">
+                <td className="px-3 py-2 font-medium tracking-tight">
                   <Link
                     href={`/admin/devices/${d.id}`}
                     className="text-accent hover:underline"
@@ -79,7 +79,7 @@ export default async function AdminDevicesPage({
                     {d.serialNumber}
                   </Link>
                 </td>
-                <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                <td className="px-3 py-2 font-medium tracking-tight text-xs text-slate-400">
                   {d.assetTag ?? "—"}
                 </td>
                 <td className="px-3 py-2 text-xs">

@@ -51,7 +51,7 @@ export default async function AdminDistrictsPage({
             name="code"
             placeholder="BRONX"
             required
-            className="rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono uppercase focus:border-accent focus:outline-none"
+            className="rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight uppercase focus:border-accent focus:outline-none"
           />
           <input
             name="region"
@@ -83,7 +83,7 @@ export default async function AdminDistrictsPage({
             {districts.map((d) => (
               <tr key={d.id}>
                 <td className="px-3 py-2">{d.name}</td>
-                <td className="px-3 py-2 font-mono text-xs">{d.code}</td>
+                <td className="px-3 py-2 font-medium tracking-tight text-xs">{d.code}</td>
                 <td className="px-3 py-2 text-xs text-slate-400">
                   {d.region ?? "—"}
                 </td>

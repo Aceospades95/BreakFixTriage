@@ -70,7 +70,7 @@ export default async function NewSchoolPage({
                 type="text"
                 name="code"
                 placeholder="11X101"
-                className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono uppercase focus:border-accent focus:outline-none"
+                className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight uppercase focus:border-accent focus:outline-none"
               />
             </Field>
           </div>
@@ -134,7 +134,7 @@ export default async function NewSchoolPage({
                 name="latitude"
                 inputMode="decimal"
                 placeholder="40.8448"
-                className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono focus:border-accent focus:outline-none"
+                className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight focus:border-accent focus:outline-none"
               />
             </Field>
             <Field label="Longitude (optional)" name="longitude">
@@ -143,7 +143,7 @@ export default async function NewSchoolPage({
                 name="longitude"
                 inputMode="decimal"
                 placeholder="-73.8648"
-                className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono focus:border-accent focus:outline-none"
+                className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight focus:border-accent focus:outline-none"
               />
             </Field>
           </div>

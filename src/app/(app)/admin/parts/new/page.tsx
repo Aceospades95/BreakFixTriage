@@ -50,7 +50,7 @@ export default async function NewPartPage({
               required
               maxLength={50}
               placeholder="SCREEN-EB14"
-              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono uppercase focus:border-accent focus:outline-none"
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight uppercase focus:border-accent focus:outline-none"
             />
           </Field>
           <Field label="Name" required>
@@ -86,7 +86,7 @@ export default async function NewPartPage({
               name="costDollars"
               inputMode="decimal"
               placeholder="89.00"
-              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono focus:border-accent focus:outline-none"
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight focus:border-accent focus:outline-none"
             />
           </Field>
           <Field label="Location">

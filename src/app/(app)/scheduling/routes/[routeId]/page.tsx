@@ -162,16 +162,16 @@ export default async function RouteDetailPage({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2 text-sm font-semibold">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-surface-border font-mono text-xs">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-surface-border font-medium tracking-tight text-xs">
                         {stop.sequence}
                       </span>
                       <span>{stop.job.school.name}</span>
                       {stop.job.school.code && (
-                        <span className="font-mono text-xs text-slate-500">
+                        <span className="font-medium tracking-tight text-xs text-slate-500">
                           {stop.job.school.code}
                         </span>
                       )}
-                      <span className="rounded bg-surface-border px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                      <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase">
                         {stop.job.type}
                       </span>
                     </div>
@@ -183,7 +183,7 @@ export default async function RouteDetailPage({
                         >
                           <Link
                             href={`/tickets/${tl.ticket.id}`}
-                            className="font-mono text-accent hover:underline"
+                            className="font-medium tracking-tight text-accent hover:underline"
                           >
                             {tl.ticket.incidentNumber}
                           </Link>
@@ -316,7 +316,7 @@ function Meta({ label, value }: { label: string; value: string }) {
       <div className="text-[10px] uppercase tracking-wide text-slate-400">
         {label}
       </div>
-      <div className="mt-0.5 font-mono text-sm text-slate-200">{value}</div>
+      <div className="mt-0.5 font-medium tracking-tight text-sm text-slate-200">{value}</div>
     </div>
   );
 }
@@ -420,7 +420,7 @@ function StopStatusPill({ status }: { status: JobStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
     >
       {status}
     </span>
@@ -437,7 +437,7 @@ function RouteStatusPill({ status }: { status: RouteStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
     >
       {status}
     </span>

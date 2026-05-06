@@ -96,7 +96,7 @@ export function AutoRefresh({
       />
       Auto-refresh
       {enabled && (
-        <span className="font-mono text-[10px] text-slate-500">
+        <span className="font-medium tracking-tight text-[10px] text-slate-500">
           {countdown}s
         </span>
       )}

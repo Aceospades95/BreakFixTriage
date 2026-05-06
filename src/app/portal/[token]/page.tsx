@@ -116,12 +116,12 @@ export default async function PortalPage({
                   className="rounded-lg border border-surface-border bg-surface-muted/60 p-4"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm text-accent">
+                    <span className="font-medium tracking-tight text-sm text-accent">
                       {t.incidentNumber}
                     </span>
                     <StatePill state={t.state} />
                     {t.device && (
-                      <span className="font-mono text-xs text-slate-500">
+                      <span className="font-medium tracking-tight text-xs text-slate-500">
                         {t.device.assetTag ?? t.device.serialNumber}
                       </span>
                     )}
@@ -151,11 +151,11 @@ export default async function PortalPage({
                   key={t.id}
                   className="flex items-center gap-3 rounded border border-surface-border bg-surface-muted/40 px-3 py-1.5"
                 >
-                  <span className="font-mono text-xs text-slate-400">
+                  <span className="font-medium tracking-tight text-xs text-slate-400">
                     {t.incidentNumber}
                   </span>
                   {t.device && (
-                    <span className="font-mono text-xs text-slate-500">
+                    <span className="font-medium tracking-tight text-xs text-slate-500">
                       {t.device.assetTag ?? t.device.serialNumber}
                     </span>
                   )}

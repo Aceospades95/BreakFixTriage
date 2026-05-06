@@ -143,7 +143,7 @@ export function HelpMenu() {
                 <p className="text-xs text-slate-500">
                   Need more help? Ask your team lead or check with your admin.
                   Press{" "}
-                  <span className="font-mono text-accent">?</span> anywhere
+                  <span className="font-medium tracking-tight text-accent">?</span> anywhere
                   for keyboard shortcuts.
                 </p>
               </div>
@@ -207,7 +207,7 @@ function ShortcutsButton() {
       className="flex w-full items-center justify-between px-3 py-2 text-left text-slate-300 hover:bg-surface-border/40 hover:text-white"
     >
       <span>Keyboard shortcuts</span>
-      <span className="font-mono text-xs text-slate-500">?</span>
+      <span className="font-medium tracking-tight text-xs text-slate-500">?</span>
     </button>
   );
 }

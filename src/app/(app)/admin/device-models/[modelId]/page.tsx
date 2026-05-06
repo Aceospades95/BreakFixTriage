@@ -90,7 +90,7 @@ export default async function EditDeviceModelPage({
               defaultValue={model.repairNotes ?? ""}
               rows={12}
               placeholder="Hinges crack after ~18 months — check PART-HINGE before concluding manufacturer defect.&#10;Keyboards go sticky when exposed to sticky drinks — clean with isopropyl before replacing."
-              className="w-full rounded border border-surface-border bg-surface px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none"
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 font-medium tracking-tight text-xs focus:border-accent focus:outline-none"
             />
           </div>
           <button
@@ -124,7 +124,7 @@ export default async function EditDeviceModelPage({
                   >
                     {p.name}
                   </Link>
-                  <span className="font-mono text-xs text-slate-400">
+                  <span className="font-medium tracking-tight text-xs text-slate-400">
                     {p.sku}
                   </span>
                 </li>

@@ -142,7 +142,7 @@ export default async function QuotesPage({
               }`}
             >
               {tab.label}
-              <span className="ml-1.5 font-mono text-slate-500">{count}</span>
+              <span className="ml-1.5 font-medium tracking-tight text-slate-500">{count}</span>
             </Link>
           );
         })}
@@ -175,7 +175,7 @@ export default async function QuotesPage({
                   <td className="px-3 py-2">
                     <Link
                       href={`/tickets/${q.ticketId}`}
-                      className="font-mono text-accent hover:underline"
+                      className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {q.ticket.incidentNumber}
                     </Link>
@@ -183,7 +183,7 @@ export default async function QuotesPage({
                   <td className="px-3 py-2">
                     {q.ticket.school.name}
                     {q.ticket.school.code && (
-                      <span className="ml-2 font-mono text-xs text-slate-500">
+                      <span className="ml-2 font-medium tracking-tight text-xs text-slate-500">
                         {q.ticket.school.code}
                       </span>
                     )}
@@ -191,7 +191,7 @@ export default async function QuotesPage({
                   <td className="px-3 py-2">
                     <QuoteStatusPill status={q.status} />
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">
+                  <td className="px-3 py-2 font-medium tracking-tight text-xs">
                     {q.amountCents != null
                       ? `$${(q.amountCents / 100).toFixed(2)}`
                       : q.diagnosticOnly
@@ -246,7 +246,7 @@ function QuoteStatusPill({ status }: { status: QuoteStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
     >
       {status}
     </span>

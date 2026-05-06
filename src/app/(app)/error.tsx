@@ -39,7 +39,7 @@ export default function AppError({
           : error.message || "An unexpected error occurred."}
       </p>
       {error.digest && (
-        <p className="font-mono text-xs text-red-300/60">
+        <p className="font-medium tracking-tight text-xs text-red-300/60">
           digest: {error.digest}
         </p>
       )}

@@ -92,7 +92,7 @@ export default async function DashboardsPage() {
                       />
                     </div>
                   </div>
-                  <div className="w-10 text-right font-mono text-xs text-slate-300">
+                  <div className="w-10 text-right font-medium tracking-tight text-xs text-slate-300">
                     {row.count}
                   </div>
                 </li>
@@ -135,7 +135,7 @@ export default async function DashboardsPage() {
                   <td className="px-3 py-2">
                     <Link
                       href={`/tickets/${t.id}`}
-                      className="font-mono text-accent hover:underline"
+                      className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {t.incidentNumber}
                     </Link>

@@ -139,11 +139,11 @@ export default async function PrintRoutePage({
                           className="mt-0.5 h-4 w-4"
                           readOnly
                         />
-                        <span className="font-mono">
+                        <span className="font-medium tracking-tight">
                           {tl.ticket.incidentNumber}
                         </span>
                         {tl.ticket.device && (
-                          <span className="font-mono text-xs">
+                          <span className="font-medium tracking-tight text-xs">
                             {tl.ticket.device.serialNumber}
                             {tl.ticket.device.assetTag && (
                               <> / {tl.ticket.device.assetTag}</>

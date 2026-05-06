@@ -254,7 +254,7 @@ export default async function HomePage() {
             Timer running on{" "}
             <Link
               href={`/tickets/${openTimer.ticket.id}`}
-              className="font-mono text-amber-200 underline"
+              className="font-medium tracking-tight text-amber-200 underline"
             >
               {openTimer.ticket.incidentNumber}
             </Link>{" "}
@@ -302,7 +302,7 @@ export default async function HomePage() {
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
                 Today's routes{" "}
-                <span className="font-mono text-xs text-slate-500">
+                <span className="font-medium tracking-tight text-xs text-slate-500">
                   {doneStops}/{totalStops} stops done
                 </span>
               </h2>
@@ -324,7 +324,7 @@ export default async function HomePage() {
                       <div className="text-sm font-semibold">
                         {route.date.toISOString().slice(0, 10)}
                         {route.vehicleRef && (
-                          <span className="ml-2 font-mono text-xs text-slate-400">
+                          <span className="ml-2 font-medium tracking-tight text-xs text-slate-400">
                             {route.vehicleRef}
                           </span>
                         )}
@@ -351,11 +351,11 @@ export default async function HomePage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 text-sm font-semibold">
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-surface-border font-mono text-xs">
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-surface-border font-medium tracking-tight text-xs">
                                 {stop.sequence}
                               </span>
                               <span>{stop.job.school.name}</span>
-                              <span className="rounded bg-surface-border px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                              <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase">
                                 {stop.job.type}
                               </span>
                             </div>
@@ -385,7 +385,7 @@ export default async function HomePage() {
                                 >
                                   <Link
                                     href={`/tickets/${tl.ticket.id}`}
-                                    className="font-mono text-accent hover:underline"
+                                    className="font-medium tracking-tight text-accent hover:underline"
                                   >
                                     {tl.ticket.incidentNumber}
                                   </Link>
@@ -485,7 +485,7 @@ export default async function HomePage() {
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
               My queue{" "}
-              <span className="font-mono text-xs text-slate-500">
+              <span className="font-medium tracking-tight text-xs text-slate-500">
                 ({myOpenTickets.length})
               </span>
             </h2>
@@ -518,14 +518,14 @@ export default async function HomePage() {
                     <div className="flex flex-wrap items-center gap-3">
                       <Link
                         href={`/tickets/${t.id}`}
-                        className="font-mono text-sm text-accent hover:underline"
+                        className="font-medium tracking-tight text-sm text-accent hover:underline"
                       >
                         {t.incidentNumber}
                       </Link>
                       <StatePill state={t.state} />
                       <SlaBadge ticket={t} compact />
                       {t.device && (
-                        <span className="font-mono text-xs text-slate-400">
+                        <span className="font-medium tracking-tight text-xs text-slate-400">
                           {t.device.serialNumber}
                         </span>
                       )}
@@ -580,11 +580,11 @@ export default async function HomePage() {
                           <div className="truncate text-sm font-medium text-slate-100">
                             {user?.name ?? "Unknown"}
                           </div>
-                          <div className="font-mono text-[10px] uppercase text-slate-500">
+                          <div className="font-medium tracking-tight text-[10px] uppercase text-slate-500">
                             {user?.role ?? "—"}
                           </div>
                         </div>
-                        <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
+                        <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-xs">
                           {row._count._all}
                         </span>
                       </div>
@@ -618,7 +618,7 @@ export default async function HomePage() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">{r.assignee.name}</span>
-                    <span className="font-mono text-xs text-slate-500">
+                    <span className="font-medium tracking-tight text-xs text-slate-500">
                       {r.stops.filter((s) => s.status === "COMPLETED").length}
                       /{r.stops.length}
                     </span>
@@ -735,7 +735,7 @@ export default async function HomePage() {
                     >
                       <Link
                         href={`/tickets/${t.id}`}
-                        className="font-mono text-red-200 hover:underline"
+                        className="font-medium tracking-tight text-red-200 hover:underline"
                       >
                         {t.incidentNumber}
                       </Link>
@@ -862,7 +862,7 @@ function StopStatusPill({ status }: { status: JobStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
     >
       {status}
     </span>

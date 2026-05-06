@@ -50,7 +50,7 @@ export default async function AdminDeviceModelsPage() {
                     {m.modelName}
                   </Link>
                 </td>
-                <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                <td className="px-3 py-2 font-medium tracking-tight text-xs text-slate-400">
                   {m.formFactor}
                 </td>
                 <td className="px-3 py-2 text-xs text-slate-400">

@@ -65,7 +65,7 @@ export function ScanClient() {
 
       {hits && hits.length === 0 && (
         <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-          No match for <span className="font-mono">{lastValue}</span>. Check
+          No match for <span className="font-medium tracking-tight">{lastValue}</span>. Check
           that the label matches an incident number, device serial, asset
           tag, school code, or part SKU.
         </div>
@@ -74,7 +74,7 @@ export function ScanClient() {
       {hits && hits.length > 1 && (
         <div className="space-y-2">
           <p className="text-sm text-slate-300">
-            Multiple matches for <span className="font-mono">{lastValue}</span>:
+            Multiple matches for <span className="font-medium tracking-tight">{lastValue}</span>:
           </p>
           <ul className="space-y-2">
             {hits.map((hit) => (
@@ -84,7 +84,7 @@ export function ScanClient() {
                   className="flex items-center justify-between rounded border border-surface-border bg-surface px-3 py-2 text-sm hover:border-accent"
                 >
                   <span className="font-medium">{hit.label}</span>
-                  <span className="rounded bg-surface-border px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                  <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase">
                     {hit.kind}
                   </span>
                 </Link>

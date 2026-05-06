@@ -85,7 +85,7 @@ export default async function AppLayout({
       {readOnly && (
         <div className="fixed left-0 right-0 top-0 z-[60] border-b border-amber-500/40 bg-amber-500/20 px-6 py-2 text-center text-xs font-semibold text-amber-100">
           BreakFix Triage is in READ-ONLY MODE — writes are rejected at
-          the edge. Flip <code className="font-mono">READ_ONLY_MODE</code>{" "}
+          the edge. Flip <code className="font-medium tracking-tight">READ_ONLY_MODE</code>{" "}
           off once the cutover window closes.
         </div>
       )}

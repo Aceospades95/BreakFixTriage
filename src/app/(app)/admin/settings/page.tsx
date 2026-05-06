@@ -109,7 +109,7 @@ export default async function SettingsPage({
           <p className="mb-4 text-xs text-slate-400">
             Override the default days-in-state threshold for any ticket
             state. Leave blank for the built-in default. Type{" "}
-            <code className="font-mono">none</code> to disable SLA for a
+            <code className="font-medium tracking-tight">none</code> to disable SLA for a
             state.
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -122,7 +122,7 @@ export default async function SettingsPage({
                   key={state}
                   className="flex items-center gap-2 text-xs"
                 >
-                  <span className="w-40 font-mono uppercase text-slate-400">
+                  <span className="w-40 font-medium tracking-tight uppercase text-slate-400">
                     {state}
                   </span>
                   <input
@@ -170,7 +170,7 @@ export default async function SettingsPage({
         </h2>
         <p className="mb-4 text-xs text-slate-400">
           Closes every ticket in the selected state whose
-          <code className="mx-1 font-mono">stateEnteredAt</code>
+          <code className="mx-1 font-medium tracking-tight">stateEnteredAt</code>
           is older than the supplied day threshold. Runs through the
           state machine, so guards still apply. Maximum 500 tickets per
           run.

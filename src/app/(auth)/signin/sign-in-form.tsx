@@ -99,7 +99,7 @@ export function SignInForm({
           inputMode="numeric"
           pattern="\d{6}|[A-Za-z0-9-]{16,24}"
           placeholder="123456 or recovery code"
-          className="mt-1 block w-full rounded border border-surface-border bg-surface px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none"
+          className="mt-1 block w-full rounded border border-surface-border bg-surface px-3 py-2 font-medium tracking-tight text-sm focus:border-accent focus:outline-none"
         />
       </label>
 

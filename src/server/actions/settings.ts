@@ -26,8 +26,10 @@ export async function updateSettingsAction(formData: FormData) {
 
   if (holdDaysRaw !== undefined) {
     const n = Number(holdDaysRaw);
-    if (!Number.isFinite(n) || n < 0 || n > 90) {
-      errors.push("Default hold days must be 0–90");
+    // Min is 1 — a 0-day window auto-expires the quote on the next
+    // sweep, which is never desired. See bug 4d / ADR 0003.
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 90) {
+      errors.push("Default hold days must be a whole number 1–90");
     } else {
       await setSetting({
         key: SETTINGS_KEYS.DEFAULT_HOLD_DAYS,

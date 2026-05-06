@@ -66,13 +66,13 @@ export default async function SettingsPage({
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
               label="Default hold-window (days)"
-              hint="Applied when a quote is sent without an explicit override."
+              hint="Applied when a quote is sent without an explicit override. Minimum 1 day — a 0-day window would make every sent quote auto-expire on the next sweep."
             >
               <input
                 type="number"
                 name="defaultHoldDays"
                 defaultValue={holdDays}
-                min={0}
+                min={1}
                 max={90}
                 className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
               />

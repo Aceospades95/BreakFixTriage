@@ -24,8 +24,13 @@ import { DEFAULT_SLA_DAYS } from "@/lib/reports/sla";
 /**
  * Hold-window days for newly sent quotes. Overridable per-send via
  * the SendQuote form.
+ *
+ * Minimum is 1 (one full day), not 0. A 0-day window means
+ * `holdUntil = sentAt`, i.e. the quote auto-expires the moment it is
+ * sent — which is never the desired behavior and was the cause of bug
+ * 4d in the audit. See `docs/adr/0003-hold-window-min-1.md`.
  */
-const holdWindowSchema = z.coerce.number().int().min(0).max(90);
+const holdWindowSchema = z.coerce.number().int().min(1).max(90);
 
 /**
  * Severity multiplier applied to SLA thresholds before the escalation

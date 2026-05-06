@@ -111,7 +111,7 @@ export default async function HomePage() {
     isManager
       ? prisma.quote.count({
           where: {
-            status: QuoteStatus.SENT,
+            status: { in: [QuoteStatus.SENT, QuoteStatus.APPROVED] },
             holdUntil: { lte: now },
           },
         })

@@ -662,11 +662,12 @@ export default async function TicketDetailPage({
                     {q.holdUntil && (
                       <div className="mt-1 text-xs text-slate-500">
                         hold until {q.holdUntil.toISOString().slice(0, 10)}
-                        {q.holdUntil.getTime() <= Date.now() && (
-                          <span className="ml-1 text-amber-300">
-                            (expired)
-                          </span>
-                        )}
+                        {(q.status === "SENT" || q.status === "APPROVED") &&
+                          q.holdUntil.getTime() <= Date.now() && (
+                            <span className="ml-1 text-amber-300">
+                              (expired — pending sweep)
+                            </span>
+                          )}
                       </div>
                     )}
                     {q.notes && (

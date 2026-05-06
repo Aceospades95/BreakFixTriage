@@ -1,21 +1,32 @@
 /**
  * Hold-window automation.
  *
- * Every SENT quote carries a `holdUntil` timestamp. When that timestamp
- * passes without a customer response, the quote should auto-expire to
- * NO_RESPONSE and the owning ticket should move from QUOTE_SENT to
- * QUOTE_NO_RESPONSE so it re-enters the downstream "no response" queue.
+ * Every SENT or APPROVED quote may carry a `holdUntil` timestamp.
+ * When that timestamp passes without a customer follow-through, the
+ * quote should auto-expire to NO_RESPONSE and the owning ticket
+ * should move out of QUOTE_SENT / QUOTE_APPROVED into
+ * QUOTE_NO_RESPONSE so it re-enters the downstream "no response"
+ * queue.
+ *
+ * SENT  = quote was sent, school never replied within the window.
+ * APPROVED = school approved the quote, but the PO / payment side
+ *            never landed within the window. Same outcome as SENT
+ *            silence — the work is stalled and needs to be re-bucketed.
  *
  * This module exposes three pieces:
  *
  *   1. `isQuoteExpired` — a pure predicate used by tests and by the
  *      sweeper to decide whether a specific quote is overdue.
- *   2. `sweepExpiredQuotes` — runs the predicate against every SENT
- *      quote in the DB and applies the side effects inside a single
- *      transaction per quote.
+ *   2. `sweepExpiredQuotes` — runs the predicate against every
+ *      SENT / APPROVED quote in the DB and applies the side effects
+ *      inside a single transaction per quote.
  *   3. A small report shape so the caller (either a cron script or the
  *      "Run sweep now" button on the quotes page) can report what was
  *      done.
+ *
+ * See `docs/proposed-issues.md` Q1 for the deferred decision on
+ * whether APPROVED-with-expired-hold should land in a dedicated
+ * QUOTE_EXPIRED state instead of NO_RESPONSE.
  */
 
 import {
@@ -33,15 +44,25 @@ import {
 } from "@/lib/notifications";
 
 /**
- * Pure predicate. A quote is considered expired iff it is still SENT,
- * has a holdUntil, and that holdUntil is <= the reference time.
- * Quotes without a holdUntil never expire automatically.
+ * Pure predicate. A quote is considered expired iff:
+ *   - it is in SENT or APPROVED status, AND
+ *   - it has a holdUntil, AND
+ *   - that holdUntil is <= the reference time.
+ *
+ * Quotes without a holdUntil never expire automatically. Quotes in
+ * DRAFT, DECLINED, NO_RESPONSE, or CANCELLED never expire — they are
+ * already in a terminal-for-this-flow state.
  */
 export function isQuoteExpired(
   quote: Pick<Quote, "status" | "holdUntil">,
   now: Date,
 ): boolean {
-  if (quote.status !== QuoteStatus.SENT) return false;
+  if (
+    quote.status !== QuoteStatus.SENT &&
+    quote.status !== QuoteStatus.APPROVED
+  ) {
+    return false;
+  }
   if (!quote.holdUntil) return false;
   return quote.holdUntil.getTime() <= now.getTime();
 }
@@ -61,10 +82,10 @@ export interface SweepInput {
 }
 
 /**
- * Sweep all SENT quotes whose holdUntil has passed, flipping them to
- * NO_RESPONSE and pushing the corresponding ticket to
- * QUOTE_NO_RESPONSE. Each quote is handled in its own transaction so a
- * single failing quote doesn't block the rest of the batch.
+ * Sweep all SENT and APPROVED quotes whose holdUntil has passed,
+ * flipping them to NO_RESPONSE and pushing the corresponding ticket
+ * to QUOTE_NO_RESPONSE. Each quote is handled in its own transaction
+ * so a single failing quote doesn't block the rest of the batch.
  */
 export async function sweepExpiredQuotes(
   input: SweepInput = {},
@@ -75,7 +96,7 @@ export async function sweepExpiredQuotes(
 
   const candidates = await db.quote.findMany({
     where: {
-      status: QuoteStatus.SENT,
+      status: { in: [QuoteStatus.SENT, QuoteStatus.APPROVED] },
       holdUntil: { lte: now },
     },
     include: {
@@ -95,6 +116,7 @@ export async function sweepExpiredQuotes(
   };
 
   for (const quote of candidates) {
+    const priorStatus = quote.status;
     try {
       await db.$transaction(async (tx) => {
         await tx.quote.update({
@@ -110,6 +132,7 @@ export async function sweepExpiredQuotes(
             kind: "auto-expire",
             actorUserId,
             payload: {
+              priorStatus,
               holdUntil: quote.holdUntil?.toISOString() ?? null,
               sweptAt: now.toISOString(),
             },
@@ -121,14 +144,25 @@ export async function sweepExpiredQuotes(
             entityType: "Quote",
             entityId: quote.id,
             action: "auto-expire",
-            before: { status: QuoteStatus.SENT },
+            before: { status: priorStatus },
             after: { status: QuoteStatus.NO_RESPONSE },
           },
           tx,
         );
         report.expired += 1;
 
-        if (quote.ticket.state === TicketState.QUOTE_SENT) {
+        // Move the ticket out of QUOTE_SENT or QUOTE_APPROVED into
+        // QUOTE_NO_RESPONSE. Force the transition because the
+        // QUOTE_APPROVED → QUOTE_NO_RESPONSE edge is not in the
+        // standard graph (an admin would have manually moved it
+        // forward) — the sweep needs to be able to do this without
+        // an admin in the loop. The audit row above plus the
+        // payload.sweep flag below makes the override traceable.
+        if (
+          quote.ticket.state === TicketState.QUOTE_SENT ||
+          quote.ticket.state === TicketState.QUOTE_APPROVED
+        ) {
+          const fromState = quote.ticket.state;
           try {
             await transitionTicket(
               quote.ticketId,
@@ -136,7 +170,8 @@ export async function sweepExpiredQuotes(
               {
                 actorUserId,
                 reason: `Auto-expired after hold window (${quote.holdUntil?.toISOString() ?? "unknown"})`,
-                payload: { quoteId: quote.id, sweep: true },
+                payload: { quoteId: quote.id, sweep: true, fromState },
+                force: fromState === TicketState.QUOTE_APPROVED,
               },
               tx,
             );

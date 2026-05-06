@@ -54,7 +54,7 @@ export default async function QuotesPage({
     }),
     prisma.quote.count({
       where: {
-        status: QuoteStatus.SENT,
+        status: { in: [QuoteStatus.SENT, QuoteStatus.APPROVED] },
         holdUntil: { lte: new Date() },
       },
     }),
@@ -83,7 +83,7 @@ export default async function QuotesPage({
                 <button
                   type="submit"
                   className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-                  title="Expire any SENT quote whose hold window has passed."
+                  title="Expire any SENT or APPROVED quote whose hold window has passed."
                 >
                   Run hold-window sweep
                 </button>
@@ -107,7 +107,7 @@ export default async function QuotesPage({
       {expiringSoonCount > 0 && (
         <div className="mb-4 flex items-center justify-between rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
           <span>
-            <strong>{expiringSoonCount}</strong> sent quote
+            <strong>{expiringSoonCount}</strong> sent or approved quote
             {expiringSoonCount === 1 ? "" : "s"} past their hold window.
           </span>
           {canWrite && (
@@ -163,7 +163,8 @@ export default async function QuotesPage({
           <tbody className="divide-y divide-surface-border">
             {quotes.map((q) => {
               const holdExpired =
-                q.status === QuoteStatus.SENT &&
+                (q.status === QuoteStatus.SENT ||
+                  q.status === QuoteStatus.APPROVED) &&
                 q.holdUntil != null &&
                 q.holdUntil.getTime() <= Date.now();
               return (

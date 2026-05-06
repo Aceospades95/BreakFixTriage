@@ -285,3 +285,33 @@ Things I could not determine from reading the code alone:
 - **Duplicate "review-then-delete" gate** exists in the schema
   (`DuplicateConflict.resolution`) but I did not exhaustively verify
   every UI path forces a review step before deletion.
+
+## 12. Touchpoints for the findings-driven pass (May 2026)
+
+Quick lookup table for the second audit pass (the one that works
+through the §3 confirmed-bug list, the §5 colour/polish issues, and
+the per-page UX in §6 of the findings brief). Listing files only —
+this section is a map, not an edit log.
+
+| Concern (brief reference)                       | Files                                                                                                                                  |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Dashboard tab nav (§3.A1)                       | `src/app/(app)/dashboards/page.tsx` + sibling `finance/`, `productivity/`, `devices/`. Lifted into a shared `dashboards/layout.tsx`.    |
+| Audit-log writer + row schema (§3.A2)           | `src/lib/audit/audit.ts`, `prisma/schema.prisma` (`AuditLog`).                                                                          |
+| Import error translation (§3.A3)                | `src/lib/import/pipeline.ts`, `src/server/actions/imports.ts`. New translator in `src/lib/import/error-translate.ts`.                  |
+| Topbar dropdowns / popover primitive (§3.A4+A5) | `src/components/notification-bell.tsx`, `src/components/help-menu.tsx`. New shared primitive in `src/components/popover-menu.tsx`.    |
+| Force-change form reset (§3.A6)                 | `src/app/(app)/tickets/[ticketId]/page.tsx` (the form), `src/server/actions/tickets.ts::forceTransitionTicketAction`.                  |
+| Comment delete confirm (§3.A7)                  | `src/components/comment-thread.tsx`, `src/server/actions/comments.ts::deleteCommentAction`.                                            |
+| Tickets list sort + Priority column (§3.A8, §6) | `src/app/(app)/tickets/page.tsx`.                                                                                                      |
+| `/admin/audit` ↔ `/audit` (§3.A9)               | `src/app/(app)/audit/page.tsx`, new `src/app/(app)/admin/audit/page.tsx`, `src/app/(app)/admin/page.tsx` (the card link).               |
+| Status enum + transition guard (§4)             | `prisma/schema.prisma` (`TicketState`), `src/lib/workflow/states.ts`, `src/lib/workflow/transition.ts`.                               |
+| Kanban column source (§4 interim, §2#2)         | `src/app/(app)/tickets/kanban/page.tsx` (`KANBAN_EXCLUDED`), `src/components/kanban-board.tsx`.                                        |
+| Theme tokens + status pill (§5)                 | `src/components/state-pill.tsx`, `tailwind.config.ts`, `src/app/globals.css`.                                                          |
+| Toast primitive (§6 toast policy)               | `src/components/toast-host.tsx` — primitive exists; consumers redirect with `?ok=` / `?error=`.                                        |
+| My Day KPIs (§2#9)                              | `src/app/(app)/page.tsx` (`Kpi` component, the six tiles).                                                                             |
+| ConfirmButton primitive (§3.A7 + destructive)   | `src/components/confirm-button.tsx`. Uses `window.confirm`; usable as-is until a portal modal lands.                                   |
+
+> Edits in this pass are committed as one logical change per concern,
+> in the order listed in the §10 brief: §1 → §2 top-10 → §3 remaining
+> → §5 colour / polish → §6 per-page UX. The §4 ADR is opened in
+> parallel from day one (`docs/adr/0005-status-taxonomy-simplification.md`)
+> and Stage 2 implementation is gated on maintainer sign-off.

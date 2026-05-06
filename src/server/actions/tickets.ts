@@ -124,7 +124,11 @@ export async function forceTransitionTicketAction(formData: FormData) {
   // bench bucketing or KPI counters on the homepage.
   revalidatePath("/bench");
   revalidatePath("/");
-  redirect(`/tickets/${parsed.data.ticketId}`);
+  redirect(
+    `/tickets/${parsed.data.ticketId}?ok=${encodeURIComponent(
+      `Forced state change to ${parsed.data.to}`,
+    )}`,
+  );
 }
 
 function formatTransitionError(err: unknown): string {

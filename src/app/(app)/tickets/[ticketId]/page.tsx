@@ -6,13 +6,13 @@ import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList } from "@/components/attachment-list";
+import { ForceChangeForm } from "@/components/force-change-form";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { allowedNextStates } from "@/lib/workflow";
 import { readStatusConfig } from "@/lib/workflow/status-config";
 import {
-  forceTransitionTicketAction,
   transitionTicketAction,
   updateTicketAction,
 } from "@/server/actions/tickets";
@@ -558,41 +558,14 @@ export default async function TicketDetailPage({
                 state-machine edge check. A reason is required and the
                 change is audited.
               </p>
-              <form
-                action={forceTransitionTicketAction}
-                className="flex flex-col gap-2 rounded border border-amber-500/30 bg-amber-500/5 p-2"
-              >
-                <input type="hidden" name="ticketId" value={ticket.id} />
-                <select
-                  name="to"
-                  defaultValue=""
-                  required
-                  className="rounded border border-surface-border bg-surface-muted px-2 py-1 text-sm focus:border-accent focus:outline-none"
-                >
-                  <option value="" disabled>
-                    Pick a target state…
-                  </option>
-                  {allStatesForPicker.map((s) => (
-                    <option key={s.state} value={s.state}>
-                      {s.label} ({s.state})
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  name="reason"
-                  required
-                  minLength={3}
-                  placeholder="Reason (required)"
-                  className="rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  className="rounded border border-amber-500/60 bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/30"
-                >
-                  Force change
-                </button>
-              </form>
+              {/* Key includes the current state + stateEnteredAt so a
+                  successful force change re-mounts the form, clearing
+                  every uncontrolled input. Closes findings §3.A6. */}
+              <ForceChangeForm
+                key={`force-${ticket.state}-${ticket.stateEnteredAt.toISOString()}`}
+                ticketId={ticket.id}
+                states={allStatesForPicker}
+              />
             </Card>
           )}
 

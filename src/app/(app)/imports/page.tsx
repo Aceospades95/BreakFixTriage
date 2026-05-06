@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { LocalTime } from "@/components/local-time";
 
 export const dynamic = "force-dynamic";
 
@@ -142,7 +143,7 @@ export default async function ImportsPage({
       </div>
 
       {/* Import history table */}
-      <div className="overflow-hidden rounded-lg border border-surface-border">
+      <div className="overflow-x-auto rounded-lg border border-surface-border">
         <table className="min-w-full divide-y divide-surface-border text-sm">
           <thead className="bg-surface-muted text-left text-xs uppercase tracking-wide text-slate-400">
             <tr>
@@ -189,7 +190,9 @@ export default async function ImportsPage({
                     {outcome}
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-400">
-                    <div>{b.createdAt.toISOString().slice(0, 16).replace("T", " ")}</div>
+                    <div>
+                      <LocalTime date={b.createdAt} mode="short" />
+                    </div>
                     <div className="text-[10px] text-slate-500">
                       {ago} · {b.uploadedBy.name}
                     </div>

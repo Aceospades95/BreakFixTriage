@@ -64,9 +64,8 @@ const PERM_GROUPS: { group: string; perms: [string, Permission][] }[] = [
 function permLabel(key: string): string {
   return key
     .replace(/_/g, " ")
-    .replace(/([A-Z])/g, " $1")
     .toLowerCase()
-    .replace(/^\w/, (c) => c.toUpperCase());
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export default async function PermissionsPage({

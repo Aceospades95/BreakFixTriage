@@ -496,7 +496,7 @@ function BulkActionForm({
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-surface-border">
+      <div className="overflow-x-auto rounded-lg border border-surface-border">
         <TicketTable
           tickets={tickets}
           withCheckbox

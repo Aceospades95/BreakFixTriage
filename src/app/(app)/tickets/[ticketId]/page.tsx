@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { QuoteStatus, TicketPriority } from "@prisma/client";
+import { QuoteStatus, TicketPriority, TicketState as TicketStateEnum } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
@@ -10,7 +10,9 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { allowedNextStates } from "@/lib/workflow";
+import { readStatusConfig } from "@/lib/workflow/status-config";
 import {
+  forceTransitionTicketAction,
   transitionTicketAction,
   updateTicketAction,
 } from "@/server/actions/tickets";
@@ -47,6 +49,7 @@ export default async function TicketDetailPage({
   const canTransition = can(session.role, PERMISSIONS.TICKETS_TRANSITION);
   const canWrite = can(session.role, PERMISSIONS.TICKETS_WRITE);
   const canWriteQuotes = can(session.role, PERMISSIONS.QUOTES_WRITE);
+  const canForceTransition = can(session.role, PERMISSIONS.USERS_MANAGE);
 
   const [ticket, assignableUsers, siblingTickets] = await Promise.all([
     prisma.ticket.findUnique({
@@ -194,6 +197,26 @@ export default async function TicketDetailPage({
 
   const nextStates = allowedNextStates(ticket.state);
   const returnTo = `/tickets/${ticket.id}`;
+
+  // Load admin status config for the "Change status" dropdown. Labels
+  // may be customized and some states disabled — keep those out of the
+  // picker.
+  const statusConfig = canForceTransition ? await readStatusConfig() : null;
+  const allStatesForPicker: { state: TicketStateEnum; label: string }[] =
+    statusConfig
+      ? (Object.values(TicketStateEnum) as TicketStateEnum[])
+          .filter((s) => !statusConfig.disabled.includes(s))
+          .filter((s) => s !== ticket.state)
+          .map((s) => ({
+            state: s,
+            label:
+              statusConfig.labels?.[s] ??
+              s.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) =>
+                c.toUpperCase(),
+              ),
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label))
+      : [];
 
   return (
     <>
@@ -528,6 +551,51 @@ export default async function TicketDetailPage({
         </section>
 
         <aside className="space-y-6">
+          {canForceTransition && allStatesForPicker.length > 0 && (
+            <Card title="Change status (admin)">
+              <p className="mb-2 text-xs text-slate-400">
+                Pick any state. This bypasses the workflow guard and the
+                state-machine edge check. A reason is required and the
+                change is audited.
+              </p>
+              <form
+                action={forceTransitionTicketAction}
+                className="flex flex-col gap-2 rounded border border-amber-500/30 bg-amber-500/5 p-2"
+              >
+                <input type="hidden" name="ticketId" value={ticket.id} />
+                <select
+                  name="to"
+                  defaultValue=""
+                  required
+                  className="rounded border border-surface-border bg-surface-muted px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                >
+                  <option value="" disabled>
+                    Pick a target state…
+                  </option>
+                  {allStatesForPicker.map((s) => (
+                    <option key={s.state} value={s.state}>
+                      {s.label} ({s.state})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  name="reason"
+                  required
+                  minLength={3}
+                  placeholder="Reason (required)"
+                  className="rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded border border-amber-500/60 bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/30"
+                >
+                  Force change
+                </button>
+              </form>
+            </Card>
+          )}
+
           <Card title="Available transitions">
             {!canTransition ? (
               <p className="text-sm text-slate-400">

@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TicketState } from "@prisma/client";
 import { SlaBadge } from "@/components/sla-badge";
 import { useAppEvents } from "@/components/use-app-events";
 import { cn } from "@/lib/cn";
+
+const HIDE_EMPTY_KEY = "kanban-hide-empty";
 
 /**
  * Drag-and-drop kanban with a grid/board toggle.
@@ -42,8 +44,33 @@ export function KanbanBoard({
 }) {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<"grid" | "board">("grid");
+  const [hideEmpty, setHideEmpty] = useState(false);
 
   useAppEvents(["tickets.changed", "tickets.bulk-changed"]);
+
+  // Restore the "hide empty" preference from localStorage after mount.
+  // We read on an effect (not during state init) so SSR/CSR markup
+  // matches before hydration.
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(HIDE_EMPTY_KEY);
+      if (saved === "1") setHideEmpty(true);
+    } catch {
+      /* localStorage may be disabled */
+    }
+  }, []);
+
+  function toggleHideEmpty() {
+    setHideEmpty((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(HIDE_EMPTY_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<TicketState | null>(null);
@@ -145,6 +172,17 @@ export function KanbanBoard({
     if (bucket) bucket.push(t);
   }
 
+  // When "hide empty" is on, drop columns with no tickets. We keep a
+  // column that's the current drop target so a drag isn't cut off
+  // mid-gesture just because it was empty to start with.
+  const visibleColumns = hideEmpty
+    ? columns.filter(
+        (c) =>
+          (byState.get(c.state)?.length ?? 0) > 0 || dropTarget === c.state,
+      )
+    : columns;
+  const hiddenCount = columns.length - visibleColumns.length;
+
   return (
     <>
       {error && (
@@ -157,7 +195,7 @@ export function KanbanBoard({
       )}
 
       {/* View toggle */}
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setViewMode("grid")}
@@ -182,15 +220,48 @@ export function KanbanBoard({
         >
           Board view
         </button>
+        <label
+          className={cn(
+            "ml-2 inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition",
+            hideEmpty
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-surface-border text-slate-300 hover:border-accent hover:text-white",
+          )}
+          title="Hide columns with zero tickets"
+        >
+          <input
+            type="checkbox"
+            checked={hideEmpty}
+            onChange={toggleHideEmpty}
+            className="h-3 w-3 accent-primary"
+          />
+          Only with tickets
+          {hideEmpty && hiddenCount > 0 && (
+            <span className="ml-1 rounded bg-primary/20 px-1 py-0.5 text-[10px] tabular-nums">
+              {hiddenCount} hidden
+            </span>
+          )}
+        </label>
         <span className="ml-2 text-xs text-slate-500">
           {viewMode === "board" ? "Drag cards between columns to transition" : "Click a column to expand, drag cards in board view"}
         </span>
       </div>
 
-      {viewMode === "grid" ? (
+      {visibleColumns.length === 0 ? (
+        <div className="rounded-lg border border-surface-border bg-surface-muted/40 p-8 text-center text-sm text-slate-400">
+          No tickets in any kanban column right now.
+          <button
+            type="button"
+            onClick={toggleHideEmpty}
+            className="ml-2 underline hover:text-primary"
+          >
+            Show all columns
+          </button>
+        </div>
+      ) : viewMode === "grid" ? (
         /* Grid mode: responsive grid showing all columns at once */
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {columns.map((col) => {
+          {visibleColumns.map((col) => {
             const colTickets = byState.get(col.state) ?? [];
             const isExpanded = expandedCols.has(col.state);
             const showCount = isExpanded ? 20 : 3;
@@ -209,26 +280,32 @@ export function KanbanBoard({
                     : "border-surface-border bg-surface-muted/40",
                 )}
               >
-                <button
-                  type="button"
-                  onClick={() => toggleExpand(col.state)}
-                  className="flex w-full items-center justify-between px-3 py-2.5 text-left"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-slate-100">
-                      {col.title}
+                <div className="flex w-full items-stretch">
+                  <Link
+                    href={`/tickets?state=${col.state}`}
+                    title={`Open ${col.title} in table view`}
+                    className="flex flex-1 items-center justify-between px-3 py-2.5 text-left transition hover:bg-muted/40"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold text-slate-100 hover:text-primary">
+                        {col.title}
+                      </div>
+                      <div className="text-[10px] text-slate-500">{col.hint}</div>
                     </div>
-                    <div className="text-[10px] text-slate-500">{col.hint}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
+                    <span className="rounded bg-muted px-2 py-0.5 text-xs tabular-nums">
                       {colTickets.length}
                     </span>
-                    <span className="text-xs text-slate-500">
-                      {isExpanded ? "▼" : "▶"}
-                    </span>
-                  </div>
-                </button>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(col.state)}
+                    title={isExpanded ? "Collapse" : "Expand"}
+                    aria-label={isExpanded ? "Collapse" : "Expand"}
+                    className="flex items-center justify-center border-l border-border/40 px-2 text-slate-500 transition hover:bg-muted hover:text-primary"
+                  >
+                    <span className="text-xs">{isExpanded ? "▼" : "▶"}</span>
+                  </button>
+                </div>
                 {colTickets.length > 0 && (
                   <ul className="space-y-1.5 border-t border-surface-border/50 p-2">
                     {colTickets.slice(0, showCount).map((t) => (
@@ -281,7 +358,7 @@ export function KanbanBoard({
       ) : (
         /* Board mode: classic horizontal scroll */
         <div className="flex gap-4 overflow-x-auto pb-4">
-          {columns.map((col) => {
+          {visibleColumns.map((col) => {
             const colTickets = byState.get(col.state) ?? [];
             const isOver = dropTarget === col.state;
             return (
@@ -299,16 +376,41 @@ export function KanbanBoard({
                     : "border-surface-border",
                 )}
               >
-                <div className="flex items-center justify-between border-b border-surface-border px-3 py-2">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-100">
+                <div className="flex items-center justify-between gap-2 border-b border-surface-border px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/tickets?state=${col.state}`}
+                      className="block text-sm font-semibold text-slate-100 hover:text-primary"
+                      title={`Open ${col.title} in table view`}
+                    >
                       {col.title}
-                    </div>
+                    </Link>
                     <div className="text-[10px] text-slate-500">{col.hint}</div>
                   </div>
-                  <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
-                    {colTickets.length}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="rounded bg-muted px-2 py-0.5 text-xs tabular-nums">
+                      {colTickets.length}
+                    </span>
+                    <Link
+                      href={`/tickets?state=${col.state}`}
+                      className="text-slate-500 hover:text-primary"
+                      title={`Open ${col.title} in table view`}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="h-3.5 w-3.5"
+                        aria-hidden="true"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M5.22 14.78a.75.75 0 001.06 0l7.22-7.22v5.69a.75.75 0 001.5 0v-7.5a.75.75 0 00-.75-.75h-7.5a.75.75 0 000 1.5h5.69l-7.22 7.22a.75.75 0 000 1.06z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </Link>
+                  </div>
                 </div>
                 <ul className="flex-1 space-y-2 overflow-y-auto p-2">
                   {colTickets.slice(0, 40).map((t) => (

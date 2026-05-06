@@ -73,26 +73,35 @@ export default async function SchedulingCalendarPage({
 
   return (
     <>
+      <div className="mb-2">
+        <Link
+          href="/scheduling"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-white"
+        >
+          ← Back to scheduling
+        </Link>
+      </div>
+
       <PageHeader
         title="Route calendar"
         subtitle={monthLabel}
         actions={
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
             <Link
               href={`/scheduling/calendar?month=${prevMonth}`}
-              className="rounded border border-surface-border px-3 py-1.5 transition hover:border-accent"
+              className="rounded border border-border px-3 py-1.5 transition hover:border-primary"
             >
               ← {prevMonth}
             </Link>
             <Link
               href="/scheduling/calendar"
-              className="rounded border border-surface-border px-3 py-1.5 transition hover:border-accent"
+              className="rounded border border-border px-3 py-1.5 transition hover:border-primary"
             >
               Today
             </Link>
             <Link
               href={`/scheduling/calendar?month=${nextMonth}`}
-              className="rounded border border-surface-border px-3 py-1.5 transition hover:border-accent"
+              className="rounded border border-border px-3 py-1.5 transition hover:border-primary"
             >
               {nextMonth} →
             </Link>

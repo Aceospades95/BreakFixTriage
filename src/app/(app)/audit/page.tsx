@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { LocalTime } from "@/components/local-time";
 
 export const dynamic = "force-dynamic";
 
@@ -123,7 +124,7 @@ export default async function AuditLogPage({
         </div>
       </form>
 
-      <div className="overflow-hidden rounded-lg border border-surface-border">
+      <div className="overflow-x-auto rounded-lg border border-surface-border">
         <table className="min-w-full divide-y divide-surface-border text-sm">
           <thead className="bg-surface-muted text-left text-xs uppercase tracking-wide text-slate-400">
             <tr>
@@ -137,8 +138,8 @@ export default async function AuditLogPage({
           <tbody className="divide-y divide-surface-border">
             {logs.map((log) => (
               <tr key={log.id} className="align-top">
-                <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-400">
-                  {log.createdAt.toISOString().replace("T", " ").slice(0, 19)}
+                <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-400">
+                  <LocalTime date={log.createdAt} mode="datetime" />
                 </td>
                 <td className="px-3 py-2 text-xs">
                   {log.actor ? (

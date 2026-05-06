@@ -158,6 +158,11 @@ export async function bulkAssignAction(formData: FormData) {
   });
 
   revalidatePath("/tickets");
+  // Reassignment changes which bucket each ticket lands in on the
+  // bench and on the My Day "team queues" panel — invalidate both
+  // so the Router cache doesn't show stale data after redirect.
+  revalidatePath("/bench");
+  revalidatePath("/");
   publish({ topic: "tickets.bulk-changed", reason: "bulk-assign" });
   const summary = parsed.data.assigneeUserId
     ? `Assigned ${result.count} tickets`

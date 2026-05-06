@@ -61,6 +61,10 @@ export async function transitionTicketAction(formData: FormData) {
 
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
   revalidatePath("/tickets");
+  // Manual transitions also affect the bench (state filter) and My Day
+  // landing page — invalidate both.
+  revalidatePath("/bench");
+  revalidatePath("/");
   redirect(`/tickets/${parsed.data.ticketId}`);
 }
 
@@ -116,6 +120,10 @@ export async function forceTransitionTicketAction(formData: FormData) {
 
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
   revalidatePath("/tickets");
+  // Force-transitions can move a ticket into a state that changes
+  // bench bucketing or KPI counters on the homepage.
+  revalidatePath("/bench");
+  revalidatePath("/");
   redirect(`/tickets/${parsed.data.ticketId}`);
 }
 
@@ -273,5 +281,9 @@ export async function updateTicketAction(formData: FormData) {
 
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
   revalidatePath("/tickets");
+  // Field updates may include `assignedUserId`, which moves the
+  // ticket between bench buckets and the My Day "team queues" panel.
+  revalidatePath("/bench");
+  revalidatePath("/");
   redirect(`/tickets/${parsed.data.ticketId}`);
 }

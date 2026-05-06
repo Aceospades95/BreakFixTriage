@@ -213,13 +213,21 @@ async function main() {
     update: {},
   });
 
-  // Tickets in a few different states
+  // Tickets in a few different states.
+  //
+  // Note: at least one ticket must be assigned, otherwise the manager
+  // "All benches" view (/bench?scope=all) has nothing to bucket and
+  // looks like the page is broken. Assign INC1000003 to the seeded
+  // ADMIN so that view has demonstrable data on first run.
+  const adminUserId = createdUsers[Role.ADMIN];
+  const techUserId = createdUsers[Role.TECHNICIAN];
   const ticketSeeds: {
     incidentNumber: string;
     schoolId: string;
     deviceId: string;
     state: TicketState;
     shortDescription: string;
+    assignedUserId?: string;
   }[] = [
     {
       incidentNumber: "INC1000001",
@@ -234,6 +242,7 @@ async function main() {
       deviceId: device2.id,
       state: "IN_WAREHOUSE",
       shortDescription: "Cracked screen",
+      assignedUserId: techUserId,
     },
     {
       incidentNumber: "INC1000003",
@@ -241,6 +250,7 @@ async function main() {
       deviceId: device1.id,
       state: "QUOTE_REQUIRED",
       shortDescription: "Liquid damage — OOW",
+      assignedUserId: adminUserId,
     },
   ];
 
@@ -258,6 +268,7 @@ async function main() {
         shortDescription: t.shortDescription,
         state: t.state,
         priority: "NORMAL",
+        assignedUserId: t.assignedUserId ?? null,
       },
     });
     await prisma.ticketEvent.create({

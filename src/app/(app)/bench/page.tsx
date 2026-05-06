@@ -98,14 +98,17 @@ export default async function BenchPage({
   }
 
   // All benches (manager view).
-  const [byAssignee, unassigned] = await Promise.all([
-    prisma.ticket.groupBy({
-      by: ["assignedUserId"],
+  const [ticketsByUserRaw, unassigned] = await Promise.all([
+    prisma.ticket.findMany({
       where: {
         state: { in: activeStates },
         assignedUserId: { not: null },
       },
-      _count: { _all: true },
+      orderBy: { stateEnteredAt: "asc" },
+      include: {
+        school: { select: { name: true } },
+        device: { select: { serialNumber: true } },
+      },
     }),
     prisma.ticket.findMany({
       where: { state: { in: activeStates }, assignedUserId: null },
@@ -118,40 +121,38 @@ export default async function BenchPage({
     }),
   ]);
 
-  const assigneeIds = byAssignee
-    .map((r) => r.assignedUserId)
-    .filter((id): id is string => id != null);
-  const [users, ticketsByUser] = await Promise.all([
-    prisma.user.findMany({
-      where: { id: { in: assigneeIds } },
-      select: { id: true, name: true, role: true },
-    }),
-    prisma.ticket.findMany({
-      where: {
-        assignedUserId: { in: assigneeIds },
-        state: { in: activeStates },
-      },
-      orderBy: { stateEnteredAt: "asc" },
-      include: {
-        school: { select: { name: true } },
-        device: { select: { serialNumber: true } },
-      },
-    }),
-  ]);
-
-  const byUser = new Map<string, typeof ticketsByUser>();
-  for (const t of ticketsByUser) {
+  const byUser = new Map<string, typeof ticketsByUserRaw>();
+  for (const t of ticketsByUserRaw) {
     if (!t.assignedUserId) continue;
     const bucket = byUser.get(t.assignedUserId) ?? [];
     bucket.push(t);
     byUser.set(t.assignedUserId, bucket);
   }
 
+  const assigneeIds = Array.from(byUser.keys());
+  const users =
+    assigneeIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: assigneeIds } },
+          select: { id: true, name: true, role: true },
+          orderBy: { name: "asc" },
+        })
+      : [];
+
+  // Pin the current user's bucket to the front (if they have one).
+  const sortedUsers = [
+    ...users.filter((u) => u.id === session.userId),
+    ...users.filter((u) => u.id !== session.userId),
+  ];
+
+  const totalBuckets = sortedUsers.length + 1; // +1 for the Unassigned bucket
+  const totalAssignedOpen = ticketsByUserRaw.length;
+
   return (
     <>
       <PageHeader
         title="All benches"
-        subtitle="Every active ticket grouped by assignee"
+        subtitle={`${totalAssignedOpen} assigned · ${unassigned.length} unassigned · ${sortedUsers.length} active assignee${sortedUsers.length === 1 ? "" : "s"}`}
         actions={
           <Link
             href="/bench?scope=me"
@@ -162,8 +163,16 @@ export default async function BenchPage({
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {users.map((u) => {
+      <div
+        className={
+          // Avoid the "half-empty grid" first-paint when there's only
+          // one bucket — render single column instead of forcing two.
+          totalBuckets <= 1
+            ? "grid gap-4"
+            : "grid gap-4 lg:grid-cols-2"
+        }
+      >
+        {sortedUsers.map((u) => {
           const tickets = byUser.get(u.id) ?? [];
           return (
             <section
@@ -175,6 +184,7 @@ export default async function BenchPage({
                   <div className="text-sm font-semibold">{u.name}</div>
                   <div className="text-[10px] uppercase tracking-wide text-slate-500">
                     {u.role}
+                    {u.id === session.userId && " · you"}
                   </div>
                 </div>
                 <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">

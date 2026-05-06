@@ -71,15 +71,64 @@ export interface SlaTicketSubset {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
+ * Canonical "whole days elapsed" calculator.
+ *
+ * Returns the integer number of full days between two timestamps,
+ * floored so a 30-day-and-11-hour gap reports 30, not 31. Negative
+ * gaps clamp to 0. This is the only place in the codebase that
+ * should be doing day-arithmetic on Dates — every aging /
+ * threshold check goes through here so the rule is consistent.
+ *
+ * The convention used everywhere downstream (see
+ * `docs/adr/0002-aging-convention.md`) is:
+ *
+ *     flagged ⇔ wholeDaysBetween(later, earlier) > threshold
+ *
+ * i.e. *strict* greater-than. A ticket exactly `threshold` days old
+ * is NOT flagged.
+ */
+export function wholeDaysBetween(later: Date, earlier: Date): number {
+  const diffMs = later.getTime() - earlier.getTime();
+  if (diffMs < 0) return 0;
+  return Math.floor(diffMs / MS_PER_DAY);
+}
+
+/**
  * How many whole days the ticket has been in its current state. Uses
  * `stateEnteredAt` when present, falling back to `reportedAt` for
  * tickets that haven't transitioned yet.
  */
 export function daysInState(ticket: SlaTicketSubset, now: Date): number {
   const anchor = ticket.stateEnteredAt ?? ticket.reportedAt;
-  const diffMs = now.getTime() - anchor.getTime();
-  if (diffMs < 0) return 0;
-  return Math.floor(diffMs / MS_PER_DAY);
+  return wholeDaysBetween(now, anchor);
+}
+
+/**
+ * How many whole days the ticket has been open (anchored at
+ * `reportedAt`, not `stateEnteredAt`). Use this for the "Aging > N
+ * days" dashboard / KPI; use `daysInState` for "stuck in this state
+ * for too long".
+ */
+export function daysOpen(
+  ticket: Pick<SlaTicketSubset, "reportedAt">,
+  now: Date,
+): number {
+  return wholeDaysBetween(now, ticket.reportedAt);
+}
+
+/**
+ * Strict-greater-than aging predicate. A ticket reported on
+ * 2026-04-05 and queried at any time on 2026-05-05 returns false
+ * for threshold=30 (exactly 30 days elapsed). Returns true on
+ * 2026-05-06 (31 days elapsed).
+ */
+export function isAgingOpenTicket(
+  ticket: Pick<SlaTicketSubset, "reportedAt"> & { state: TicketState },
+  now: Date,
+  thresholdDays: number,
+): boolean {
+  if (ticket.state === "CLOSED") return false;
+  return daysOpen(ticket, now) > thresholdDays;
 }
 
 /**

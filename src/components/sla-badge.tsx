@@ -5,7 +5,7 @@ import {
   slaLabel,
   type SlaTicketSubset,
 } from "@/lib/reports/sla";
-import { cn } from "@/lib/cn";
+import { cn, humaniseEnum } from "@/lib/cn";
 
 /**
  * Days-in-state badge for the ticket list and detail pages. Colors
@@ -25,21 +25,25 @@ export function SlaBadge({
   const health = slaHealth(ticket.state, days);
   const label = slaLabel(health, days, ticket.state);
 
-  const cls =
-    health === "breached"
+  // 0d SLA is rendered grey, not green — closes findings §5.D.
+  // Reserves green ("on_track") for days >= 1 so the eye learns
+  // the gradient from grey (untouched today) → green (warm) →
+  // amber (approaching) → red (breached).
+  const showAsNeutral = health === "na" || days === 0;
+  const cls = showAsNeutral
+    ? "bg-slate-500/20 text-slate-400 border-slate-500/40"
+    : health === "breached"
       ? "bg-red-500/20 text-red-200 border-red-500/40"
       : health === "approaching"
         ? "bg-amber-500/20 text-amber-200 border-amber-500/40"
-        : health === "on_track"
-          ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/40"
-          : "bg-slate-500/20 text-slate-400 border-slate-500/40";
+        : "bg-emerald-500/20 text-emerald-200 border-emerald-500/40";
 
   return (
     <span
       title={
         health === "na"
           ? "No SLA defined for this state"
-          : `${days} day${days === 1 ? "" : "s"} in ${ticket.state}${
+          : `${days} day${days === 1 ? "" : "s"} in ${humaniseEnum(ticket.state)}${
               health === "breached" ? " (breached)" : health === "approaching" ? " (approaching)" : ""
             }`
       }

@@ -26,6 +26,56 @@ const schema = z.object({
 });
 
 /**
+ * Round-3 §L11 — preview which tickets would close without
+ * mutating anything. Returns the list of candidates for the
+ * admin tools UI to render before the operator confirms.
+ *
+ * Read-only; does NOT write an audit row (no change happened).
+ */
+export async function previewBulkCloseStale(input: {
+  state: TicketState;
+  daysOld: number;
+}): Promise<{
+  candidates: Array<{
+    id: string;
+    incidentNumber: string;
+    schoolName: string;
+    stateEnteredAt: Date;
+  }>;
+  capped: boolean;
+}> {
+  await requireRole(PERMISSIONS.USERS_MANAGE);
+
+  const cutoff = new Date(
+    Date.now() - input.daysOld * 24 * 60 * 60 * 1000,
+  );
+  const candidates = await prisma.ticket.findMany({
+    where: {
+      state: input.state,
+      stateEnteredAt: { lt: cutoff },
+    },
+    orderBy: { stateEnteredAt: "asc" },
+    take: 501,
+    select: {
+      id: true,
+      incidentNumber: true,
+      stateEnteredAt: true,
+      school: { select: { name: true } },
+    },
+  });
+  const capped = candidates.length > 500;
+  return {
+    candidates: (capped ? candidates.slice(0, 500) : candidates).map((t) => ({
+      id: t.id,
+      incidentNumber: t.incidentNumber,
+      schoolName: t.school.name,
+      stateEnteredAt: t.stateEnteredAt,
+    })),
+    capped,
+  };
+}
+
+/**
  * Close every ticket in `state` whose `stateEnteredAt` is older
  * than `daysOld`. Refuses to touch CLOSED (idempotent), ON_HOLD
  * (human decision), or any state where CLOSED is not a legal
@@ -105,6 +155,13 @@ export async function bulkCloseStaleAction(formData: FormData) {
 
   revalidatePath("/tickets");
   revalidatePath("/admin/settings");
+  revalidatePath("/admin/tools/bulk-close");
+  // Round-3 §L: bulk close confirmation lands on the tools page
+  // (the new home for the dry-run flow). Settings keeps the
+  // legacy form for backwards compatibility, but the toast
+  // shows up on whichever page the operator submitted from —
+  // the redirect target uses the form's `returnTo` if present.
+  const returnTo = formData.get("returnTo")?.toString() || "/admin/settings";
   const summary = `Closed ${closed}/${stale.length} stale tickets in ${parsed.data.state}${errors.length > 0 ? ` (${errors.length} errors)` : ""}`;
-  redirect(`/admin/settings?ok=${encodeURIComponent(summary)}`);
+  redirect(`${returnTo}?ok=${encodeURIComponent(summary)}&important=1`);
 }

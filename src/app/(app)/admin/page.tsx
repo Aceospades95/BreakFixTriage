@@ -81,6 +81,36 @@ export default async function AdminHomePage() {
       description: "Hold-window, SLA thresholds, digest recipients",
     },
     {
+      href: "/admin/email-rules",
+      title: "Email rules",
+      count: null,
+      description: "Recipient + template per event (Round-3 read-only preview)",
+    },
+    {
+      href: "/admin/email-templates",
+      title: "Email templates",
+      count: null,
+      description: "Pre-seeded notification template library",
+    },
+    {
+      href: "/admin/email-log",
+      title: "Email log",
+      count: null,
+      description: "Every send with status, recipients, and provider id",
+    },
+    {
+      href: "/admin/holidays",
+      title: "Holidays",
+      count: null,
+      description: "Non-business days that exclude from SLA math",
+    },
+    {
+      href: "/admin/tools/bulk-close",
+      title: "Bulk close stale",
+      count: null,
+      description: "Preview-then-confirm close of long-stuck tickets",
+    },
+    {
       href: "/admin/audit",
       title: "Audit log",
       count: null,

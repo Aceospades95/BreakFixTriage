@@ -24,34 +24,53 @@ See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 
 ## Migration audit (May 2026)
 
-A senior-engineer migration audit pass landed on
-`claude/breakfix-triage-audit-ZDYuJ`. It produced:
+A two-pass audit landed on `claude/breakfix-triage-audit-ZDYuJ`.
 
+**Pass 1 — migration audit.** Produced:
 - `docs/architecture-map.md` — concrete map of where everything is
   (route table, jobs, integrations, hot-spots), complementing
   `ARCHITECTURE.md`.
-- `docs/legacy-parity.md` — Google Sheet ↔ web-app parity table with
-  status (present / partial / missing) per legacy capability.
-- `docs/proposed-issues.md` — proposed gap-closures and product
-  features that need maintainer sign-off before implementation.
-- `docs/adr/0001..0004-*.md` — ADRs covering the migration mapping,
-  the canonical aging convention (strict `> threshold` on
-  whole-day buckets), the hold-window minimum (1 day, default 7),
-  and the APPROVED-with-expired-hold quote funnel.
-- `qa/persona-runs/SUMMARY.md` — static-walkthrough findings per role
-  (ADMIN / OPS_MANAGER / DISPATCHER / TECHNICIAN / WAREHOUSE / DRIVER /
-  READ_ONLY), plus a Playwright skeleton at
-  `qa/playwright/personas.spec.ts.skeleton` for the live-harness work.
+- `docs/legacy-parity.md` — Google Sheet ↔ web-app parity table.
+- `docs/proposed-issues.md` — gap-closures and feature proposals
+  needing maintainer sign-off.
+- `docs/adr/0001..0004-*.md` — ADRs for the migration mapping, the
+  canonical aging convention, the hold-window minimum, and the
+  APPROVED-quote sweep funnel.
+- `qa/persona-runs/SUMMARY.md` — per-role static-walkthrough
+  findings + Playwright skeleton.
 
-The same branch ships fixes for the four bugs listed in the audit
-brief:
+**Pass 2 — findings-driven bugfix and UX hardening.** A field QA
+pass against `https://triage.omnia-house.com` produced 9 confirmed
+bugs (A1–A9), 5 workflow concerns (B1–B5), per-page UX issues, and
+theme/polish issues. Fixed in this branch (one commit per concern,
+all green in CI):
 
-| Bug | Summary                                                       | Fix lives in                                                             |
-| --- | ------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 4a  | `/bench` "All benches" view rendered only Unassigned bucket   | `prisma/seed.ts`, `src/app/(app)/bench/page.tsx`, `src/server/actions/bulk.ts`, `src/server/actions/tickets.ts` |
-| 4b  | APPROVED quotes past hold-window were never swept             | `src/lib/quotes/sweep.ts`, `src/app/(app)/quotes/page.tsx`, `src/app/(app)/tickets/[ticketId]/page.tsx`, `src/app/(app)/page.tsx` |
-| 4c  | "Aging > 30d" off-by-one (flagged exactly-30-day-old tickets) | `src/lib/reports/sla.ts`, `src/lib/reports/dashboards.ts`                |
-| 4d  | Default hold-window of 0 caused immediate expiry              | `src/lib/settings/settings.ts`, `src/server/actions/settings.ts`, `src/app/(app)/admin/settings/page.tsx` |
+| Finding | Summary                                                    | Where                                                                                          |
+| ------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| A1      | Dashboard tab nav drops on /dashboards/*                   | `src/app/(app)/dashboards/layout.tsx`, `src/components/dashboard-tabs.tsx`                     |
+| A2      | Audit-log JSON drops the reason; no transitionType column  | `src/lib/audit/audit.ts`, `src/lib/workflow/transition.ts`, ADR `0006-audit-row-includes-reason.md` |
+| A3      | Raw Prisma errors leak in import summary                   | `src/lib/import/error-translate.ts`, `src/lib/import/pipeline.ts`                              |
+| A4 + A5 | Topbar dropdowns don't close; search becomes unclickable   | `src/components/popover-menu.tsx`, `notification-bell.tsx`, `help-menu.tsx`                    |
+| A6      | Force-change holds residual state after submit             | `src/components/force-change-form.tsx`, `src/server/actions/tickets.ts`                        |
+| A7      | Comment delete is permanent with no confirmation           | `src/components/comment-delete-button.tsx`, `comment-thread.tsx`                               |
+| A8      | "SUMMARY ↓" header sorts by `reportedAt`                   | `src/app/(app)/tickets/page.tsx`                                                               |
+| A9      | `/admin/audit` 404s                                        | `src/app/(app)/admin/audit/page.tsx`, `src/app/(app)/audit/page.tsx`, `admin-sidebar.tsx`      |
+| B2 / D  | AWAITING_* color collision; `ALL_CAPS_SNAKE_CASE` pills    | `src/components/state-pill.tsx`, `src/lib/cn.ts::humaniseEnum`, `src/components/sla-badge.tsx` |
+| §2#2    | IMPORTED hidden from Kanban (248/252 tickets invisible)    | `src/app/(app)/tickets/kanban/page.tsx`                                                        |
+| §6 list | Priority + Reported columns on Tickets list; sortable      | `src/app/(app)/tickets/page.tsx`, `src/components/priority-pill.tsx`                           |
+| §6 day  | KPI tiles clickable + reconcile metric definitions         | `src/app/(app)/page.tsx`                                                                       |
+| §4      | 16-state taxonomy proposal + ON_HOLD overlay (Stage 1 ADR) | `docs/adr/0005-status-taxonomy-simplification.md` — **gated on maintainer sign-off**            |
+
+Pass 1 also closed the four bugs from the original migration brief
+(`§4` of the migration task): bench bucketing, APPROVED-quote sweep,
+aging off-by-one, and quote default hold-window. Those land on the
+same branch.
+
+**Conventions enforced going forward:** `docs/ui-conventions.md`
+captures the toast policy, pill casing, dash style, empty-state
+convention, and the forbidden-token list (Prisma stack tokens
+never leak to user-facing surfaces — pinned by
+`tests/forbidden-tokens.test.ts`).
 
 ## Personas (RBAC matrix at a glance)
 

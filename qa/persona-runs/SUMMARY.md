@@ -85,3 +85,55 @@ includes the two scenarios we want covered:
    a device into a route stop while Dispatcher cancels the same
    route. Want: scan-in either succeeds against the new state or
    reports a clean error — no silent partial write.
+
+## Findings closed in pass 2 (May 2026)
+
+The pass-2 findings-driven brief (A1–A9, B1–B5, plus per-page UX in
+§6 and theme/polish in §5.D) — mapping each closed finding to its
+commit on `claude/breakfix-triage-audit-ZDYuJ`. PR numbers are
+omitted because this branch ships as one stack; on merge the
+commit list reads as a punch list.
+
+| Finding | Commit subject                                                                  |
+| ------- | ------------------------------------------------------------------------------- |
+| §1      | Audit (pass 2): touchpoints, taxonomy ADR, UI conventions                       |
+| §4 ADR  | (above) — Stage 1 ADR. Stage 2 implementation gated.                            |
+| §2#1 / A1 | Fix A1: persistent dashboard tab nav across /dashboards/*                    |
+| §2#2    | Fix §2#2 (interim): show IMPORTED on the Kanban board                          |
+| §2#3 + A8 | Tickets list: Priority column, Reported column, fix Summary sort             |
+| §2#4 / A6 | Fix A6: force-change form resets after submit; danger-style button          |
+| §2#5 / A7 | Fix A7: confirm before comment delete; toast on post + delete               |
+| §2#6 / A3 | Fix A3: translate Prisma errors in Imports; forbidden-token scan            |
+| §2#7 / A4+A5 | Fix A4+A5: shared popover primitive; close on click/Escape/route        |
+| §2#8 / B2 + D | Fix B2 + D: lane-based palette; titlecase pills; 0d SLA grey           |
+| §2#9 / §6.MyDay | Fix §2#9 / §6.MyDay: KPI tile destinations, hints, sweep action       |
+| §2#10 / A9 | Fix A9: /admin/audit canonical; /audit aliases via redirect                |
+| A2      | Fix A2: persist reason + transitionType on every audit row (Stage 1)            |
+| §7+§8   | regression-critical pure tests + Playwright skeleton                            |
+
+### Findings deferred (filed for follow-up)
+
+These are tracked in `docs/proposed-issues.md` and are not closed
+in this branch:
+
+- §4 Stage 2 (taxonomy migration implementation) — gated on
+  maintainer sign-off (Q1–Q4 in the ADR).
+- B4 (reverse-edges from "wait" states back into prior workshop
+  state) — the new graph in ADR 0005 specifies the back-edges
+  but they don't ship until Stage 2 lands.
+- A7 soft-delete with 30-second undo — recommended in the brief;
+  the audit allows recovery and the confirmation gate ships now;
+  soft-delete needs a schema change.
+- §5.D light-mode coverage — the half-applied light variant is
+  documented in `docs/ui-conventions.md` §6; the toggle should
+  be hidden behind `LIGHT_MODE_BETA` until complete (filed).
+- §6.Bench drag-and-drop reassignment, §6.Imports dry-run preview,
+  §6.Scheduling vehicle CRUD, §6.Dashboards range toggle — each
+  filed as a feature follow-up.
+
+### Things confirmed working (regression-locked)
+
+The capabilities the field report explicitly called out as already
+working are now pinned in `tests/regression-critical.test.ts` and
+`qa/playwright/regression-critical.spec.ts.skeleton`. CI should
+gate every run on these tests passing.

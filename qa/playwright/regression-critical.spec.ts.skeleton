@@ -1,0 +1,106 @@
+/**
+ * Regression-critical Playwright suite (§7 of the findings brief).
+ *
+ * The findings report explicitly calls these capabilities out as
+ * working — adding coverage so a future change cannot silently
+ * break them. Tagged `@regression-critical`; CI must gate every
+ * run on this suite passing.
+ *
+ * Committed as `.skeleton` because Playwright is not yet a dev
+ * dependency. Activation instructions are in
+ * qa/playwright/personas.spec.ts.skeleton.
+ */
+
+// import { test, expect, type Page } from "@playwright/test";
+//
+// const BASE_URL = process.env.E2E_URL ?? "http://localhost:3000";
+//
+// async function signIn(page: Page, email: string, password = "breakfix-dev") {
+//   await page.goto(`${BASE_URL}/signin`);
+//   await page.getByLabel("Email").fill(email);
+//   await page.getByLabel("Password").fill(password);
+//   await page.getByRole("button", { name: /sign in/i }).click();
+//   await page.waitForURL(`${BASE_URL}/`);
+// }
+//
+// test.describe("@regression-critical", () => {
+//   test("/ keyboard shortcut focuses search; typeahead returns typed results", async ({ page }) => {
+//     await signIn(page, "admin@breakfix.local");
+//     await page.keyboard.press("/");
+//     const search = page.locator("[data-testid='global-search'] input");
+//     await expect(search).toBeFocused();
+//     await search.fill("INC10");
+//     // Typeahead surfaces ticket entity-typed results.
+//     await expect(page.locator("[data-testid='search-result-ticket']")).toHaveCount({
+//       gte: 1,
+//     });
+//   });
+//
+//   test("audit log captures priority changes, transitions, and import events", async ({ page }) => {
+//     await signIn(page, "admin@breakfix.local");
+//     await page.goto(`${BASE_URL}/admin/audit`);
+//     // The seeded admin batch import + the seed transition both
+//     // wrote audit rows. Assert the table has rows and the Reason
+//     // column renders for transition rows.
+//     const rows = page.locator("tbody tr");
+//     await expect(rows).toHaveCount({ gte: 1 });
+//   });
+//
+//   test("event timeline shows reason + actor + state delta on a ticket", async ({ page }) => {
+//     await signIn(page, "admin@breakfix.local");
+//     await page.goto(`${BASE_URL}/tickets`);
+//     await page.locator("a[href^='/tickets/']").first().click();
+//     await expect(page.getByRole("heading", { name: /event timeline/i })).toBeVisible();
+//   });
+//
+//   test("merge ticket flow: target-incident input + red destructive button + confirmation", async ({ page }) => {
+//     // Detail page → "Merge into" form. Target input visible, the
+//     // submit is danger-styled, native confirm() pops on click.
+//     // (The native confirm dialog requires page.on("dialog", ...).)
+//   });
+//
+//   test("related tickets at the same school panel renders on ticket detail", async ({ page }) => {
+//     await signIn(page, "admin@breakfix.local");
+//     await page.goto(`${BASE_URL}/tickets`);
+//     await page.locator("a[href^='/tickets/']").first().click();
+//     await expect(page.getByText(/related tickets at this school/i)).toBeVisible();
+//   });
+//
+//   test("kanban DnD transitions tickets and re-renders correctly", async ({ page }) => {
+//     await signIn(page, "admin@breakfix.local");
+//     await page.goto(`${BASE_URL}/tickets/kanban`);
+//     // Drag the first card from the IMPORTED column to the TRIAGE
+//     // column (now IMPORTED is a column post §2#2).
+//     // Assert: card appears in TRIAGE; an audit row with
+//     // transitionType="kanban" is written.
+//   });
+//
+//   test("quote hold-window banner with one-click sweep", async ({ page }) => {
+//     await signIn(page, "admin@breakfix.local");
+//     await page.goto(`${BASE_URL}/quotes`);
+//     // If a SENT/APPROVED quote is past holdUntil, the banner
+//     // shows. Click "Sweep now"; banner disappears or counter
+//     // drops; no Prisma stack tokens leak.
+//   });
+//
+//   test("permissions matrix CRUD", async ({ page }) => {
+//     await signIn(page, "admin@breakfix.local");
+//     await page.goto(`${BASE_URL}/admin/permissions`);
+//     // Toggle a permission for a non-admin role; save; reload;
+//     // verify persisted.
+//   });
+//
+//   test("audit entries persist across a full session", async ({ page, context }) => {
+//     // Sign in, do a thing that audits, sign out, sign in,
+//     // confirm the row is still there. Pinned because session
+//     // tokens / cache could in theory orphan rows; this catches
+//     // regressions early.
+//   });
+//
+//   test("forbidden-token DOM scan: no Prisma stack tokens or cuid leakage", async ({ page }) => {
+//     await signIn(page, "admin@breakfix.local");
+//     // Visit every page under §3 / §5 / §6 and assert document
+//     // text never matches /prisma\./i, /\binvocation\b/i,
+//     // /\bP\d{4}\b/, or the cuid pattern /cm[a-z0-9]{20,}/.
+//   });
+// });

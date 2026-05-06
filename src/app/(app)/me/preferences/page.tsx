@@ -109,9 +109,8 @@ export default async function PreferencesPage({
             </label>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Round-3 §A3 ships the digest opt-in and hour. Per-event
-            channel toggles (in-app vs. email per email event) and a
-            timezone selector are filed for the §A follow-up.
+            Per-event channel toggles (in-app vs. email per event) and a
+            timezone selector are on the roadmap.
           </p>
         </fieldset>
 

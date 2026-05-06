@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
+import { seedExampleRuleAction } from "@/server/actions/email-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -51,23 +52,27 @@ export default async function EmailRulesPage() {
         title="Email rules"
         subtitle={`${rules.length} rule${rules.length === 1 ? "" : "s"} · admin`}
         actions={
-          <span
-            className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200"
-            title="Round-3 §A: full CRUD ships in a follow-up branch"
-          >
-            Read-only preview
-          </span>
+          <form action={seedExampleRuleAction}>
+            <button
+              type="submit"
+              className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20"
+            >
+              Seed example rule
+            </button>
+          </form>
         }
       />
 
       {rules.length === 0 ? (
         <div className="rounded border border-surface-border bg-surface-muted/30 p-10 text-center text-sm text-slate-400">
-          <p>No email rules yet. Pre-seeded templates live at <Link
-            href="/admin/email-templates"
-            className="text-accent hover:underline"
-          >Email templates</Link>; rules link a template to an event.</p>
-          <p className="mt-2 text-xs text-slate-500">
-            Run <code>npx prisma db push</code> + <code>npm run email:seed-templates</code> on a fresh DB if templates are missing.
+          <p>
+            No email rules yet. Click "Seed example rule" above to add a
+            global rule that emails every new ticket to its school's
+            SPOC contacts. You can manage templates at{" "}
+            <Link href="/admin/email-templates" className="text-accent hover:underline">
+              Email templates
+            </Link>
+            .
           </p>
         </div>
       ) : (

@@ -352,3 +352,118 @@ describe("Round-4 §M: no direct email-provider calls outside lib/email/provider
     expect(offences).toEqual([]);
   });
 });
+
+/**
+ * Round-5 §3.2 — devnote leak CI enforcement.
+ *
+ * Three regex rules that fail the build when:
+ *   1. /Round-\d+/ appears in user-facing JSX (catches "Round-3 §A3
+ *      ships the digest opt-in…" style leaks).
+ *   2. /§[A-Z]?\d+/ appears in user-facing JSX (catches "§N2 follow-up:
+ *      hour-and-minute pickers" style leaks).
+ *   3. /\b(npm run|npx|prisma db) [a-z]/ appears in user-facing JSX
+ *      (catches "Run npx prisma db push" CLI leaks; Round-4's
+ *      narrower scan caught the email-templates page only and is
+ *      superseded here).
+ *
+ * Allow-list for §3.2:
+ *   - Inside `<code>` or `<pre>` is fine (operators sometimes need
+ *     the literal command).
+ *   - Inside JSX block comments (`{/* ... *\/}`) and JS line / block
+ *     comments (`//`, `/* ... *\/`) is fine — those don't render.
+ *   - The `not-found.tsx` page intentionally mentions "Round-N
+ *     smoke crawler" in a developer-facing apology paragraph; the
+ *     Round-5 §3.1 strip removes that paragraph entirely so the
+ *     allow-list stays empty and tightens going forward.
+ */
+describe("Round-5 §3.2: no internal numbering or CLI commands in JSX text", () => {
+  const files = walk(ROOT).filter((f) => f.endsWith(".tsx"));
+  // Patterns to find in JSX text. Match against the trimmed
+  // contents between `>` and `<`.
+  const RULES: Array<{ name: string; rx: RegExp }> = [
+    { name: "Round-N reference", rx: /\bRound-\d+\b/ },
+    // §<optional letter><digits> — covers §A1, §G29, §N2, §K, etc.
+    // Plain "§" followed by a single capital letter is too loose;
+    // we require at least one digit somewhere in the token.
+    { name: "section-marker", rx: /§[A-Z]?\d+/ },
+    {
+      name: "CLI command",
+      rx: /\b(npm run|npx|prisma db) [a-z]/i,
+    },
+  ];
+
+  it("no JSX text node violates the §3.2 lint set", () => {
+    const offences: string[] = [];
+    for (const f of files) {
+      const rawSrc = readFileSync(f, "utf8");
+      // Quick filter: skip files that don't contain any of the
+      // raw markers (small CPU win on the hot path).
+      if (
+        !/Round-\d+/.test(rawSrc) &&
+        !/§[A-Z]?\d+/.test(rawSrc) &&
+        !/\b(npm run|npx|prisma db) [a-z]/i.test(rawSrc)
+      ) {
+        continue;
+      }
+      // Round-5: scan the whole file at once so multi-line JSX
+      // text nodes are caught (the per-line variant in the
+      // earlier Round-3/4 scans missed `<p>` with body wrapped
+      // across 3+ lines, which is exactly how the four §3.1
+      // leaks are written).
+      //
+      // Strip JSX block comments + JS line comments + JS block
+      // comments first so the scan only sees rendered text. The
+      // strip is conservative (regex, not AST) but covers every
+      // pattern the codebase uses today.
+      const stripped = rawSrc
+        .replace(/\{\/\*[\s\S]*?\*\/\}/g, "") // {/* ... */}
+        .replace(/\/\*[\s\S]*?\*\//g, "") // /* ... */
+        .replace(/(^|[^:])\/\/[^\n]*/g, "$1"); // // ... (preserve URLs like https://)
+
+      // Pull every `>` ... `<` text span. With [\s\S]*? (lazy)
+      // and [^<>{}] semantics we capture multi-line JSX bodies.
+      // Then emit the source line of the FIRST char of the match
+      // for the offence message.
+      const TEXT_RE = />([^<>{}]+)</g;
+      let m: RegExpExecArray | null;
+      while ((m = TEXT_RE.exec(stripped)) !== null) {
+        const text = m[1]!.trim();
+        if (!text) continue;
+        // Skip text inside <code> / <pre> by walking back from
+        // the match start to the nearest opening tag.
+        const before = stripped.slice(0, m.index);
+        const lastOpen = before.lastIndexOf("<");
+        if (lastOpen >= 0) {
+          const tag = before.slice(lastOpen).toLowerCase();
+          if (
+            tag.startsWith("<code") ||
+            tag.startsWith("<pre")
+          ) {
+            continue;
+          }
+        }
+        for (const rule of RULES) {
+          if (rule.rx.test(text)) {
+            // Find the source line for the offence message.
+            const lineNo = stripped.slice(0, m.index).split("\n").length;
+            offences.push(
+              `${f}:${lineNo}: [${rule.name}] ${text.slice(0, 120).replace(/\s+/g, " ")}`,
+            );
+            break; // one offence per text span
+          }
+        }
+      }
+    }
+    if (offences.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "Round-5 §3.2 violation: devnote / CLI text in JSX:\n" +
+          offences.slice(0, 30).join("\n") +
+          (offences.length > 30
+            ? `\n…and ${offences.length - 30} more`
+            : ""),
+      );
+    }
+    expect(offences).toEqual([]);
+  });
+});

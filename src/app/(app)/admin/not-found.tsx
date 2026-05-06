@@ -55,9 +55,7 @@ export default function AdminNotFound() {
 
       <p className="mt-4 text-xs text-slate-500">
         If you got here from a link inside the app, that link is stale.
-        Round-4 §M Playwright smoke crawler is the durable fix; until it
-        ships, please flag the URL to the maintainer with where you came
-        from.
+        Please flag the URL to the maintainer with where you came from.
       </p>
     </div>
   );

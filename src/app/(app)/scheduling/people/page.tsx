@@ -287,9 +287,9 @@ export default async function PeopleSchedulingPage({
       </div>
 
       <p className="mt-4 text-xs text-slate-500">
-        ON_ROUTE blocks are derived from Route rows; edit the Route to change them.
-        Round-4 §N2 ships Day mode first; Week / Day toggle lands with the §K
-        Calendar primitive in the same branch.
+        On-route blocks are derived from Route rows — edit the Route to
+        change them. The Day view is the default; a Week view is on the
+        roadmap.
       </p>
     </>
   );

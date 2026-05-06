@@ -72,18 +72,10 @@ export default function NotFound() {
         </div>
 
         <div className="rounded border border-surface-border bg-surface-muted/40 p-5 text-sm text-slate-300">
-          <p className="mb-2">
+          <p>
             If you got here from a link inside the app, that link is
-            stale or broken. The smoke crawler in CI is supposed to
-            catch this — please flag it to the maintainer with the
-            URL you came from so it can be added to the regression
-            set.
-          </p>
-          <p className="text-xs text-slate-500">
-            (The "Report broken link" button — which writes a self-
-            documenting audit row — is filed for the §G30 follow-up
-            once the smoke crawler ships in CI; until then the
-            manual flag is the loop.)
+            stale or broken. Please flag it to the maintainer with the
+            URL you came from so it can be added to the regression set.
           </p>
         </div>
       </div>

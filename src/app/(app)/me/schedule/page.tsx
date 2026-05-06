@@ -155,8 +155,9 @@ export default async function MyScheduleePage({
           </div>
         </form>
         <p className="mt-2 text-xs text-slate-500">
-          Minutes are 0–1440 from midnight (e.g. 9 AM = 540, 5 PM = 1020).
-          Round-4 §N2 follow-up: hour-and-minute pickers + recurrence.
+          Times are entered as minutes from midnight (e.g. 9 AM = 540,
+          5 PM = 1020). Hour-and-minute pickers and recurring blocks are
+          on the roadmap.
         </p>
       </section>
 

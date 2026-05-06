@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { LocalTime } from "@/components/local-time";
+import { seedDefaultTemplatesAction } from "@/server/actions/email-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -25,21 +26,22 @@ export default async function EmailTemplatesPage() {
     <>
       <PageHeader
         title="Email templates"
-        subtitle={`${templates.length} template${templates.length === 1 ? "" : "s"} · seeded by npm run email:seed-templates`}
+        subtitle={`${templates.length} template${templates.length === 1 ? "" : "s"} available`}
         actions={
-          <span
-            className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200"
-            title="Round-3 §A: Monaco editor + live preview ship in a follow-up branch"
-          >
-            Read-only preview
-          </span>
+          <form action={seedDefaultTemplatesAction}>
+            <button
+              type="submit"
+              className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20"
+            >
+              Seed default templates
+            </button>
+          </form>
         }
       />
 
       {templates.length === 0 ? (
         <div className="rounded border border-surface-border bg-surface-muted/30 p-10 text-center text-sm text-slate-400">
-          <p>No templates yet. Run:</p>
-          <pre className="mt-3 inline-block rounded bg-surface px-3 py-1 text-xs"><code>npm run email:seed-templates</code></pre>
+          <p>No templates yet — click "Seed default templates" above to add the standard set.</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-surface-border">

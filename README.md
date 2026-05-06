@@ -22,6 +22,101 @@ spreadsheet-based operational workflow with:
 See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 `docs/ASSUMPTIONS.md` for the full design.
 
+## Migration audit (May 2026)
+
+A senior-engineer migration audit pass landed on
+`claude/breakfix-triage-audit-ZDYuJ`. It produced:
+
+- `docs/architecture-map.md` — concrete map of where everything is
+  (route table, jobs, integrations, hot-spots), complementing
+  `ARCHITECTURE.md`.
+- `docs/legacy-parity.md` — Google Sheet ↔ web-app parity table with
+  status (present / partial / missing) per legacy capability.
+- `docs/proposed-issues.md` — proposed gap-closures and product
+  features that need maintainer sign-off before implementation.
+- `docs/adr/0001..0004-*.md` — ADRs covering the migration mapping,
+  the canonical aging convention (strict `> threshold` on
+  whole-day buckets), the hold-window minimum (1 day, default 7),
+  and the APPROVED-with-expired-hold quote funnel.
+- `qa/persona-runs/SUMMARY.md` — static-walkthrough findings per role
+  (ADMIN / OPS_MANAGER / DISPATCHER / TECHNICIAN / WAREHOUSE / DRIVER /
+  READ_ONLY), plus a Playwright skeleton at
+  `qa/playwright/personas.spec.ts.skeleton` for the live-harness work.
+
+The same branch ships fixes for the four bugs listed in the audit
+brief:
+
+| Bug | Summary                                                       | Fix lives in                                                             |
+| --- | ------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 4a  | `/bench` "All benches" view rendered only Unassigned bucket   | `prisma/seed.ts`, `src/app/(app)/bench/page.tsx`, `src/server/actions/bulk.ts`, `src/server/actions/tickets.ts` |
+| 4b  | APPROVED quotes past hold-window were never swept             | `src/lib/quotes/sweep.ts`, `src/app/(app)/quotes/page.tsx`, `src/app/(app)/tickets/[ticketId]/page.tsx`, `src/app/(app)/page.tsx` |
+| 4c  | "Aging > 30d" off-by-one (flagged exactly-30-day-old tickets) | `src/lib/reports/sla.ts`, `src/lib/reports/dashboards.ts`                |
+| 4d  | Default hold-window of 0 caused immediate expiry              | `src/lib/settings/settings.ts`, `src/server/actions/settings.ts`, `src/app/(app)/admin/settings/page.tsx` |
+
+## Personas (RBAC matrix at a glance)
+
+7 roles, expanded in `src/lib/auth/rbac.ts`:
+
+| Role         | Default permission focus                                    |
+| ------------ | ----------------------------------------------------------- |
+| ADMIN        | Everything; can `force` transitions; admin pages.           |
+| OPS_MANAGER  | Read + write + transition + scheduling + quotes write.      |
+| DISPATCHER   | Read + transition + scheduling/routes/stops.                |
+| WAREHOUSE    | Read + transition. Primary tool: `/scan/warehouse`.         |
+| TECHNICIAN   | Read + transition. Primary tool: `/bench?scope=me`.         |
+| DRIVER       | Tickets read + scheduling read + stops update.              |
+| READ_ONLY    | Read-only across tickets / imports / scheduling / quotes.   |
+
+Login as the seeded persona for any role: `<role>@breakfix.local` /
+`breakfix-dev`. Per-role permission overrides are persisted in
+`AppSetting` and editable at `/admin/permissions`.
+
+## Ticket state machine (high-level)
+
+26 states. The full transition table is `src/lib/workflow/states.ts`.
+
+```mermaid
+flowchart LR
+  IMPORTED --> TRIAGE
+  TRIAGE --> AWAITING_PICKUP
+  TRIAGE --> AWAITING_ONSITE
+  TRIAGE --> OUT_OF_SCOPE
+  AWAITING_PICKUP --> PICKUP_SCHEDULED
+  PICKUP_SCHEDULED --> IN_WAREHOUSE
+  IN_WAREHOUSE --> DIAGNOSIS
+  DIAGNOSIS --> IN_REPAIR
+  DIAGNOSIS --> AWAITING_PARTS
+  DIAGNOSIS --> QUOTE_REQUIRED
+  DIAGNOSIS --> MANUFACTURER_RMA
+  AWAITING_PARTS --> PARTS_ORDERED
+  PARTS_ORDERED --> IN_REPAIR
+  IN_REPAIR --> REPAIR_COMPLETED
+  REPAIR_COMPLETED --> PENDING_DELIVERY
+  AWAITING_ONSITE --> ONSITE_IN_PROGRESS
+  ONSITE_IN_PROGRESS --> REPAIR_COMPLETED
+  QUOTE_REQUIRED --> QUOTE_SENT
+  QUOTE_SENT --> QUOTE_APPROVED
+  QUOTE_SENT --> QUOTE_DECLINED
+  QUOTE_SENT --> QUOTE_NO_RESPONSE
+  QUOTE_APPROVED --> IN_REPAIR
+  QUOTE_DECLINED --> PENDING_DELIVERY
+  QUOTE_NO_RESPONSE --> PENDING_DELIVERY
+  MANUFACTURER_RMA --> PENDING_DELIVERY
+  PENDING_DELIVERY --> DELIVERY_SCHEDULED
+  DELIVERY_SCHEDULED --> RETURNED
+  RETURNED --> INVOICE_REQUIRED
+  RETURNED --> CLOSED
+  INVOICE_REQUIRED --> CLOSED
+  CLOSED --> REOPENED
+  REOPENED --> TRIAGE
+  ON_HOLD -.-> TRIAGE
+```
+
+`ON_HOLD` is reachable from every non-terminal state and resumes via
+`payload.resumeState`. Force changes (`force: true`) bypass the edge
+check and are gated to ADMIN; every force still writes a TicketEvent
+plus an AuditLog row.
+
 ## Status
 
 **Phase 0 — Foundations** ✓ complete.

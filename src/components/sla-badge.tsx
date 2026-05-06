@@ -48,8 +48,10 @@ export function SlaBadge({
             }`
       }
       className={cn(
-        "inline-flex items-center rounded border px-1.5 font-mono uppercase tracking-wide",
-        compact ? "py-0 text-[9px]" : "py-0.5 text-[10px]",
+        // Round-2 §14: sans stack across the board; tight tracking
+        // keeps the badge compact without monospace.
+        "inline-flex items-center rounded border px-1.5 font-medium tracking-tight",
+        compact ? "py-0 text-[10px]" : "py-0.5 text-[11px]",
         cls,
       )}
     >

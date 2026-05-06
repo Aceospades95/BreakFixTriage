@@ -310,7 +310,7 @@ export default async function TicketDetailPage({
                 >
                   {ticket.school.name}
                 </Link>
-                <span className="ml-2 font-mono text-xs text-slate-500">
+                <span className="ml-2 font-medium tracking-tight text-xs text-slate-500">
                   {ticket.school.code}
                 </span>
                 <div className="text-xs text-slate-500">
@@ -323,7 +323,7 @@ export default async function TicketDetailPage({
                   <>
                     <Link
                       href={`/admin/devices/${ticket.device.id}`}
-                      className="font-mono text-accent hover:underline"
+                      className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {ticket.device.serialNumber}
                     </Link>
@@ -339,7 +339,7 @@ export default async function TicketDetailPage({
                 )}
               </Dd>
               <Dt>ServiceNow sys_id</Dt>
-              <Dd className="font-mono text-xs text-slate-400">
+              <Dd className="font-medium tracking-tight text-xs text-slate-400">
                 {ticket.serviceNowSysId ?? "—"}
               </Dd>
               <Dt>Invoice required</Dt>
@@ -502,7 +502,7 @@ export default async function TicketDetailPage({
                         </span>
                       )}
                     </span>
-                    <span className="font-mono text-xs text-slate-400">
+                    <span className="font-medium tracking-tight text-xs text-slate-400">
                       {e.endedAt != null && e.minutes != null
                         ? formatHours(e.minutes)
                         : "—"}
@@ -623,7 +623,7 @@ export default async function TicketDetailPage({
                     <div className="flex items-center justify-between">
                       <QuoteStatusPill status={q.status} />
                       {q.amountCents != null ? (
-                        <span className="font-mono">
+                        <span className="font-medium tracking-tight">
                           ${(q.amountCents / 100).toFixed(2)}
                         </span>
                       ) : q.diagnosticOnly ? (
@@ -648,7 +648,7 @@ export default async function TicketDetailPage({
                     )}
                     {q.purchaseOrder && (
                       <div className="mt-2 rounded border border-surface-border bg-surface-muted/40 p-2 text-xs">
-                        <div className="font-mono">
+                        <div className="font-medium tracking-tight">
                           PO {q.purchaseOrder.poNumber}
                         </div>
                         <div className="text-slate-400">
@@ -739,12 +739,12 @@ export default async function TicketDetailPage({
                       >
                         {u.part.name}
                       </Link>
-                      <span className="ml-2 font-mono text-xs text-slate-500">
+                      <span className="ml-2 font-medium tracking-tight text-xs text-slate-500">
                         {u.part.sku}
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="font-mono text-xs">×{u.quantity}</span>
+                      <span className="font-medium tracking-tight text-xs">×{u.quantity}</span>
                       {u.part.costCents != null && (
                         <div className="text-[10px] text-slate-500">
                           $
@@ -819,7 +819,7 @@ export default async function TicketDetailPage({
                     className="rounded border border-surface-border bg-surface px-3 py-2"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs">
+                      <span className="font-medium tracking-tight text-xs">
                         {rma.rmaNumber}
                       </span>
                       <span className="text-xs text-slate-400">
@@ -844,7 +844,7 @@ export default async function TicketDetailPage({
                       )}
                     </div>
                     {(rma.trackingOut || rma.trackingIn) && (
-                      <div className="mt-1 font-mono text-[10px] text-slate-500">
+                      <div className="mt-1 font-medium tracking-tight text-[10px] text-slate-500">
                         {rma.trackingOut && <>out: {rma.trackingOut}</>}
                         {rma.trackingIn && (
                           <>
@@ -981,7 +981,7 @@ export default async function TicketDetailPage({
                   name="targetIncidentNumber"
                   required
                   placeholder="Target incident #"
-                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs font-mono focus:border-accent focus:outline-none"
+                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs font-medium tracking-tight focus:border-accent focus:outline-none"
                 />
                 <input
                   type="text"
@@ -1008,7 +1008,7 @@ export default async function TicketDetailPage({
                       href={`/tickets/${m.id}?error=${encodeURIComponent(
                         "Viewing a merged source — writes go to the target.",
                       )}`}
-                      className="font-mono text-accent hover:underline"
+                      className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {m.incidentNumber}
                     </Link>
@@ -1030,7 +1030,7 @@ export default async function TicketDetailPage({
                       <li key={t.id} className="truncate text-xs">
                         <Link
                           href={`/tickets/${t.id}`}
-                          className="font-mono text-accent hover:underline"
+                          className="font-medium tracking-tight text-accent hover:underline"
                         >
                           {t.incidentNumber}
                         </Link>{" "}
@@ -1050,7 +1050,7 @@ export default async function TicketDetailPage({
                       <li key={t.id} className="truncate text-xs">
                         <Link
                           href={`/tickets/${t.id}`}
-                          className="font-mono text-accent hover:underline"
+                          className="font-medium tracking-tight text-accent hover:underline"
                         >
                           {t.incidentNumber}
                         </Link>{" "}
@@ -1116,7 +1116,7 @@ function QuoteStatusPill({ status }: { status: QuoteStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
     >
       {status}
     </span>

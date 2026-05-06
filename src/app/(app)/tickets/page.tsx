@@ -235,7 +235,7 @@ export default async function TicketsPage({
             type="text"
             name="deviceSerial"
             placeholder="Device serial (optional)"
-            className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none"
+            className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-medium tracking-tight text-xs focus:border-accent focus:outline-none"
           />
           <button
             type="submit"
@@ -632,7 +632,7 @@ function TicketTable({
             <td className="px-3 py-2">
               <Link
                 href={`/tickets/${t.id}`}
-                className="font-mono text-accent hover:underline"
+                className="font-medium tracking-tight text-accent hover:underline"
               >
                 {t.incidentNumber}
               </Link>
@@ -652,7 +652,7 @@ function TicketTable({
               )}
             </td>
             <td className="px-3 py-2">{t.school.name}</td>
-            <td className="px-3 py-2 font-mono text-xs text-slate-400">
+            <td className="px-3 py-2 font-medium tracking-tight text-xs text-slate-400">
               {t.device?.serialNumber ?? "—"}
             </td>
             <td className="px-3 py-2 text-xs text-slate-400">

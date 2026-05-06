@@ -26,7 +26,8 @@
     "escalate:stale": "tsx prisma/escalate-stale.ts",
     "digest": "tsx prisma/send-digest.ts",
     "schools:fix-addresses": "tsx scripts/fix-school-addresses.ts",
-    "email:worker": "tsx scripts/email-worker.ts"
+    "email:worker": "tsx scripts/email-worker.ts",
+    "email:seed-templates": "tsx prisma/seed-email-templates.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

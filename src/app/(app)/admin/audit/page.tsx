@@ -4,6 +4,9 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { LocalTime } from "@/components/local-time";
+import { EntityDiff } from "@/components/audit/EntityDiff";
+import { formatAuditAction } from "@/lib/audit/format";
+import { humaniseEnum } from "@/lib/cn";
 
 export const dynamic = "force-dynamic";
 
@@ -154,16 +157,31 @@ export default async function AdminAuditLogPage({
               const after = (log.after as Record<string, unknown> | null) ?? null;
               const reason =
                 typeof after?.reason === "string" ? after.reason : null;
+              const action = formatAuditAction(log.action);
+              const chipClass =
+                action.kind === "transition"
+                  ? action.forced
+                    ? "bg-red-500/20 text-red-100 border-red-500/40"
+                    : "bg-sky-500/20 text-sky-100 border-sky-500/40"
+                  : action.kind === "email"
+                    ? action.phase === "queued"
+                      ? "bg-violet-500/20 text-violet-100 border-violet-500/40"
+                      : action.phase === "sent"
+                        ? "bg-emerald-500/20 text-emerald-100 border-emerald-500/40"
+                        : "bg-amber-500/20 text-amber-100 border-amber-500/40"
+                    : "bg-slate-500/20 text-slate-200 border-slate-500/40";
               return (
                 <tr key={log.id} className="align-top">
                   <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-400">
                     <LocalTime date={log.createdAt} mode="datetime" />
                   </td>
-                  <td className="px-3 py-2 text-xs">
+                  <td className="max-w-[14rem] truncate px-3 py-2 text-xs">
                     {log.actor ? (
                       <>
-                        <div className="text-slate-200">{log.actor.name}</div>
-                        <div className="font-mono text-slate-500">
+                        <div className="truncate text-slate-200" title={log.actor.name}>
+                          {log.actor.name}
+                        </div>
+                        <div className="truncate text-slate-500" title={log.actor.email}>
                           {log.actor.email}
                         </div>
                       </>
@@ -171,28 +189,37 @@ export default async function AdminAuditLogPage({
                       <span className="text-slate-500">system</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">
-                    <div>{log.entityType}</div>
-                    <div className="text-slate-500">{log.entityId}</div>
+                  <td className="max-w-[14rem] px-3 py-2 text-xs">
+                    <div>{humaniseEnum(log.entityType)}</div>
+                    <div
+                      className="truncate text-[10px] text-slate-500"
+                      title={log.entityId}
+                    >
+                      {/* CUID rendered with copy-affordance hint via title;
+                          keep monospace gone — see Round-2 §14. */}
+                      {log.entityId}
+                    </div>
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-slate-300">
-                    {log.action}
+                  <td className="px-3 py-2 text-xs">
+                    <span
+                      className={
+                        "inline-flex items-center rounded border px-2 py-0.5 text-[11px] " +
+                        chipClass
+                      }
+                      title={log.action}
+                    >
+                      {action.label}
+                    </span>
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-300">
                     {reason ?? <span className="text-slate-600">—</span>}
                   </td>
                   <td className="px-3 py-2 text-[11px] text-slate-400">
-                    {log.before != null || log.after != null ? (
-                      <pre className="max-w-lg overflow-auto whitespace-pre-wrap font-mono">
-                        {JSON.stringify(
-                          { before: log.before ?? null, after: log.after ?? null },
-                          null,
-                          1,
-                        )}
-                      </pre>
-                    ) : (
-                      <span className="text-slate-600">—</span>
-                    )}
+                    <EntityDiff
+                      entityType={log.entityType}
+                      before={log.before}
+                      after={log.after}
+                    />
                   </td>
                 </tr>
               );

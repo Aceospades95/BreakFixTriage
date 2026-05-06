@@ -26,7 +26,11 @@ export type TransitionType =
   | "forced"
   | "kanban"
   | "scheduled"
-  | "webhook";
+  | "webhook"
+  /** Round-2 §15 / §20 — every email send is its own audit row,
+      written by `dispatchEmailEvent`. Distinguishes "operator
+      did a thing" from "the email engine reacted to it". */
+  | "email_send";
 
 export interface AuditEntry {
   actorUserId: string | null;

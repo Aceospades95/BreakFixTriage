@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { TicketState, type Prisma } from "@prisma/client";
+import { TicketPriority, TicketState, type Prisma } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { PriorityPill } from "@/components/priority-pill";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
@@ -53,13 +54,15 @@ export default async function TicketsPage({
     | "state"
     | "priority"
     | "incidentNumber"
-    | "stateEnteredAt";
+    | "stateEnteredAt"
+    | "shortDescription";
   const validSortKeys: SortKey[] = [
     "reportedAt",
     "state",
     "priority",
     "incidentNumber",
     "stateEnteredAt",
+    "shortDescription",
   ];
   const sortParam = searchParams?.sort;
   const sortKey: SortKey = (
@@ -418,6 +421,7 @@ function BulkActionForm({
   tickets: Array<{
     id: string;
     incidentNumber: string;
+    priority: TicketPriority;
     state: TicketState;
     stateEnteredAt: Date | null;
     reportedAt: Date;
@@ -519,6 +523,7 @@ function TicketTable({
   tickets: Array<{
     id: string;
     incidentNumber: string;
+    priority: TicketPriority;
     state: TicketState;
     stateEnteredAt: Date | null;
     reportedAt: Date;
@@ -560,6 +565,16 @@ function TicketTable({
           </th>
           <th className="px-3 py-2 font-medium">
             <Link
+              href={sortHref("priority")}
+              className="hover:text-white"
+              scroll={false}
+              title="Sort by priority"
+            >
+              Priority{sortIndicator("priority")}
+            </Link>
+          </th>
+          <th className="px-3 py-2 font-medium">
+            <Link
               href={sortHref("state")}
               className="hover:text-white"
               scroll={false}
@@ -586,7 +601,17 @@ function TicketTable({
               scroll={false}
               title="Sort by report date"
             >
-              Summary{sortIndicator("reportedAt")}
+              Reported{sortIndicator("reportedAt")}
+            </Link>
+          </th>
+          <th className="px-3 py-2 font-medium">
+            <Link
+              href={sortHref("shortDescription")}
+              className="hover:text-white"
+              scroll={false}
+              title="Sort by summary text"
+            >
+              Summary{sortIndicator("shortDescription")}
             </Link>
           </th>
         </tr>
@@ -613,6 +638,9 @@ function TicketTable({
               </Link>
             </td>
             <td className="px-3 py-2">
+              <PriorityPill priority={t.priority} />
+            </td>
+            <td className="px-3 py-2">
               <StatePill state={t.state} />
             </td>
             <td className="px-3 py-2">
@@ -627,6 +655,9 @@ function TicketTable({
             <td className="px-3 py-2 font-mono text-xs text-slate-400">
               {t.device?.serialNumber ?? "—"}
             </td>
+            <td className="px-3 py-2 text-xs text-slate-400">
+              {t.reportedAt.toISOString().slice(0, 10)}
+            </td>
             <td className="px-3 py-2 text-slate-300">
               <span className="line-clamp-1">{t.shortDescription}</span>
             </td>
@@ -635,7 +666,7 @@ function TicketTable({
         {tickets.length === 0 && (
           <tr>
             <td
-              colSpan={withCheckbox ? 8 : 7}
+              colSpan={withCheckbox ? 10 : 9}
               className="px-3 py-8 text-center text-slate-400"
             >
               No tickets match the current filters. Try clearing them or

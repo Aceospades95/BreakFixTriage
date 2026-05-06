@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient, Ticket, TicketState } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
-import { writeAudit } from "@/lib/audit/audit";
+import { writeAudit, type TransitionType } from "@/lib/audit/audit";
 import { publish } from "@/lib/events/bus";
 import {
   GuardFailedError,
@@ -25,6 +25,16 @@ export interface TransitionOptions {
    * (ADMIN) before passing `force: true`.
    */
   force?: boolean;
+  /**
+   * How this transition was triggered. Defaults to "manual" (regular
+   * UI form) when not supplied; "forced" is implied by `force: true`
+   * regardless of what the caller passes. Other call sites should
+   * supply "kanban" (drag-and-drop), "scheduled" (cron / sweep), or
+   * "webhook" (inbound integration).
+   *
+   * Stamped on the audit row's `after.transitionType`. See ADR 0006.
+   */
+  transitionType?: TransitionType;
 }
 
 export type PrismaLike = PrismaClient | Prisma.TransactionClient;
@@ -208,6 +218,12 @@ async function transitionInTx(
         : `transition:${from}->${to}`,
       before: { state: from },
       after: { state: to },
+      // Mirror reason + transitionType onto every transition's
+      // audit row so reviewers can read the why directly off the
+      // audit log. Closes findings §3.A2; ADR 0006 captures the
+      // Stage-2 plan to promote these to dedicated columns.
+      reason: opts.reason ?? null,
+      transitionType: opts.force ? "forced" : (opts.transitionType ?? "manual"),
     },
     tx,
   );

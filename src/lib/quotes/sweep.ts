@@ -172,6 +172,7 @@ export async function sweepExpiredQuotes(
                 reason: `Auto-expired after hold window (${quote.holdUntil?.toISOString() ?? "unknown"})`,
                 payload: { quoteId: quote.id, sweep: true, fromState },
                 force: fromState === TicketState.QUOTE_APPROVED,
+                transitionType: "scheduled",
               },
               tx,
             );

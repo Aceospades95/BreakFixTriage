@@ -138,6 +138,7 @@ export function KanbanBoard({
         body: JSON.stringify({
           to: target,
           reason: `Kanban drag from kanban board`,
+          source: "kanban",
         }),
       });
       if (!res.ok) {

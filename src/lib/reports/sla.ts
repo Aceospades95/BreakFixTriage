@@ -50,6 +50,11 @@ export const DEFAULT_SLA_DAYS: Record<TicketState, number | null> = {
   CLOSED: null,
   REOPENED: 1,
   ON_HOLD: null,
+  // Round-4 §N1: 24h is the soft target for an on-route pickup to
+  // be reconciled with an SNOW ticket. Past that, the dashboard
+  // should surface it as "awaiting SNOW match" so ops can chase
+  // the matching import or move it to TRIAGE manually.
+  PENDING_PICKUP_UNLINKED: 1,
 };
 
 export type SlaHealth = "on_track" | "approaching" | "breached" | "na";

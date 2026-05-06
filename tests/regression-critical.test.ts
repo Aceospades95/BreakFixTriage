@@ -16,10 +16,27 @@ import { STATE_LANE } from "@/components/state-pill";
  * — that's wired up once the e2e runtime is provisioned.
  */
 
+/**
+ * Round-4 §N1: state-machine entry-point states. Some states are
+ * created directly via a domain action (not transitioned-into):
+ *   - PENDING_PICKUP_UNLINKED is born from on-route device adds
+ *     (`addDeviceToStop` server action). It has no inbound edge
+ *     in ALLOWED_TRANSITIONS by design — the SNOW reconciler
+ *     proposes a merge into a SNOW-imported ticket via the
+ *     /duplicates queue rather than transitioning out of the
+ *     state via the engine.
+ * If you add another entry-point state, append it here with a
+ * matching ADR.
+ */
+const ENTRY_POINT_STATES: TicketState[] = [
+  TicketState.IMPORTED,
+  TicketState.PENDING_PICKUP_UNLINKED,
+];
+
 describe("@regression-critical: state machine reachability", () => {
-  it("every non-terminal state is reachable from IMPORTED via DFS", () => {
-    const reachable = new Set<TicketState>([TicketState.IMPORTED]);
-    const stack: TicketState[] = [TicketState.IMPORTED];
+  it("every non-terminal state is reachable from a documented entry point via DFS", () => {
+    const reachable = new Set<TicketState>(ENTRY_POINT_STATES);
+    const stack: TicketState[] = [...ENTRY_POINT_STATES];
     while (stack.length > 0) {
       const cur = stack.pop()!;
       for (const next of ALLOWED_TRANSITIONS[cur] ?? []) {
@@ -32,7 +49,7 @@ describe("@regression-critical: state machine reachability", () => {
     for (const s of Object.values(TicketState)) {
       expect(
         reachable.has(s),
-        `${s} not reachable from IMPORTED`,
+        `${s} not reachable from any documented entry point (${ENTRY_POINT_STATES.join(", ")})`,
       ).toBe(true);
     }
   });

@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { LocalTime } from "@/components/local-time";
 import { EntityDiff } from "@/components/audit/EntityDiff";
+import { IdChip, hrefForEntity } from "@/components/ui/IdChip";
 import { formatAuditAction } from "@/lib/audit/format";
 import { humanise } from "@/lib/format";
 
@@ -303,7 +304,10 @@ export default async function AdminAuditLogPage({
                   <span className="text-slate-200">
                     {humanise(log.entityType)}
                   </span>
-                  <IdChip value={log.entityId} />
+                  <IdChip
+                    value={log.entityId}
+                    href={hrefForEntity(log.entityType, log.entityId)}
+                  />
                   <span className="ml-auto text-slate-500">
                     by{" "}
                     {log.actor ? (
@@ -373,20 +377,7 @@ export default async function AdminAuditLogPage({
   );
 }
 
-/**
- * Inline cuid / id chip. Renders the value with a click-to-select
- * affordance via the title attribute (the brief asks for a copy
- * button — that needs a client component; this is the
- * non-interactive fallback that ships now and gets upgraded once
- * the IdChip client component lands in §F).
- */
-function IdChip({ value }: { value: string }) {
-  return (
-    <span
-      title={`${value}\n(click to select)`}
-      className="inline-flex max-w-[12rem] items-center rounded border border-surface-border bg-surface px-1.5 py-0.5 text-[10px] text-slate-400"
-    >
-      <span className="truncate">{value}</span>
-    </span>
-  );
-}
+// Round-4 §F4: the local IdChip helper was extracted to
+// `src/components/ui/IdChip.tsx`. The audit page imports `IdChip`
+// + `hrefForEntity` from there. Click-to-copy + click-through-when-
+// known-entity affordances both live in the shared component now.

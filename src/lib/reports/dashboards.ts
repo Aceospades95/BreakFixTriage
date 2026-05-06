@@ -1,6 +1,7 @@
 import type { PrismaClient, TicketState } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { isAgingOpenTicket } from "@/lib/reports/sla";
+import { monthBuckets } from "@/lib/charts/buckets";
 
 /**
  * Queries that back the operational dashboards. Kept as a thin layer over
@@ -22,16 +23,34 @@ export async function closedTicketsByMonth(
   db: PrismaClient = defaultPrisma,
   months = 12,
 ) {
-  const since = new Date();
-  since.setMonth(since.getMonth() - months);
-  const rows = await db.$queryRaw<
-    { month: Date; count: bigint }[]
-  >`SELECT date_trunc('month', "closedAt") AS month, COUNT(*)::bigint AS count
-    FROM "Ticket"
-    WHERE "closedAt" IS NOT NULL AND "closedAt" >= ${since}
-    GROUP BY 1
-    ORDER BY 1 ASC`;
-  return rows.map((r) => ({ month: r.month, count: Number(r.count) }));
+  // Round-4 §J27: bucket via the canonical monthBuckets helper.
+  // The Round-3 implementation did `date_trunc('month', closedAt)`
+  // server-side and returned only months with data — so a chart
+  // with one month of data rendered one giant bar. The monthBuckets
+  // helper emits zero-count buckets too, fixing the "one solid
+  // green block" symptom.
+  const now = new Date();
+  // Range: from the START of the bucket `months - 1` months ago,
+  // through `now`. monthBuckets internally floors `from` to month
+  // start, so this is safe.
+  const from = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1),
+  );
+  const closed = await db.ticket.findMany({
+    where: { closedAt: { gte: from, lte: now }, NOT: { closedAt: null } },
+    select: { closedAt: true },
+  });
+  const buckets = monthBuckets(
+    from,
+    now,
+    closed
+      .map((t) => t.closedAt)
+      .filter((d): d is Date => d != null),
+  );
+  // Keep the legacy shape `{ month: Date, count: number }` so the
+  // existing chart renderer (MonthBars in dashboards/page.tsx)
+  // doesn't change. `month` is the first day of the bucket.
+  return buckets.map((b) => ({ month: b.start, count: b.count }));
 }
 
 export async function ticketsBySchool(

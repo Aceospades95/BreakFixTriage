@@ -42,6 +42,10 @@ const STATE_LABELS: Record<TicketState, string> = {
   CLOSED: "Closed",
   REOPENED: "Reopened",
   ON_HOLD: "On Hold",
+  // Round-4 §N1: shorter than the slot — operators see this on
+  // the bench card a lot, so the parenthetical helps without
+  // taking three lines.
+  PENDING_PICKUP_UNLINKED: "Pending pickup (unlinked)",
 };
 
 /** Color groupings for visual display */
@@ -72,10 +76,15 @@ const STATE_COLORS: Record<TicketState, string> = {
   CLOSED: "slate",
   REOPENED: "red",
   ON_HOLD: "slate",
+  // Round-4 §N1: same intake colour as IMPORTED/TRIAGE so the
+  // visual lane signals "needs human routing".
+  PENDING_PICKUP_UNLINKED: "blue",
 };
 
 const STAGE_GROUPS = [
-  { label: "Intake", states: ["IMPORTED", "TRIAGE"] as TicketState[] },
+  // Round-4 §N1: PENDING_PICKUP_UNLINKED is intake-flavored — the
+  // device is in the building waiting for routing.
+  { label: "Intake", states: ["IMPORTED", "TRIAGE", "PENDING_PICKUP_UNLINKED"] as TicketState[] },
   {
     label: "Field Work",
     states: [

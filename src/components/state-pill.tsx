@@ -78,6 +78,10 @@ const STATE_LANE: Record<TicketState, Lane> = {
   REOPENED: "exception",
   OUT_OF_SCOPE: "exception",
   ON_HOLD: "hold",
+  // Round-4 §N1: synthetic on-route pickups belong in the intake
+  // lane visually — same colour family as IMPORTED / TRIAGE so
+  // operators read it as "needs human routing".
+  PENDING_PICKUP_UNLINKED: "intake",
 };
 
 export function StatePill({ state }: { state: TicketState }) {

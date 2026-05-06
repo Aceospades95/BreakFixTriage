@@ -140,6 +140,21 @@ describe("Round-3 §G14: font-mono confined to <code>/<pre>", () => {
       const lines = src.split("\n");
       lines.forEach((line, i) => {
         if (!line.includes("font-mono")) return;
+        // Round-4: skip comments (single-line `//`, JSX-block
+        // `{/* */}`, jsdoc continuation `*` / `*/`). These
+        // mention `font-mono` in prose explaining the rule,
+        // not as a className.
+        const trimmed = line.trim();
+        if (
+          trimmed.startsWith("//") ||
+          trimmed.startsWith("/*") ||
+          trimmed.startsWith("*") ||
+          trimmed.startsWith("{/*") ||
+          trimmed.endsWith("*/}") ||
+          trimmed.endsWith("*/")
+        ) {
+          return;
+        }
         const allowed = /<\s*(code|pre)\b/.test(line);
         if (!allowed) {
           offences.push(`${f}:${i + 1}: ${line.trim()}`);
@@ -228,6 +243,111 @@ describe("Round-3 §G29: no ALL_CAPS_UNDERSCORE in JSX text", () => {
           offences.slice(0, 20).join("\n") +
           (offences.length > 20 ? `\n…and ${offences.length - 20} more` : ""),
       );
+    }
+    expect(offences).toEqual([]);
+  });
+});
+
+/**
+ * Round-4 §A1 / §M — admin pages must not render CLI commands
+ * to operators. Scan src/app/(app)/admin for JSX text nodes that
+ * mention `npx`, `npm run`, or `prisma db push`. Internal seed
+ * scripts under prisma/ and scripts/ are exempt.
+ */
+describe("Round-4 §A1: no CLI commands rendered in admin UI", () => {
+  const files = walk(ROOT).filter((f) =>
+    f.includes("/app/(app)/admin/") && f.endsWith(".tsx"),
+  );
+  // The Round-3 templates list page renders an explicit
+  // "Run npm run email:seed-templates" CLI block on empty state.
+  // Round-4 §A replaces that block with a Seed CTA — once the
+  // CTA lands, the file is no longer exempt. Until then it's
+  // tracked here so the scan runs everywhere else.
+  const TEMP_EXEMPT: string[] = [
+    "src/app/(app)/admin/email-templates/page.tsx",
+  ];
+  const RX = /\b(npx|npm run|prisma db push|prisma migrate)\b/i;
+
+  it("no admin page renders an `npx`/`npm run`/`prisma` CLI command in JSX text", () => {
+    const offences: string[] = [];
+    for (const f of files) {
+      if (TEMP_EXEMPT.some((e) => f.includes(e))) continue;
+      const src = readFileSync(f, "utf8");
+      const lines = src.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]!;
+        const matches = line.match(/>([^<>{}]+)</g) ?? [];
+        for (const m of matches) {
+          const text = m.slice(1, -1).trim();
+          if (!text || !RX.test(text)) continue;
+          // Allow inside <code> / <pre> — operators sometimes need
+          // to copy a command; the gate is "must not be the
+          // primary CTA" not "must never appear".
+          const matchIdx = line.indexOf(m);
+          const before = line.slice(0, matchIdx);
+          const lastOpen = before.lastIndexOf("<");
+          if (lastOpen >= 0) {
+            const tagFrag = before.slice(lastOpen).toLowerCase();
+            if (
+              tagFrag.startsWith("<code") ||
+              tagFrag.startsWith("<pre")
+            ) {
+              continue;
+            }
+          }
+          offences.push(`${f}:${i + 1}: ${text}`);
+        }
+      }
+    }
+    if (offences.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "Round-4 §A1 violation: CLI command in admin JSX text:\n" +
+          offences.join("\n"),
+      );
+    }
+    expect(offences).toEqual([]);
+  });
+});
+
+/**
+ * Round-4 §M — every email send goes through dispatchEmailEvent.
+ * Scan src/ for direct provider calls outside lib/email/providers/.
+ * Catches `transporter.sendMail(...)` / `resend.emails.send(...)` /
+ * `nodemailer.createTransport().sendMail(...)`.
+ */
+describe("Round-4 §M: no direct email-provider calls outside lib/email/providers/", () => {
+  const files = walk(ROOT).filter((f) => /\.(ts|tsx)$/.test(f));
+  // The legacy lifecycle / SMTP wiring lives under
+  // lib/notifications — that's the existing nodemailer transport
+  // wrapper that the new dispatchEmailEvent path delegates to.
+  // It's allowed to hold the actual sendMail call.
+  const ALLOW_DIRS = [
+    "/lib/email/providers/",
+    "/lib/email/provider.ts",
+    "/lib/notifications/smtp.ts",
+    "/lib/notifications/transport.ts",
+    "/lib/notifications/stdout.ts",
+  ];
+  // Patterns that indicate a direct provider call.
+  const PATTERNS = [
+    /\.sendMail\s*\(/, // nodemailer
+    /resend\.emails\.send\s*\(/, // Resend SDK
+    /sgMail\.send\s*\(/, // SendGrid SDK (future)
+  ];
+
+  it("no .sendMail / resend.emails.send / sgMail.send outside the email providers dir", () => {
+    const offences: string[] = [];
+    for (const f of files) {
+      if (ALLOW_DIRS.some((p) => f.includes(p))) continue;
+      if (f.includes("/tests/")) continue;
+      if (f.endsWith("/forbidden-tokens.test.ts")) continue;
+      const src = readFileSync(f, "utf8");
+      for (const pat of PATTERNS) {
+        if (pat.test(src)) {
+          offences.push(`${f}: ${pat.source}`);
+        }
+      }
     }
     expect(offences).toEqual([]);
   });

@@ -27,6 +27,14 @@ export const dynamic = "force-dynamic";
 
 /** Default labels/hints used when the admin hasn't overridden them. */
 const DEFAULT_LABELS: Partial<Record<TicketState, { title: string; hint: string }>> = {
+  // IMPORTED is included as a column (interim fix for findings §2#2):
+  // a fresh ServiceNow import lands ~250 tickets in IMPORTED, and
+  // hiding the column made the board lie ("4 active across 22
+  // columns" while 248 tickets sat invisible). The auto-promote
+  // IMPORTED → TRIAGE on creation decision is part of the §4 status
+  // taxonomy ADR (docs/adr/0005-...) and must not be made
+  // unilaterally.
+  IMPORTED: { title: "Imported", hint: "Fresh from ServiceNow — needs triage" },
   TRIAGE: { title: "Triage", hint: "Incoming, needs routing" },
   AWAITING_PICKUP: { title: "Awaiting pickup", hint: "Ready to fetch" },
   PICKUP_SCHEDULED: { title: "Pickup scheduled", hint: "On a route" },
@@ -53,7 +61,8 @@ const DEFAULT_LABELS: Partial<Record<TicketState, { title: string; hint: string 
 
 /** States that should never appear as kanban columns. */
 const KANBAN_EXCLUDED: readonly TicketState[] = [
-  "IMPORTED",
+  // IMPORTED is intentionally NOT excluded — see DEFAULT_LABELS above
+  // and findings §2#2.
   "CLOSED",
   "REOPENED",
   "ON_HOLD",

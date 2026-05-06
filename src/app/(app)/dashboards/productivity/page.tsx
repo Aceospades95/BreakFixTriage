@@ -42,12 +42,6 @@ export default async function ProductivityPage({
                 {d}d
               </Link>
             ))}
-            <Link
-              href="/dashboards"
-              className="ml-2 text-xs text-slate-400 hover:text-white"
-            >
-              ← Overview
-            </Link>
           </div>
         }
       />

@@ -113,14 +113,6 @@ export default async function FinanceDashboardPage() {
       <PageHeader
         title="Finance"
         subtitle={`Last 12 months · ${pos.length} POs · ${pendingInvoices} tickets awaiting invoice`}
-        actions={
-          <Link
-            href="/dashboards"
-            className="text-sm text-slate-400 hover:text-white"
-          >
-            ← Overview
-          </Link>
-        }
       />
 
       <section className="mb-6 grid gap-4 sm:grid-cols-4">

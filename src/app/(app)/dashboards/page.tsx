@@ -41,30 +41,8 @@ export default async function DashboardsPage() {
         }
       />
 
-      {/* Dashboard tabs */}
-      <nav className="mb-6 flex gap-1 rounded-lg border border-surface-border bg-surface-muted/60 p-1">
-        <span className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white">
-          Overview
-        </span>
-        <Link
-          href="/dashboards/finance"
-          className="rounded-md px-4 py-2 text-sm text-slate-300 transition hover:bg-surface-border/40 hover:text-white"
-        >
-          Finance
-        </Link>
-        <Link
-          href="/dashboards/productivity"
-          className="rounded-md px-4 py-2 text-sm text-slate-300 transition hover:bg-surface-border/40 hover:text-white"
-        >
-          Productivity
-        </Link>
-        <Link
-          href="/dashboards/devices"
-          className="rounded-md px-4 py-2 text-sm text-slate-300 transition hover:bg-surface-border/40 hover:text-white"
-        >
-          Device Hotspots
-        </Link>
-      </nav>
+      {/* Tab nav now lives in dashboards/layout.tsx so it renders on
+          every sub-route — see findings bug A1. */}
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="Open tickets" value={openTotal} href="/tickets" />

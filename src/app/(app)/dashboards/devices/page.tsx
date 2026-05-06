@@ -29,14 +29,6 @@ export default async function DeviceHotspotsPage({
       <PageHeader
         title="Device hotspots"
         subtitle={`Devices that have been in the shop ${threshold}+ times in the last ${days} days. Prime candidates for retire-or-repair decisions.`}
-        actions={
-          <Link
-            href="/dashboards"
-            className="text-sm text-slate-400 hover:text-white"
-          >
-            ← Overview
-          </Link>
-        }
       />
 
       <form

@@ -349,3 +349,44 @@ is a map, not an edit log.
 > are committed to `prisma/schema.prisma` only — the maintainer
 > runs `npx prisma db push` (or `npx prisma migrate dev` if
 > migrations are adopted) on staging before merging.
+
+## 14. Touchpoints for Round-3 (May 2026)
+
+Same map convention as §12/§13. Round-3 covers the deferred
+Round-2 UX (admin email pages, holidays, /me/preferences, merge
+rewrite, status admin overhaul, audit cards, light theme, 404)
+plus a fresh batch of QA findings (typography sweep, dashboard
+chart fix, calendar week/day, devices/districts polish, portal
+detail).
+
+| Concern (brief reference)                       | Files                                                                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `humanise()` + role/priority/source formatters  | `src/lib/cn.ts::humaniseEnum` (exists) + new re-export at `src/lib/format.ts`.                          |
+| Toast auto-dismiss                              | `src/components/toast-host.tsx` (Round-1 — verified auto-dismisses at 3.5s + 0.5s fade; `important` variant + Undo are net-new and ship behind a `kind` discriminator extension). |
+| Notification model                              | `prisma/schema.prisma::InAppNotification` (Round-1, kept). Round-3 doesn't add a parallel `Notification` — extends the existing one with `ticketId?`, `routeId?`, `quoteId?` link columns. |
+| `UserPreference`                                | Already in schema (Round-2). `/me/preferences` ships in this pass.                                     |
+| `Holiday`                                       | Already in schema (Round-2). `/admin/holidays` ships in this pass.                                     |
+| Email rules / templates / log admin pages       | `src/app/(app)/admin/email-rules/`, `email-templates/`, `email-log/` — net-new this pass; read-only first cuts (full CRUD continues in a follow-up). |
+| Merge UX rewrite                                | `src/app/(app)/tickets/[ticketId]/page.tsx`, `src/server/actions/merge.ts`. Round-2 added the audit fields (`mergedAt`, `mergeReason`, `mergedByUserId`); UI rewrite is the big workstream. |
+| Status admin overhaul                           | `src/app/(app)/admin/statuses/`. Round-2 added `notifyOnEnter`/`color`/`kanbanColumn` to `StatusConfig`; Round-3 surfaces them in the editor. |
+| Audit log card redesign                         | `src/app/(app)/admin/audit/page.tsx`. EntityDiff + chip formatter from Round-2 stay; the page becomes cards. |
+| 404 page                                        | New `src/app/(app)/not-found.tsx` (must live inside the `(app)` group to inherit chrome).             |
+| Devices / districts / school contacts polish    | `src/app/(app)/admin/devices/`, `districts/`, `schools/`.                                              |
+| Dashboards chart bucket helper                  | `src/lib/charts/buckets.ts` — net-new.                                                                  |
+| Bench / kanban / calendar polish                | `src/app/(app)/bench/page.tsx`, `tickets/kanban/page.tsx`, `scheduling/calendar/page.tsx`.            |
+| Bulk-close dry-run                              | `src/app/(app)/admin/tools/bulk-close/page.tsx` — net-new admin tool.                                  |
+
+> **Branch hygiene (Round-3).** The brief specifies branch
+> `round-3/finish-deferred-and-ux-polish` from `main`. This
+> session is committed on `claude/breakfix-triage-audit-ZDYuJ`
+> per the harness instruction. Maintainer rebases / cherry-picks
+> when Round-2 lands.
+
+> **Hard gates noted in the brief that are honoured at
+> code-test level only**: a Playwright smoke crawler in CI
+> requires Playwright to be a dev dependency + a CI runner
+> with Postgres. That's a separate setup workstream; the
+> code-level scans (forbidden tokens, status-pill casing,
+> font-mono) ship as Vitest tests in this pass and the
+> Playwright spec lands as a `.skeleton` file (same pattern
+> as Round-1 / Round-2).

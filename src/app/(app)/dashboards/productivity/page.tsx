@@ -139,10 +139,8 @@ function Kpi({
 }) {
   return (
     <div className="rounded-lg border border-surface-border bg-surface-muted p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className="mt-1 font-medium tracking-tight text-2xl">{value}</div>
+      <div className="text-xs font-medium text-slate-400">{label}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
       {hint && <div className="mt-0.5 text-[10px] text-slate-500">{hint}</div>}
     </div>
   );

@@ -183,8 +183,12 @@ export async function addDeviceToStop(
       attachedExistingTicket = true;
     } else {
       // No open ticket → mint a synthetic one in PENDING_PICKUP_UNLINKED.
+      // Round-5 §1: "SYN-" prefix per the brief — easy to grep, easy to
+      // distinguish from SNOW-issued INC numbers, and the /tickets/[id]
+      // INC-URL redirect honours the prefix when an operator types one
+      // into the URL bar.
       const stamp = Date.now().toString(36).toUpperCase().slice(-7);
-      const incidentNumber = `LOCAL-RP${stamp}`;
+      const incidentNumber = `SYN-${stamp}`;
       const created = await tx.ticket.create({
         data: {
           incidentNumber,

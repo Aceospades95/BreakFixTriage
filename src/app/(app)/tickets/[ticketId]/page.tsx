@@ -33,7 +33,7 @@ import {
   startTimerAction,
   stopTimerAction,
 } from "@/server/actions/time";
-import { mergeTicketAction } from "@/server/actions/merge";
+import { mergeTicketAction, unmergeTicketAction } from "@/server/actions/merge";
 import { totalMinutesForTicket } from "@/lib/time/time-tracking";
 import { humanise } from "@/lib/format";
 
@@ -44,13 +44,35 @@ export default async function TicketDetailPage({
   searchParams,
 }: {
   params: { ticketId: string };
-  searchParams?: { error?: string };
+  searchParams?: { error?: string; view?: string };
 }) {
   const session = await requireRole(PERMISSIONS.TICKETS_READ);
   const canTransition = can(session.role, PERMISSIONS.TICKETS_TRANSITION);
   const canWrite = can(session.role, PERMISSIONS.TICKETS_WRITE);
   const canWriteQuotes = can(session.role, PERMISSIONS.QUOTES_WRITE);
   const canForceTransition = can(session.role, PERMISSIONS.USERS_MANAGE);
+
+  // Round-5 §2.11: if the URL segment is an incident-number-shaped
+  // string (INC* or SYN-*) instead of a cuid, resolve it server-
+  // side and redirect to the canonical /tickets/<cuid>. This kills
+  // the "/tickets/INC2200069 → 404" footgun without changing every
+  // call site that builds these URLs (e.g. the SNOW import emails,
+  // the audit IdChip's hrefForEntity).
+  if (
+    /^(INC|LOCAL|SYN-|LOCAL-RP)/i.test(params.ticketId) &&
+    !/^[a-z0-9]{20,}$/i.test(params.ticketId)
+  ) {
+    const found = await prisma.ticket.findUnique({
+      where: { incidentNumber: params.ticketId.toUpperCase() },
+      select: { id: true },
+    });
+    if (found) {
+      redirect(`/tickets/${found.id}`);
+    }
+    // Fall through to notFound below if the incident number is
+    // unrecognised — the user gets a 404 with did-you-mean from
+    // the (app)/not-found.tsx scope (Round-3 §G).
+  }
 
   const [ticket, assignableUsers, siblingTickets] = await Promise.all([
     prisma.ticket.findUnique({
@@ -126,11 +148,13 @@ export default async function TicketDetailPage({
   // If the ticket has been merged into another one, bounce to the
   // target so writes don't accidentally land on a closed source.
   // Skip the redirect when the caller explicitly asks to view the
-  // source via `?view=source`.
+  // source via `?view=source` or arrives with an error toast (e.g.
+  // "writes go to the target" — see Merged-in card link).
   if (
     ticket.mergedIntoTicketId &&
     ticket.mergedInto &&
-    searchParams?.error == null
+    searchParams?.error == null &&
+    searchParams?.view !== "source"
   ) {
     const url = new URL(
       `/tickets/${ticket.mergedIntoTicketId}`,
@@ -140,6 +164,7 @@ export default async function TicketDetailPage({
       "ok",
       `Merged — showing target ${ticket.mergedInto.incidentNumber}`,
     );
+    url.searchParams.set("dur", "6000");
     redirect(url.pathname + url.search);
   }
 
@@ -236,6 +261,44 @@ export default async function TicketDetailPage({
         </div>
       )}
 
+      {ticket.mergedIntoTicketId && ticket.mergedInto && (
+        <div className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm text-amber-100">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-semibold">Read-only: merged source</span>
+            <span className="text-amber-200/80">
+              This ticket was merged into{" "}
+              <Link
+                href={`/tickets/${ticket.mergedIntoTicketId}`}
+                className="font-medium underline hover:text-amber-50"
+              >
+                {ticket.mergedInto.incidentNumber}
+              </Link>
+              . Edits and transitions go to the target.
+            </span>
+            {canForceTransition && (
+              <form
+                action={unmergeTicketAction}
+                className="ml-auto flex items-center gap-2"
+              >
+                <input type="hidden" name="sourceTicketId" value={ticket.id} />
+                <input
+                  type="text"
+                  name="reason"
+                  placeholder="Reason (optional)"
+                  className="rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1 text-xs text-amber-100 placeholder:text-amber-200/40 focus:border-amber-300 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded border border-amber-300/60 bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-50 hover:bg-amber-500/30"
+                >
+                  Un-merge
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="lg:col-span-2 space-y-6">
           <Card title="Details">
@@ -256,7 +319,7 @@ export default async function TicketDetailPage({
                     >
                       {Object.values(TicketPriority).map((p) => (
                         <option key={p} value={p}>
-                          {p}
+                          {humanise(p)}
                         </option>
                       ))}
                     </select>
@@ -268,7 +331,7 @@ export default async function TicketDetailPage({
                     </button>
                   </form>
                 ) : (
-                  ticket.priority
+                  humanise(ticket.priority)
                 )}
               </Dd>
               <Dt>Assignee</Dt>
@@ -1004,9 +1067,7 @@ export default async function TicketDetailPage({
                 {ticket.mergedFrom.map((m) => (
                   <li key={m.id}>
                     <Link
-                      href={`/tickets/${m.id}?error=${encodeURIComponent(
-                        "Viewing a merged source — writes go to the target.",
-                      )}`}
+                      href={`/tickets/${m.id}?view=source`}
                       className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {m.incidentNumber}

@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * Simple SVG route map.
+ * Route map renderer.
  *
- * Renders plotted stop pins (numbered by sequence) on a normalized
- * coordinate grid, connected by a polyline in visit order. Total
- * distance is computed via haversine between consecutive stops.
+ * Two render paths:
+ *   1. When `mapboxToken` is provided (caller passes
+ *      `process.env.NEXT_PUBLIC_MAPBOX_TOKEN`), render a Mapbox
+ *      static-tile image with numbered pins and a leg breakdown
+ *      below. Single image request — no client-side JS bundle.
+ *   2. When the token is missing, render the SVG fallback (a
+ *      normalised lat/lng grid with pins + polyline) and a small
+ *      banner noting the configuration gap. Acceptance per brief
+ *      §2.3: token-less environments still get a usable preview.
  *
- * Zero external dependencies — just SVG + math. Good enough to give
- * dispatchers a "map feel" without pulling in Leaflet/Mapbox. A
- * follow-up change can swap in a real tile map when we're ready to
- * handle API keys and rate limiting.
+ * No coordinates → "Add lat/lng to school addresses" empty state.
  */
 
 interface Point {
@@ -25,9 +28,11 @@ interface Point {
 export function RouteMap({
   stops,
   title = "Route map",
+  mapboxToken,
 }: {
   stops: Point[];
   title?: string;
+  mapboxToken?: string | null;
 }) {
   const withCoords = stops.filter(
     (s): s is Point & { latitude: number; longitude: number } =>
@@ -80,10 +85,14 @@ export function RouteMap({
 
   const path = points.map((p) => `${p.x},${p.y}`).join(" ");
 
+  const mapboxUrl = mapboxToken
+    ? buildMapboxStaticUrl(withCoords, mapboxToken)
+    : null;
+
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <div className="text-xs font-semibold tracking-wide text-slate-300">
           {title}
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -98,6 +107,27 @@ export function RouteMap({
           </span>
         </div>
       </div>
+      {!mapboxUrl && (
+        <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-[10px] text-amber-200/80">
+          Mapbox token not configured — showing built-in SVG preview.
+          Set <code className="rounded bg-surface px-1">NEXT_PUBLIC_MAPBOX_TOKEN</code> to
+          enable tile maps.
+        </div>
+      )}
+      {mapboxUrl ? (
+        <div
+          className="relative overflow-hidden rounded border border-border bg-background"
+          style={{ aspectRatio: "2 / 1" }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={mapboxUrl}
+            alt={`Map with ${withCoords.length} stops`}
+            className="absolute inset-0 h-full w-full object-cover"
+            loading="lazy"
+          />
+        </div>
+      ) : (
       <div
         className="relative overflow-hidden rounded border border-border bg-background"
         style={{ aspectRatio: "2 / 1" }}
@@ -166,6 +196,7 @@ export function RouteMap({
           ))}
         </svg>
       </div>
+      )}
 
       {/* Leg breakdown */}
       {withCoords.length > 1 && (
@@ -232,4 +263,24 @@ function haversineKm(
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+function buildMapboxStaticUrl(
+  stops: Array<{ sequence: number; latitude: number; longitude: number }>,
+  token: string,
+): string {
+  const overlay = stops
+    .slice(0, 12)
+    .map(
+      (s) =>
+        `pin-s-${s.sequence}+f97316(${s.longitude.toFixed(
+          5,
+        )},${s.latitude.toFixed(5)})`,
+    )
+    .join(",");
+  const auto = "auto";
+  const size = "640x320@2x";
+  return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${overlay}/${auto}/${size}?access_token=${encodeURIComponent(
+    token,
+  )}`;
 }

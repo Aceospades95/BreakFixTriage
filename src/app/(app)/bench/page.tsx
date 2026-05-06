@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { TicketState } from "@prisma/client";
+import { TicketSource, TicketState } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
@@ -98,7 +98,7 @@ export default async function BenchPage({
   }
 
   // All benches (manager view).
-  const [ticketsByUserRaw, unassigned] = await Promise.all([
+  const [ticketsByUserRaw, unassigned, unlinked] = await Promise.all([
     prisma.ticket.findMany({
       where: {
         state: { in: activeStates },
@@ -113,6 +113,15 @@ export default async function BenchPage({
     prisma.ticket.findMany({
       where: { state: { in: activeStates }, assignedUserId: null },
       orderBy: { stateEnteredAt: "asc" },
+      include: {
+        school: { select: { name: true } },
+        device: { select: { serialNumber: true } },
+      },
+      take: 100,
+    }),
+    prisma.ticket.findMany({
+      where: { state: TicketState.PENDING_PICKUP_UNLINKED },
+      orderBy: { reportedAt: "desc" },
       include: {
         school: { select: { name: true } },
         device: { select: { serialNumber: true } },
@@ -145,14 +154,15 @@ export default async function BenchPage({
     ...users.filter((u) => u.id !== session.userId),
   ];
 
-  const totalBuckets = sortedUsers.length + 1; // +1 for the Unassigned bucket
+  // +1 for Unassigned, +1 for Unlinked (Round-4 §N1)
+  const totalBuckets = sortedUsers.length + 2;
   const totalAssignedOpen = ticketsByUserRaw.length;
 
   return (
     <>
       <PageHeader
         title="All benches"
-        subtitle={`${totalAssignedOpen} assigned · ${unassigned.length} unassigned · ${sortedUsers.length} active assignee${sortedUsers.length === 1 ? "" : "s"}`}
+        subtitle={`${totalAssignedOpen} assigned · ${unassigned.length} unassigned · ${unlinked.length} unlinked · ${sortedUsers.length} active assignee${sortedUsers.length === 1 ? "" : "s"}`}
         actions={
           <Link
             href="/bench?scope=me"
@@ -163,60 +173,105 @@ export default async function BenchPage({
         }
       />
 
-      <div
-        className={
-          // Avoid the "half-empty grid" first-paint when there's only
-          // one bucket — render single column instead of forcing two.
-          totalBuckets <= 1
-            ? "grid gap-4"
-            : "grid gap-4 lg:grid-cols-2"
-        }
-      >
-        {sortedUsers.map((u) => {
-          const tickets = byUser.get(u.id) ?? [];
-          return (
-            <section
-              key={u.id}
-              className="rounded-lg border border-surface-border bg-surface-muted p-4"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold">{u.name}</div>
-                  <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                    {u.role}
-                    {u.id === session.userId && " · you"}
+      <div className="-mx-4 overflow-x-auto px-4 pb-2">
+        <div
+          className="flex gap-4"
+          style={{ minWidth: `${totalBuckets * 320}px` }}
+        >
+          {sortedUsers.map((u) => {
+            const tickets = byUser.get(u.id) ?? [];
+            const breached = tickets.filter((t) => {
+              const days = daysInState(t, new Date());
+              return slaHealth(t.state, days) === "breached";
+            }).length;
+            return (
+              <section
+                key={u.id}
+                className="flex w-80 shrink-0 flex-col rounded-lg border border-surface-border bg-surface-muted p-4"
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold">{u.name}</div>
+                    <div className="text-[10px] tracking-wide text-slate-500">
+                      {u.role}
+                      {u.id === session.userId && " · you"}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {breached > 0 && (
+                      <span
+                        className="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium tabular-nums text-red-200"
+                        title={`${breached} past SLA`}
+                      >
+                        {breached} ⚠
+                      </span>
+                    )}
+                    <span className="rounded bg-surface-border px-2 py-0.5 text-xs font-medium tabular-nums">
+                      {tickets.length}
+                    </span>
                   </div>
                 </div>
-                <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-xs">
-                  {tickets.length}
-                </span>
+                {tickets.length === 0 ? (
+                  <p className="text-xs text-slate-400">empty</p>
+                ) : (
+                  <CompactTicketList tickets={tickets} />
+                )}
+              </section>
+            );
+          })}
+          <section className="flex w-80 shrink-0 flex-col rounded-lg border border-surface-border bg-surface-muted p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold">Unassigned</div>
+                <div className="text-[10px] tracking-wide text-slate-500">
+                  no owner
+                </div>
               </div>
-              {tickets.length === 0 ? (
-                <p className="text-xs text-slate-400">empty</p>
-              ) : (
-                <CompactTicketList tickets={tickets} />
-              )}
-            </section>
-          );
-        })}
-        <section className="rounded-lg border border-surface-border bg-surface-muted p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold">Unassigned</div>
-              <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                no owner
-              </div>
+              <span className="rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium tabular-nums text-amber-200">
+                {unassigned.length}
+              </span>
             </div>
-            <span className="rounded bg-amber-500/20 px-2 py-0.5 font-medium tracking-tight text-xs text-amber-200">
-              {unassigned.length}
-            </span>
-          </div>
-          {unassigned.length === 0 ? (
-            <p className="text-xs text-slate-400">empty</p>
-          ) : (
-            <CompactTicketList tickets={unassigned} />
-          )}
-        </section>
+            {unassigned.length === 0 ? (
+              <p className="text-xs text-slate-400">empty</p>
+            ) : (
+              <CompactTicketList tickets={unassigned} />
+            )}
+          </section>
+          <section className="flex w-80 shrink-0 flex-col rounded-lg border border-violet-500/30 bg-violet-500/5 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-violet-100">
+                  Unlinked
+                  <span
+                    className="rounded border border-violet-400/40 bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-100"
+                    title="Synthetic tickets minted on-route, awaiting SNOW link."
+                  >
+                    SYN
+                  </span>
+                </div>
+                <div className="text-[10px] tracking-wide text-violet-300/80">
+                  on-route synthetic · resolve at /duplicates
+                </div>
+              </div>
+              <span className="rounded bg-violet-500/20 px-2 py-0.5 text-xs font-medium tabular-nums text-violet-100">
+                {unlinked.length}
+              </span>
+            </div>
+            {unlinked.length === 0 ? (
+              <p className="text-xs text-violet-300/80">empty</p>
+            ) : (
+              <CompactTicketList tickets={unlinked} />
+            )}
+            {unlinked.length > 0 && (
+              <Link
+                href="/duplicates"
+                className="mt-2 self-start rounded border border-violet-400/40 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-100 hover:bg-violet-500/20"
+              >
+                Resolve at /duplicates →
+              </Link>
+            )}
+          </section>
+        </div>
       </div>
     </>
   );

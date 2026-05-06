@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import type { TicketState } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { mergeTicket } from "@/lib/tickets/merge";
+import { writeAudit } from "@/lib/audit/audit";
 
 const schema = z.object({
   sourceTicketId: z.string().min(1),
@@ -64,5 +66,83 @@ export async function mergeTicketAction(formData: FormData) {
 
   revalidatePath(`/tickets/${parsed.data.sourceTicketId}`);
   revalidatePath(`/tickets/${target.id}`);
-  redirect(`/tickets/${target.id}?ok=${encodeURIComponent("Ticket merged")}`);
+  redirect(
+    `/tickets/${target.id}?ok=${encodeURIComponent(
+      "Ticket merged",
+    )}&dur=6000`,
+  );
+}
+
+/**
+ * Reverse a previous merge. Admin-only — re-opens the source ticket
+ * with its pre-merge state restored from the most recent merge audit
+ * row, clears the target pointer, and writes an `unmerge` audit row
+ * on both sides.
+ */
+export async function unmergeTicketAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.USERS_MANAGE);
+
+  const sourceId = formData.get("sourceTicketId")?.toString();
+  if (!sourceId) {
+    redirect("/tickets?error=Missing+source+ticket");
+  }
+  const reason = formData.get("reason")?.toString().trim() || null;
+
+  const source = await prisma.ticket.findUnique({
+    where: { id: sourceId },
+    select: {
+      id: true,
+      state: true,
+      mergedIntoTicketId: true,
+      incidentNumber: true,
+    },
+  });
+  if (!source || !source.mergedIntoTicketId) {
+    redirect(
+      `/tickets/${sourceId}?error=${encodeURIComponent(
+        "This ticket isn't merged.",
+      )}`,
+    );
+  }
+
+  const targetId = source.mergedIntoTicketId;
+  const lastMergeAudit = await prisma.auditLog.findFirst({
+    where: { entityType: "Ticket", entityId: source.id, action: "merge" },
+    orderBy: { createdAt: "desc" },
+  });
+  const before =
+    (lastMergeAudit?.before as { state?: string } | null) ?? null;
+  const restoreState = (before?.state as TicketState | undefined) ?? "TRIAGE";
+
+  await prisma.$transaction(async (tx) => {
+    await tx.ticket.update({
+      where: { id: source.id },
+      data: {
+        mergedIntoTicketId: null,
+        state: restoreState,
+        stateEnteredAt: new Date(),
+        closedAt: null,
+      },
+    });
+    await writeAudit(
+      {
+        actorUserId: session.userId,
+        entityType: "Ticket",
+        entityId: source.id,
+        action: "unmerge",
+        before: { state: source.state, mergedIntoTicketId: targetId },
+        after: { state: restoreState, mergedIntoTicketId: null },
+        reason: reason ?? "Unmerge via admin UI",
+      },
+      tx,
+    );
+  });
+
+  revalidatePath(`/tickets/${source.id}`);
+  revalidatePath(`/tickets/${targetId}`);
+  redirect(
+    `/tickets/${source.id}?ok=${encodeURIComponent(
+      "Merge reversed — source ticket re-opened",
+    )}&dur=6000`,
+  );
 }

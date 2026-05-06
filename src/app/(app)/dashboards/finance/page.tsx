@@ -268,10 +268,8 @@ function Kpi({
         : "border-surface-border bg-surface-muted";
   return (
     <div className={`rounded-lg border p-4 ${cls}`}>
-      <div className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className="mt-1 font-medium tracking-tight text-2xl">{value}</div>
+      <div className="text-xs font-medium text-slate-400">{label}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
     </div>
   );
 }

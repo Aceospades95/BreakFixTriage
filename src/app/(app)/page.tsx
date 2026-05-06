@@ -802,10 +802,8 @@ function Kpi({
           : "border-surface-border bg-surface-muted"
       }`}
     >
-      <div className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className="mt-1 text-3xl font-semibold">{value}</div>
+      <div className="text-xs font-medium text-slate-400">{label}</div>
+      <div className="mt-1 text-3xl font-semibold tabular-nums">{value}</div>
     </Link>
   );
 }

@@ -293,7 +293,7 @@ export function KanbanBoard({
                       </div>
                       <div className="text-[10px] text-slate-500">{col.hint}</div>
                     </div>
-                    <span className="rounded bg-muted px-2 py-0.5 text-xs tabular-nums">
+                    <span className="inline-block min-w-[3ch] whitespace-nowrap rounded bg-muted px-2 py-0.5 text-center text-xs tabular-nums">
                       {colTickets.length}
                     </span>
                   </Link>
@@ -389,7 +389,7 @@ export function KanbanBoard({
                     <div className="text-[10px] text-slate-500">{col.hint}</div>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="rounded bg-muted px-2 py-0.5 text-xs tabular-nums">
+                    <span className="inline-block min-w-[3ch] whitespace-nowrap rounded bg-muted px-2 py-0.5 text-center text-xs tabular-nums">
                       {colTickets.length}
                     </span>
                     <Link

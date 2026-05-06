@@ -72,6 +72,10 @@ export function ToastHost() {
     const error = searchParams.get("error");
     const important = searchParams.get("important") === "1";
     const undoHref = searchParams.get("undo") ?? undefined;
+    const durRaw = searchParams.get("dur");
+    const durOverride = durRaw ? Number.parseInt(durRaw, 10) : NaN;
+    const showMs =
+      Number.isFinite(durOverride) && durOverride > 0 ? durOverride : SHOW_MS;
     if (!ok && !error) return;
 
     const now = Date.now();
@@ -79,13 +83,11 @@ export function ToastHost() {
     if (ok) {
       next.push({
         id: now,
-        // important success toasts (e.g. merge complete with Undo)
-        // become the dedicated `important` variant.
         kind: important ? "important" : "ok",
         message: ok,
         fading: false,
         undoHref,
-        expiresAt: important ? null : now + SHOW_MS,
+        expiresAt: important ? null : now + showMs,
       });
     }
     if (error) {
@@ -94,19 +96,17 @@ export function ToastHost() {
         kind: "error",
         message: error,
         fading: false,
-        expiresAt: now + SHOW_MS,
+        expiresAt: now + showMs,
       });
     }
-    // FIFO stacking: append. The host renders in array order so
-    // older toasts sit on top; new arrivals slide in below.
     setToasts((prev) => [...prev, ...next]);
 
-    // Strip the params from the URL so a refresh doesn't re-toast.
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.delete("ok");
     nextParams.delete("error");
     nextParams.delete("important");
     nextParams.delete("undo");
+    nextParams.delete("dur");
     const qs = nextParams.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
 

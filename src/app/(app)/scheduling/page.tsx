@@ -5,6 +5,7 @@ import { StatePill } from "@/components/state-pill";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { humanise } from "@/lib/format";
 import { createJobAction } from "@/server/actions/scheduling";
 
 export const dynamic = "force-dynamic";
@@ -380,10 +381,8 @@ function Kpi({
           : "border-surface-border bg-surface-muted"
       }`}
     >
-      <div className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className="mt-1 text-3xl font-semibold">{value}</div>
+      <div className="text-xs font-medium text-slate-400">{label}</div>
+      <div className="mt-1 text-3xl font-semibold tabular-nums">{value}</div>
     </Link>
   );
 }
@@ -413,9 +412,9 @@ function RouteStatusPill({
             : "bg-slate-500/20 text-slate-200 border-slate-500/40";
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls}`}
+      className={`rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide ${cls}`}
     >
-      {status}
+      {humanise(status)}
     </span>
   );
 }

@@ -373,12 +373,11 @@ export function StatusEditor({
                         <div className="flex flex-wrap items-center gap-3 px-4 py-3">
                           <span
                             className={cn(
-                              "inline-flex items-center rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide",
+                              "inline-block h-2.5 w-2.5 shrink-0 rounded-full border",
                               COLOR_CLASSES[s.color] ?? COLOR_CLASSES.slate,
                             )}
-                          >
-                            {s.state}
-                          </span>
+                            aria-hidden
+                          />
 
                           <span className="text-sm font-medium text-slate-200">
                             {s.label}
@@ -462,6 +461,9 @@ export function StatusEditor({
                         {/* Expanded */}
                         {expanded && (
                           <div className="border-t border-border px-4 py-4">
+                            <div className="mb-3 text-[10px] uppercase tracking-wider text-slate-500">
+                              Internal name: <code className="rounded bg-muted px-1 text-slate-400">{s.state}</code>
+                            </div>
                             {/* Label + section editors */}
                             <div className="mb-4 grid gap-3 sm:grid-cols-2">
                               <label className="flex flex-col gap-1">

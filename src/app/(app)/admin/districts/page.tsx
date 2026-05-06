@@ -60,7 +60,7 @@ export default async function AdminDistrictsPage({
           />
           <button
             type="submit"
-            className="rounded bg-accent px-3 py-1.5 text-sm font-semibold hover:bg-accent-strong"
+            className="min-w-[4rem] whitespace-nowrap rounded bg-accent px-3 py-1.5 text-sm font-semibold hover:bg-accent-strong"
           >
             Add
           </button>

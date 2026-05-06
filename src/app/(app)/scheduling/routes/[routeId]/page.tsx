@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { JobStatus, RouteStatus } from "@prisma/client";
+import { JobStatus, RouteStatus, TicketSource } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { AttachmentList } from "@/components/attachment-list";
@@ -9,11 +9,16 @@ import { SignaturePad } from "@/components/signature-pad";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { humanise } from "@/lib/format";
 import {
   cancelRouteAction,
   reorderRouteAction,
   updateStopStatusAction,
 } from "@/server/actions/scheduling";
+import {
+  addDeviceToStopAction,
+  removeDeviceFromStopAction,
+} from "@/server/actions/stop-devices";
 import { uploadAttachmentAction } from "@/server/actions/attachments";
 
 export const dynamic = "force-dynamic";
@@ -64,11 +69,42 @@ export default async function RouteDetailPage({
             orderBy: { createdAt: "desc" },
             include: { uploadedBy: { select: { name: true } } },
           },
+          stopDevices: {
+            orderBy: { addedAt: "asc" },
+            include: {
+              device: {
+                select: {
+                  id: true,
+                  serialNumber: true,
+                  assetTag: true,
+                  model: {
+                    select: { manufacturer: true, modelName: true },
+                  },
+                },
+              },
+              ticket: {
+                select: {
+                  id: true,
+                  incidentNumber: true,
+                  state: true,
+                  source: true,
+                },
+              },
+            },
+          },
         },
       },
     },
   });
   if (!route) notFound();
+
+  const deviceModels = canUpdateStop
+    ? await prisma.deviceModel.findMany({
+        select: { id: true, manufacturer: true, modelName: true },
+        orderBy: [{ manufacturer: "asc" }, { modelName: "asc" }],
+        take: 200,
+      })
+    : [];
 
   const stopIds = route.stops.map((s) => s.id);
   const routeOpen =
@@ -141,6 +177,7 @@ export default async function RouteDetailPage({
                 longitude: s.job.school.address?.longitude ?? null,
               }))}
               title="Route map · auto-optimized by nearest-neighbor haversine distance"
+              mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? null}
             />
           </div>
           <ol className="space-y-3">
@@ -171,8 +208,8 @@ export default async function RouteDetailPage({
                           {stop.job.school.code}
                         </span>
                       )}
-                      <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase">
-                        {stop.job.type}
+                      <span className="rounded bg-surface-border px-1.5 py-0.5 text-[10px] font-medium tracking-wide">
+                        {humanise(stop.job.type)}
                       </span>
                     </div>
                     <ul className="mt-1 space-y-0.5 text-xs text-slate-300">
@@ -224,6 +261,160 @@ export default async function RouteDetailPage({
                           />
                         )}
                       </>
+                    )}
+                  </div>
+                )}
+
+                {(stop.stopDevices.length > 0 || (canUpdateStop && routeOpen)) && (
+                  <div className="mt-3 border-t border-surface-border pt-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-[10px] tracking-wide text-slate-400">
+                        Devices on this stop (
+                        {stop.stopDevices.filter((d) => d.removedAt == null).length}
+                        )
+                      </div>
+                    </div>
+                    {stop.stopDevices.length > 0 && (
+                      <ul className="mb-2 space-y-1 text-xs">
+                        {stop.stopDevices.map((sd) => (
+                          <li
+                            key={sd.id}
+                            className={`flex flex-wrap items-center gap-2 rounded border border-surface-border bg-surface px-2 py-1 ${
+                              sd.removedAt ? "opacity-50" : ""
+                            }`}
+                          >
+                            <code className="rounded bg-surface-muted px-1.5 py-0.5 text-[11px] text-slate-200">
+                              {sd.device.assetTag ?? sd.device.serialNumber}
+                            </code>
+                            {sd.device.model && (
+                              <span className="text-[10px] text-slate-500">
+                                {sd.device.model.manufacturer}{" "}
+                                {sd.device.model.modelName}
+                              </span>
+                            )}
+                            {sd.ticket && (
+                              <>
+                                <Link
+                                  href={`/tickets/${sd.ticket.id}`}
+                                  className="text-accent hover:underline"
+                                >
+                                  {sd.ticket.incidentNumber}
+                                </Link>
+                                {sd.ticket.source === TicketSource.ROUTE_PICKUP && (
+                                  <span
+                                    className="rounded border border-violet-400/40 bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-100"
+                                    title="Synthetic ticket — created on the route, not yet linked to a SNOW incident."
+                                  >
+                                    SYN
+                                  </span>
+                                )}
+                                <StatePill state={sd.ticket.state} />
+                              </>
+                            )}
+                            {sd.removedAt ? (
+                              <span className="ml-auto text-[10px] text-slate-500">
+                                removed {sd.removedAt.toISOString().slice(0, 10)}
+                              </span>
+                            ) : (
+                              canUpdateStop && routeOpen && (
+                                <form
+                                  action={removeDeviceFromStopAction}
+                                  className="ml-auto flex items-center gap-1"
+                                >
+                                  <input
+                                    type="hidden"
+                                    name="stopDeviceId"
+                                    value={sd.id}
+                                  />
+                                  <input
+                                    type="text"
+                                    name="reason"
+                                    placeholder="Reason"
+                                    className="w-24 rounded border border-surface-border bg-surface-muted px-1 py-0.5 text-[10px] focus:border-accent focus:outline-none"
+                                  />
+                                  <button
+                                    type="submit"
+                                    className="rounded border border-red-500/40 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-200 hover:bg-red-500/20"
+                                    title="Remove this device from the stop"
+                                  >
+                                    × Remove
+                                  </button>
+                                </form>
+                              )
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {canUpdateStop && routeOpen && (
+                      <details className="rounded border border-surface-border bg-surface-muted/40 p-2 text-xs">
+                        <summary className="cursor-pointer select-none text-accent hover:underline">
+                          + Add device
+                        </summary>
+                        <div className="mt-3 grid gap-2">
+                          <form
+                            action={addDeviceToStopAction}
+                            className="grid gap-2 rounded border border-surface-border bg-surface p-2 sm:grid-cols-[max-content_1fr_max-content]"
+                          >
+                            <input type="hidden" name="stopId" value={stop.id} />
+                            <input type="hidden" name="kind" value="placeholder" />
+                            <span className="self-center text-[10px] tracking-wide text-slate-400">
+                              New device (placeholder)
+                            </span>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <input
+                                type="text"
+                                name="serial"
+                                required
+                                placeholder="Serial #"
+                                className="rounded border border-surface-border bg-surface-muted px-2 py-1 focus:border-accent focus:outline-none"
+                              />
+                              <input
+                                type="text"
+                                name="assetTag"
+                                placeholder="Asset tag (optional)"
+                                className="rounded border border-surface-border bg-surface-muted px-2 py-1 focus:border-accent focus:outline-none"
+                              />
+                              <select
+                                name="modelId"
+                                required
+                                className="rounded border border-surface-border bg-surface-muted px-2 py-1 focus:border-accent focus:outline-none"
+                              >
+                                <option value="">Model…</option>
+                                {deviceModels.map((m) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.manufacturer} {m.modelName}
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                type="text"
+                                name="condition"
+                                placeholder="Condition / notes"
+                                className="rounded border border-surface-border bg-surface-muted px-2 py-1 focus:border-accent focus:outline-none"
+                              />
+                            </div>
+                            <button
+                              type="submit"
+                              className="self-center rounded bg-accent px-2 py-1 text-[10px] font-semibold hover:bg-accent-strong"
+                            >
+                              Add
+                            </button>
+                          </form>
+                          <p className="text-[10px] text-slate-500">
+                            Adding a device here mints a synthetic ticket in
+                            "Pending pickup (unlinked)" — link it later from{" "}
+                            <Link
+                              href="/duplicates"
+                              className="text-accent hover:underline"
+                            >
+                              /duplicates
+                            </Link>{" "}
+                            once the SNOW incident posts.
+                          </p>
+                        </div>
+                      </details>
                     )}
                   </div>
                 )}
@@ -420,9 +611,9 @@ function StopStatusPill({ status }: { status: JobStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide ${cls[status]}`}
     >
-      {status}
+      {humanise(status)}
     </span>
   );
 }
@@ -437,9 +628,9 @@ function RouteStatusPill({ status }: { status: RouteStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide ${cls[status]}`}
     >
-      {status}
+      {humanise(status)}
     </span>
   );
 }

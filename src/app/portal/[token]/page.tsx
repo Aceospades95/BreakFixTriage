@@ -64,7 +64,7 @@ export default async function PortalPage({
     <div className="min-h-screen bg-surface text-slate-200">
       <header className="border-b border-surface-border bg-surface-muted/80 backdrop-blur">
         <div className="mx-auto max-w-4xl px-6 py-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">
+          <div className="text-xs tracking-wide text-slate-400">
             BreakFix Triage · status portal
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -84,15 +84,15 @@ export default async function PortalPage({
 
       <main className="mx-auto max-w-4xl px-6 py-8">
         <section className="mb-8 grid gap-4 sm:grid-cols-3">
-          <Kpi label="Open tickets" value={totalOpen} />
+          <Kpi label="Open Tickets" value={totalOpen} />
           <Kpi
-            label="In warehouse"
+            label="In Warehouse"
             value={
               counts.find((c) => c.state === "IN_WAREHOUSE")?._count._all ?? 0
             }
           />
           <Kpi
-            label="Awaiting delivery"
+            label="Awaiting Delivery"
             value={
               (counts.find((c) => c.state === "PENDING_DELIVERY")?._count._all ?? 0) +
               (counts.find((c) => c.state === "DELIVERY_SCHEDULED")?._count._all ?? 0)
@@ -101,8 +101,8 @@ export default async function PortalPage({
         </section>
 
         <section className="mb-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
-            Open tickets ({openTickets.length})
+          <h2 className="mb-3 text-sm font-semibold tracking-tight text-slate-200">
+            Open Tickets ({openTickets.length})
           </h2>
           {openTickets.length === 0 ? (
             <div className="rounded-lg border border-surface-border bg-surface-muted/40 p-6 text-center text-sm text-slate-400">
@@ -139,8 +139,8 @@ export default async function PortalPage({
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
-            Recently closed ({closedTickets.length})
+          <h2 className="mb-3 text-sm font-semibold tracking-tight text-slate-200">
+            Recently Closed ({closedTickets.length})
           </h2>
           {closedTickets.length === 0 ? (
             <p className="text-sm text-slate-400">Nothing closed recently.</p>
@@ -183,10 +183,8 @@ export default async function PortalPage({
 function Kpi({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-lg border border-surface-border bg-surface-muted p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className="mt-1 text-3xl font-semibold">{value}</div>
+      <div className="text-xs font-medium text-slate-400">{label}</div>
+      <div className="mt-1 text-3xl font-semibold tabular-nums">{value}</div>
     </div>
   );
 }

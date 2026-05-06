@@ -1,6 +1,7 @@
 import { Role } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { requireRole } from "@/lib/auth/session";
+import { humanise } from "@/lib/format";
 import {
   PERMISSIONS,
   type Permission,
@@ -62,10 +63,11 @@ const PERM_GROUPS: { group: string; perms: [string, Permission][] }[] = [
 ];
 
 function permLabel(key: string): string {
-  return key
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  // Round-4 §pre-work-2: humanise() canonical surface. The
+  // permission constants are uppercase TOKENS like
+  // `TICKETS_TRANSITION` — humanise turns them into "Tickets
+  // transition" (titlecase + acronym preservation).
+  return humanise(key);
 }
 
 export default async function PermissionsPage({
@@ -141,9 +143,12 @@ export default async function PermissionsPage({
                         <div className="text-sm text-slate-200">
                           {permLabel(key)}
                         </div>
-                        <div className="text-[10px] text-slate-500">
+                        {/* Round-4 §G9: permission slug rendered as
+                            an identifier — `<code>` is the only
+                            place font-mono is allowed (§G14 lint). */}
+                        <code className="text-[10px] text-slate-500">
                           {perm}
-                        </div>
+                        </code>
                       </td>
                       {EDITABLE_ROLES.map(({ role }) => {
                         const checked = grid[role]!.has(perm);

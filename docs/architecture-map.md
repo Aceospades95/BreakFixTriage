@@ -390,3 +390,41 @@ detail).
 > font-mono) ship as Vitest tests in this pass and the
 > Playwright spec lands as a `.skeleton` file (same pattern
 > as Round-1 / Round-2).
+
+## 15. Touchpoints for Round-4 (May 2026)
+
+Same convention as §13 / §14. Round-4 finishes the deferred
+items from Round-3 (email rules CRUD, audit IdChip click-through,
+admin/portal 404 chrome, dashboards chart wiring) and ships two
+new feature streams: N1 (PENDING_PICKUP_UNLINKED on-route device
+add/remove with SNOW reconcile) and N2 (people scheduling).
+
+| Concern (brief reference)                         | Files                                                                                                                       |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Toast variants (pre-work 1)                       | `src/components/toast-host.tsx` — Round-3 already auto-dismisses; Round-4 bumps to 4s + adds FIFO + pause-on-hover.        |
+| `humanise()` canonicalize (pre-work 2)            | `src/lib/format.ts` (Round-3) — Round-4 verifies every consumer goes through it; the §G14/§G29 lint scans already enforce. |
+| Email rules CRUD (§A)                             | `src/app/(app)/admin/email-rules/` (Round-3 read-only) — Round-4 adds new/edit/delete pages + actions.                      |
+| Trigger sites (§B)                                | `src/server/actions/templates.ts` (Round-3 wired ticket_created), `bulk.ts` (Round-3 wired ticket_assigned). Round-4 wires the rest into `quotes.ts`, `scheduling.ts`, `transition.ts`. |
+| /me/preferences full feature (§B)                 | `src/app/(app)/me/preferences/page.tsx` (Round-3 scaffold) — Round-4 adds channel matrix + timezone + sweeps Round-3 numbering text. |
+| Audit IdChip click-through (§F)                   | `src/app/(app)/admin/audit/page.tsx::IdChip` — Round-3 fallback; Round-4 extracts to `src/components/ui/IdChip.tsx` and adds `href` prop.                |
+| Admin / portal not-found (§G29)                   | `src/app/(app)/admin/not-found.tsx` (NEW), `src/app/portal/[token]/not-found.tsx` (NEW).                                    |
+| CLI-text + email-direct-call lint (§M)            | `tests/forbidden-tokens.test.ts` extends.                                                                                   |
+| Dashboards Overview chart (§J)                    | `src/app/(app)/dashboards/page.tsx`, `src/lib/charts/buckets.ts` (Round-3 helper).                                          |
+| Settings test-email + inline-saved (§L)           | `src/app/(app)/admin/settings/page.tsx`.                                                                                    |
+| **N1 PENDING_PICKUP_UNLINKED**                    | `prisma/schema.prisma` (TicketState enum + StopDevice + Ticket.source); `src/lib/workflow/states.ts` (allowed transitions); `src/server/actions/scheduling.ts` (add/remove device); `src/server/actions/imports.ts` or new `src/lib/snow-merge.ts` (reconcile). |
+| **N2 StaffSchedule + people page**                | `prisma/schema.prisma` (StaffSchedule + Stop.arrivedLat/Lng/At + Settings.peopleSchedule*); `src/lib/scheduling/people.ts` (deriveOnRouteBlocks); `src/app/(app)/scheduling/people/page.tsx` (NEW); `src/app/(app)/me/schedule/page.tsx` (NEW). |
+
+> **Branch hygiene (Round-4).** Brief specifies
+> `round-4/finish-deferred-and-feature-streams` from `main`. This
+> session continues on `claude/breakfix-triage-audit-ZDYuJ` per
+> the harness instruction. Maintainer rebases / cherry-picks
+> when prior rounds land.
+
+> **Realistic in-session scope.** The brief calls for ~38
+> deliverables across 14 workstreams; Mapbox tile components,
+> Resend SDK wiring, full Monaco editors, full Playwright CI
+> setup, and full merge UX rewrite each need provisioned env or
+> multi-day work. Round-4 ships the foundation tier + the two
+> new feature streams as schema + orchestration + minimal
+> read views; the rest defers explicitly in the §QA checklist
+> (`docs/round-4-qa-checklist.md`) with reasons per item.

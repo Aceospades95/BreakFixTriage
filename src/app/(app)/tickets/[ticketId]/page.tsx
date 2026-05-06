@@ -35,6 +35,7 @@ import {
 } from "@/server/actions/time";
 import { mergeTicketAction } from "@/server/actions/merge";
 import { totalMinutesForTicket } from "@/lib/time/time-tracking";
+import { humanise } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -209,11 +210,9 @@ export default async function TicketDetailPage({
           .filter((s) => s !== ticket.state)
           .map((s) => ({
             state: s,
-            label:
-              statusConfig.labels?.[s] ??
-              s.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) =>
-                c.toUpperCase(),
-              ),
+            // Round-4 §pre-work-2: humanise() canonical surface.
+            // Was an inline replace+lowercase+capitalise chain.
+            label: statusConfig.labels?.[s] ?? humanise(s),
           }))
           .sort((a, b) => a.label.localeCompare(b.label))
       : [];

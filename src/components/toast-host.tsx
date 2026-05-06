@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 
 /**
@@ -15,25 +15,32 @@ import { usePathname, useSearchParams, useRouter } from "next/navigation";
  *   3. Strips the params from the URL via `router.replace` so
  *      clicking "back" doesn't re-trigger the same toast.
  *
- * Lifecycle per non-important toast:
+ * Lifecycle per non-important toast (Round-4 §pre-work-1 tweaks):
  *   t=0s      shown (opacity 0 → 1 on mount)
- *   t=5s      fade begins (opacity 1 → 0 over 0.5s)
- *   t=5.5s    removed from DOM
+ *   t=4s      fade begins (opacity 1 → 0 over 0.5s) *unless* the
+ *             pointer is currently over the panel
+ *   t=4.5s    removed from DOM
  *
- * `important` toasts skip the fade timer; users dismiss with ✕
- * (the X button is always rendered, every variant). The Undo
+ * Hovering the panel pauses the dismiss timer; leaving the panel
+ * resumes from where it left off. Round-4 §pre-work-1 changes:
+ *
+ *   - SHOW_MS bumped 5s → 4s (matches the brief's documented
+ *     default; the 5s in Round-3 was an overshoot).
+ *   - FIFO: when a new toast arrives while another is already
+ *     visible, the new one stacks below; the timers run
+ *     independently so they each fade after their own 4s.
+ *   - Pause-on-hover: a single `paused` flag at the host level;
+ *     when set, every toast's timer is treated as suspended.
+ *     Implementation uses an effect-cleanup-and-reschedule
+ *     pattern so a paused toast that the user un-hovers gets a
+ *     fresh remaining-time timer.
+ *
+ * `important` toasts skip the fade timer entirely; users dismiss
+ * with the X button (always rendered, every variant). The Undo
  * affordance for destructive ops is `?undo=<token>` — a server
  * action receives the token and reverses the last action; today
  * Undo is only used by the merge-then-immediately-undo flow
  * (Round-3 §D).
- *
- * Round-3 §I rationale:
- *   - 5s default (was 3.5s) — operators reading the message had
- *     too little time, especially for multi-line errors.
- *   - X button always present, regardless of variant.
- *   - Pointer-events on the panel only, not on the wrapper, so a
- *     visible toast doesn't block clicks on the page underneath.
- *     (Already true since Round-1; preserved.)
  */
 
 interface Toast {
@@ -44,9 +51,13 @@ interface Toast {
   /** Optional Undo affordance — when set, renders an Undo button
       that links to the server action that reverses the last op. */
   undoHref?: string;
+  /** Per-toast remaining-time bookkeeping. The host keeps an
+      `expiresAt` so a hover-pause can compute the new timeout
+      without losing time. */
+  expiresAt: number | null; // null for `important`
 }
 
-const SHOW_MS = 5000;
+const SHOW_MS = 4000;
 const FADE_MS = 500;
 
 export function ToastHost() {
@@ -54,6 +65,7 @@ export function ToastHost() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     const ok = searchParams.get("ok");
@@ -62,26 +74,31 @@ export function ToastHost() {
     const undoHref = searchParams.get("undo") ?? undefined;
     if (!ok && !error) return;
 
+    const now = Date.now();
     const next: Toast[] = [];
     if (ok) {
       next.push({
-        id: Date.now(),
+        id: now,
         // important success toasts (e.g. merge complete with Undo)
         // become the dedicated `important` variant.
         kind: important ? "important" : "ok",
         message: ok,
         fading: false,
         undoHref,
+        expiresAt: important ? null : now + SHOW_MS,
       });
     }
     if (error) {
       next.push({
-        id: Date.now() + 1,
+        id: now + 1,
         kind: "error",
         message: error,
         fading: false,
+        expiresAt: now + SHOW_MS,
       });
     }
+    // FIFO stacking: append. The host renders in array order so
+    // older toasts sit on top; new arrivals slide in below.
     setToasts((prev) => [...prev, ...next]);
 
     // Strip the params from the URL so a refresh doesn't re-toast.
@@ -93,32 +110,65 @@ export function ToastHost() {
     const qs = nextParams.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
 
-    // Start fade after SHOW_MS, remove from DOM after SHOW_MS + FADE_MS.
-    // `important` toasts skip the auto-fade — they stay until the
-    // user clicks the X. Round-3 §I rationale: merge / un-merge /
-    // bulk-close confirmations want the operator to read the
-    // outcome before acknowledging.
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    for (const t of next) {
-      if (t.kind === "important") continue;
-      timers.push(
+    // The per-toast dismiss timers live in a separate effect that
+    // watches `toasts` + `paused` so pause-on-hover can suspend
+    // and resume cleanly. The query-param effect just enqueues;
+    // the ticker effect below owns the lifecycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, pathname]);
+
+  // Round-4 §pre-work-1: pause-on-hover at the host level. While
+  // `paused`, every visible toast keeps its current `expiresAt`
+  // and we don't schedule a fade timer. On unpause, each toast
+  // computes its remaining time and re-arms.
+  useEffect(() => {
+    if (paused) return;
+    const handles: ReturnType<typeof setTimeout>[] = [];
+    const now = Date.now();
+    for (const t of toasts) {
+      if (t.fading) continue;
+      if (t.kind === "important" || t.expiresAt == null) continue;
+      const ms = Math.max(0, t.expiresAt - now);
+      handles.push(
         setTimeout(() => {
           setToasts((prev) =>
             prev.map((x) => (x.id === t.id ? { ...x, fading: true } : x)),
           );
-        }, SHOW_MS),
-      );
-      timers.push(
-        setTimeout(() => {
-          setToasts((prev) => prev.filter((x) => x.id !== t.id));
-        }, SHOW_MS + FADE_MS),
+          handles.push(
+            setTimeout(() => {
+              setToasts((prev) => prev.filter((x) => x.id !== t.id));
+            }, FADE_MS),
+          );
+        }, ms),
       );
     }
     return () => {
-      for (const h of timers) clearTimeout(h);
+      for (const h of handles) clearTimeout(h);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, pathname]);
+  }, [toasts, paused]);
+
+  // Push every visible toast's expiresAt forward by the time
+  // elapsed during the pause. Implementation: snapshot the
+  // pause start; on resume, add the delta to every non-important
+  // toast's expiresAt. The re-scheduling above then arms with
+  // the correct remaining time.
+  const pauseStartRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (paused) {
+      pauseStartRef.current = Date.now();
+      return;
+    }
+    const start = pauseStartRef.current;
+    if (start == null) return;
+    const delta = Date.now() - start;
+    pauseStartRef.current = null;
+    if (delta <= 0) return;
+    setToasts((prev) =>
+      prev.map((t) =>
+        t.expiresAt == null ? t : { ...t, expiresAt: t.expiresAt + delta },
+      ),
+    );
+  }, [paused]);
 
   function dismiss(id: number) {
     // Trigger fade, then remove.
@@ -151,6 +201,14 @@ export function ToastHost() {
             key={t.id}
             role={role}
             aria-live={ariaLive}
+            // Round-4 §pre-work-1: hover pauses the auto-dismiss
+            // timer, leave resumes from where it left off. The
+            // host-level `paused` flag covers any toast in the
+            // stack (FIFO arrivals respect the same pause).
+            onMouseEnter={() => setPaused(true)}
+            onMouseLeave={() => setPaused(false)}
+            onFocus={() => setPaused(true)}
+            onBlur={() => setPaused(false)}
             style={{
               transition: `opacity ${FADE_MS}ms ease-out, transform ${FADE_MS}ms ease-out`,
               opacity: t.fading ? 0 : 1,

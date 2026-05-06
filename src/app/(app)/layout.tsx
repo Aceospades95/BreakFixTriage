@@ -11,6 +11,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { ToastHost } from "@/components/toast-host";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { formatRole } from "@/lib/format";
 
 const MANAGER_ROLES: Role[] = ["ADMIN", "OPS_MANAGER", "DISPATCHER"];
 
@@ -64,8 +65,12 @@ export default async function AppLayout({
           className="hidden text-right text-xs transition hover:text-white sm:block"
         >
           <div className="font-medium text-slate-100">{session.name}</div>
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {session.role.replace(/_/g, " ")}
+          <div className="text-[10px] tracking-wide text-muted-foreground">
+            {/* Round-4 §pre-work-2: humanise() canonical surface.
+                Was a raw .replace + uppercase; now the documented
+                titlecase form ("Ops manager", "Read only") with
+                acronym preservation. */}
+            {formatRole(session.role)}
           </div>
         </Link>
         <SignOutButton />

@@ -16,7 +16,7 @@ const ADMIN_LINKS = [
   { href: "/admin/statuses", label: "Statuses" },
   { href: "/admin/templates", label: "Templates" },
   { href: "/admin/settings", label: "Settings" },
-  { href: "/audit", label: "Audit log" },
+  { href: "/admin/audit", label: "Audit log" },
 ] as const;
 
 export function AdminSidebar() {

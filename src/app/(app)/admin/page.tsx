@@ -81,7 +81,7 @@ export default async function AdminHomePage() {
       description: "Hold-window, SLA thresholds, digest recipients",
     },
     {
-      href: "/audit",
+      href: "/admin/audit",
       title: "Audit log",
       count: null,
       description: "Who did what, when — filterable by entity and actor",

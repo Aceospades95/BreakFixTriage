@@ -112,6 +112,11 @@ model School {
   mainContactId String?   @unique
   notes         String?
   active        Boolean   @default(true)
+  /// Round-2 §7/§9: flagged true when the school's address looks
+  /// placeholder-ish (legacy "11X101 Address Line" or null lat/lng).
+  /// Set by scripts/fix-school-addresses.ts and toggled to false on a
+  /// successful geocode.
+  needsAddress  Boolean   @default(false)
 
   district      District  @relation(fields: [districtId], references: [id])
   address       Address?  @relation(fields: [addressId], references: [id])
@@ -136,6 +141,16 @@ model Contact {
   email     String?
   phone     String?
   isPrimary Boolean  @default(false)
+  /// Round-2 §2/§7: per-contact email opt-ins. SPOC = School
+  /// Point Of Contact. Each flag gates whether this contact is
+  /// included by `kind: 'spoc'` recipient resolution for the
+  /// matching event family. Default false to keep existing
+  /// contacts opted-out until ops explicitly enables them.
+  receivesTicketEmails     Boolean @default(false)
+  receivesQuoteEmails      Boolean @default(false)
+  receivesDeliveryReceipts Boolean @default(false)
+  ccOnAllTickets           Boolean @default(false)
+  preferredLanguage        String  @default("en")
   school    School   @relation("SchoolContacts", fields: [schoolId], references: [id], onDelete: Cascade)
   mainOf    School?  @relation("SchoolMainContact")
   createdAt DateTime @default(now())
@@ -252,6 +267,13 @@ model Ticket {
   /// into X" banner and redirects writers to the target, but history
   /// on both rows is preserved.
   mergedIntoTicketId String?
+  /// Round-2 §10: capture timestamp + actor + reason on the merge so
+  /// the source ticket's read-only banner can render
+  /// "merged into X on Y by Z because R" without joining audit rows.
+  /// `mergedAt` also gates the 24h un-merge window.
+  mergedAt         DateTime?
+  mergeReason      String?
+  mergedByUserId   String?
 
   device           Device?  @relation(fields: [deviceId], references: [id])
   school           School   @relation(fields: [schoolId], references: [id])
@@ -929,4 +951,191 @@ model TimeEntry {
   @@index([ticketId])
   @@index([userId, endedAt])
   @@index([startedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Round-2: Email / notification rules domain
+// ---------------------------------------------------------------------------
+//
+// New domain in pass 3 (round-2/email-rules-and-qa-pass). Replaces ad-hoc
+// `Notification` writes (single-recipient, no html, no template trail) with
+// a rules-engine: an EmailRule names recipients, links a template, and
+// fires on a domain event. EmailLog records every send with full headers
+// + status. EmailJob is the DB-backed queue; the worker (scripts/email-
+// worker.ts) claims rows via SELECT FOR UPDATE SKIP LOCKED.
+//
+// The legacy `Notification` model stays for the lifecycle code paths that
+// still write through it; the new entrypoint `dispatchEmailEvent` writes
+// EmailLog instead. Migration plan in docs/adr/0007-email-rules-and-templates.md.
+
+enum EmailRuleScope {
+  GLOBAL
+  DISTRICT
+  SCHOOL
+  TICKET
+}
+
+/// Domain events that an EmailRule can fire on. Matches the keys
+/// pre-seeded into EmailTemplate. Adding a new event = (a) extend
+/// this enum, (b) add a matching template seed, (c) wire a
+/// dispatchEmailEvent call at the trigger site.
+enum EmailEvent {
+  ticket_created
+  ticket_assigned
+  ticket_status_changed
+  quote_sent
+  quote_approved_internal
+  delivery_scheduled
+  delivery_completed_with_receipt
+  sla_breach_warning
+  sla_breached
+  daily_digest
+}
+
+enum EmailLogStatus {
+  queued
+  sent
+  failed
+  bounced
+}
+
+enum EmailJobStatus {
+  pending
+  running
+  done
+  failed
+}
+
+model EmailTemplate {
+  id            String   @id @default(cuid())
+  /// Stable lookup key. Matches the EmailEvent enum value for
+  /// event-triggered templates; ad-hoc templates use freeform keys
+  /// (e.g. "noreply.test_send").
+  key           String   @unique
+  subject       String
+  bodyHtml      String
+  bodyText      String
+  /// Loose JSONSchema describing the variables the template
+  /// expects. Read by lib/email/render.ts to validate payloads
+  /// before render.
+  variables     Json
+  updatedByUserId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  rules         EmailRule[]
+  logs          EmailLog[]
+
+  @@index([key])
+}
+
+model EmailRule {
+  id          String           @id @default(cuid())
+  scope       EmailRuleScope
+  /// Cuid of the District / School / Ticket the rule binds to.
+  /// Null when scope = GLOBAL.
+  scopeId     String?
+  event       EmailEvent
+  /// { to: Recipient[], cc: Recipient[], bcc: Recipient[] }
+  /// where Recipient = { kind: 'spoc'|'ticket_reporter'|'wynndalco_team'|'literal', value?: string }
+  recipients  Json
+  templateId  String
+  enabled     Boolean          @default(true)
+  createdByUserId String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  template    EmailTemplate    @relation(fields: [templateId], references: [id])
+  logs        EmailLog[]
+
+  @@index([scope, scopeId, event, enabled])
+  @@index([event, enabled])
+}
+
+model EmailLog {
+  id                String         @id @default(cuid())
+  ruleId            String?
+  templateId        String
+  ticketId          String?
+  routeId           String?
+  quoteId           String?
+  to                String[]
+  cc                String[]       @default([])
+  bcc               String[]       @default([])
+  subject           String
+  bodyHtml          String
+  status            EmailLogStatus @default(queued)
+  providerMessageId String?
+  error             String?
+  sentAt            DateTime?
+  createdAt         DateTime       @default(now())
+
+  rule              EmailRule?     @relation(fields: [ruleId], references: [id])
+  template          EmailTemplate  @relation(fields: [templateId], references: [id])
+
+  @@index([ticketId])
+  @@index([routeId])
+  @@index([quoteId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model EmailJob {
+  id          String         @id @default(cuid())
+  templateKey String
+  payload     Json
+  attempts    Int            @default(0)
+  nextRunAt   DateTime       @default(now())
+  lockedAt    DateTime?
+  lockedBy    String?
+  status      EmailJobStatus @default(pending)
+  lastError   String?
+  /// Optional pointer to the EmailLog row created up-front by
+  /// dispatchEmailEvent — when the worker sends, it updates that
+  /// row's status + providerMessageId rather than creating a new
+  /// log entry. Idempotent retries land on the same log row.
+  emailLogId  String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([lockedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Round-2: Holidays + business-hours SLA
+// ---------------------------------------------------------------------------
+
+enum HolidayScope {
+  GLOBAL
+  DISTRICT
+}
+
+/// A non-business day. SLA math (lib/reports/sla.ts) excludes
+/// holidays in the relevant scope when business-hours mode is on.
+model Holiday {
+  id        String       @id @default(cuid())
+  date      DateTime     @db.Date
+  label     String
+  scope     HolidayScope @default(GLOBAL)
+  scopeId   String?
+  createdAt DateTime     @default(now())
+
+  @@index([date, scope, scopeId])
+}
+
+// ---------------------------------------------------------------------------
+// Round-2: User preferences
+// ---------------------------------------------------------------------------
+
+model UserPreference {
+  userId               String   @id
+  theme                String   @default("system")
+  inAppNotifications   Boolean  @default(true)
+  emailNotifications   Boolean  @default(true)
+  digestOptIn          Boolean  @default(false)
+  /// 0..23 hour-of-day in the user's timezone for the daily digest.
+  /// Null = use the system default (currently 07:00).
+  digestHour           Int?
+  updatedAt            DateTime @updatedAt
 }

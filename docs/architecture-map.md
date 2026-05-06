@@ -315,3 +315,37 @@ this section is a map, not an edit log.
 > → §5 colour / polish → §6 per-page UX. The §4 ADR is opened in
 > parallel from day one (`docs/adr/0005-status-taxonomy-simplification.md`)
 > and Stage 2 implementation is gated on maintainer sign-off.
+
+## 13. Touchpoints for the Round-2 email + QA pass (May 2026)
+
+Quick lookup table for the third pass (email/notification rules
+domain + Round-2 QA findings). Listing files only — this section
+is a map, not an edit log.
+
+| Concern (brief reference)                            | Files                                                                                                                                            |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Schema additions (§2)                                | `prisma/schema.prisma`. No `prisma/migrations/` dir today (db-push style); migrations are run by the maintainer.                                 |
+| Existing email-track model (extend, don't duplicate) | `prisma/schema.prisma::Notification` (legacy single-recipient transport rows) — kept for backwards compatibility; new `EmailLog` is multi-recipient + html. |
+| Existing bell-track model                            | `prisma/schema.prisma::InAppNotification` — extended to back the §15 bell rather than a parallel `Notification` table.                          |
+| Existing notification transport / templates          | `src/lib/notifications/transport.ts`, `src/lib/notifications/templates.ts`. New `src/lib/email/*` is the orchestration layer; `transport.ts` is reused as the SMTP path. |
+| Permission codes (§8)                                | `src/lib/auth/rbac.ts::PERMISSIONS`, `DEFAULT_ROLE_PERMISSIONS`.                                                                                  |
+| Status admin (§11)                                   | `src/app/(app)/admin/statuses/page.tsx`, `status-editor.tsx`, `src/lib/workflow/status-config.ts`.                                              |
+| State machine + transition guard                     | `src/lib/workflow/states.ts`, `src/lib/workflow/transition.ts`.                                                                                   |
+| Audit writer + audit log renderer                    | `src/lib/audit/audit.ts`, `src/app/(app)/admin/audit/page.tsx`. Action-chip + diff helpers added in this pass live in `src/lib/audit/format.ts` + `src/components/audit/EntityDiff.tsx`. |
+| Notification bell                                    | `src/components/notification-bell.tsx` (Round-1 PopoverMenu primitive at `src/components/popover-menu.tsx`).                                    |
+| Settings + SLA helper                                | `src/app/(app)/admin/settings/page.tsx`, `src/lib/settings/settings.ts`, `src/lib/reports/sla.ts`.                                                |
+| Toast primitive                                      | `src/components/toast-host.tsx` (Round-1).                                                                                                       |
+| Confirm / popover primitives                         | `src/components/confirm-button.tsx`, `src/components/popover-menu.tsx`.                                                                          |
+
+> **Branch hygiene note.** The Round-2 brief specifies branch
+> `round-2/email-rules-and-qa-pass` from `main`. Session-level
+> instructions for this environment designated branch
+> `claude/breakfix-triage-audit-ZDYuJ`. This pass is committed on
+> the latter; the maintainer can rebase or cherry-pick onto the
+> intended branch when the Round-1 pass is merged.
+
+> **Migration runner.** The repo uses `prisma db push` (no
+> `prisma/migrations/` dir). Schema additions in §2 of this brief
+> are committed to `prisma/schema.prisma` only — the maintainer
+> runs `npx prisma db push` (or `npx prisma migrate dev` if
+> migrations are adopted) on staging before merging.

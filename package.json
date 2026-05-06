@@ -24,7 +24,9 @@
     "cutover:integrity": "tsx prisma/cutover-integrity.ts",
     "cutover:export": "tsx prisma/cutover-export.ts",
     "escalate:stale": "tsx prisma/escalate-stale.ts",
-    "digest": "tsx prisma/send-digest.ts"
+    "digest": "tsx prisma/send-digest.ts",
+    "schools:fix-addresses": "tsx scripts/fix-school-addresses.ts",
+    "email:worker": "tsx scripts/email-worker.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

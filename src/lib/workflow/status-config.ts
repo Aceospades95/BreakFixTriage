@@ -31,6 +31,43 @@ export interface StatusConfig {
   labels?: Partial<Record<TicketState, string>>;
   /** Custom section assignments (e.g. "Field Work") that override the built-in grouping. */
   sections?: Partial<Record<TicketState, string>>;
+  /**
+   * Round-2 §11: per-state behaviour flags. Persisted in the same
+   * AppSetting JSON blob as the rest of StatusConfig so admins can
+   * edit without a redeploy. Missing keys fall back to documented
+   * defaults: notifyOnEnter=false, kanbanColumn=true, color=null
+   * (lane-based palette in src/components/state-pill.tsx).
+   */
+  notifyOnEnter?: Partial<Record<TicketState, boolean>>;
+  kanbanColumn?: Partial<Record<TicketState, boolean>>;
+  /** Hex color override (#rrggbb). Falls back to the lane palette. */
+  colors?: Partial<Record<TicketState, string>>;
+}
+
+export function getEffectiveNotifyOnEnter(
+  state: TicketState,
+  config: StatusConfig,
+): boolean {
+  return config.notifyOnEnter?.[state] ?? false;
+}
+
+export function getEffectiveKanbanColumn(
+  state: TicketState,
+  config: StatusConfig,
+): boolean {
+  // Default: every non-excluded state is a column. The kanban page's
+  // own KANBAN_EXCLUDED list (CLOSED / REOPENED / ON_HOLD) still
+  // wins. This config is for opting-out a non-excluded state from
+  // having its own column (it groups under its section header
+  // instead).
+  return config.kanbanColumn?.[state] ?? true;
+}
+
+export function getEffectiveColor(
+  state: TicketState,
+  config: StatusConfig,
+): string | null {
+  return config.colors?.[state] ?? null;
 }
 
 /**

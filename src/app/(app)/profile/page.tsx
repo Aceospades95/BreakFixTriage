@@ -23,6 +23,14 @@ export default async function ProfilePage({
       <PageHeader
         title="Your profile"
         subtitle="Change your password and review your role assignment."
+        actions={
+          <Link
+            href="/me/preferences"
+            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+          >
+            Preferences →
+          </Link>
+        }
       />
 
       {searchParams?.error && (

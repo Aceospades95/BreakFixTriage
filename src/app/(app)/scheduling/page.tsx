@@ -112,6 +112,7 @@ export default async function SchedulingPage({
           label="Active routes"
           value={activeRoutes.length}
           href="/scheduling"
+          hint="Routes in DRAFT, PLANNED, or IN_PROGRESS. Counted the same way My Day's tile shows it."
         />
         <Kpi
           label="Pending pickups"
@@ -372,15 +373,18 @@ function Kpi({
   value,
   href,
   emphasize = false,
+  hint,
 }: {
   label: string;
   value: number;
   href: string;
   emphasize?: boolean;
+  hint?: string;
 }) {
   return (
     <Link
       href={href}
+      title={hint}
       className={`block rounded-lg border p-4 transition hover:border-accent ${
         emphasize
           ? "border-amber-500/60 bg-amber-500/10"

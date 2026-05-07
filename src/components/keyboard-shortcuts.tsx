@@ -114,7 +114,7 @@ export function KeyboardShortcuts() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+              <h2 className="text-sm font-semibold tracking-wide text-slate-200">
                 Keyboard shortcuts
               </h2>
               <button

@@ -69,6 +69,25 @@ export function formatSource(source: string): string {
 }
 
 /**
+ * Round-8 §2A — locale-aware money formatter. Existing call sites
+ * rendered "$2003.00" without thousands separators; ops reading
+ * /quotes at a glance had to mentally insert the comma. Always
+ * en-US for the NYC DOE deployment; multi-locale support is a
+ * Round-9 backlog item.
+ */
+const MONEY_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export function formatCents(cents: number | null | undefined): string {
+  if (cents == null || !Number.isFinite(cents)) return "—";
+  return MONEY_FORMATTER.format(cents / 100);
+}
+
+/**
  * Round-6 §2B — humanise a Prisma model name (PascalCase /
  * camelCase) into a sentence-case English phrase.
  *

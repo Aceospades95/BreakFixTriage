@@ -35,7 +35,7 @@ import {
 } from "@/server/actions/time";
 import { mergeTicketAction, unmergeTicketAction } from "@/server/actions/merge";
 import { totalMinutesForTicket } from "@/lib/time/time-tracking";
-import { humanise } from "@/lib/format";
+import { formatCents, humanise } from "@/lib/format";
 import { EmailSpocButton } from "@/components/tickets/EmailSpocButton";
 
 export const dynamic = "force-dynamic";
@@ -717,8 +717,8 @@ export default async function TicketDetailPage({
                     <div className="flex items-center justify-between">
                       <QuoteStatusPill status={q.status} />
                       {q.amountCents != null ? (
-                        <span className="font-medium tracking-tight">
-                          ${(q.amountCents / 100).toFixed(2)}
+                        <span className="font-medium tracking-tight tabular-nums">
+                          {formatCents(q.amountCents)}
                         </span>
                       ) : q.diagnosticOnly ? (
                         <span className="text-xs text-slate-400">
@@ -745,8 +745,8 @@ export default async function TicketDetailPage({
                         <div className="font-medium tracking-tight">
                           PO {q.purchaseOrder.poNumber}
                         </div>
-                        <div className="text-slate-400">
-                          ${(q.purchaseOrder.amountCents / 100).toFixed(2)}
+                        <div className="tabular-nums text-slate-400">
+                          {formatCents(q.purchaseOrder.amountCents)}
                           {q.purchaseOrder.invoicedAt && (
                             <>
                               {" "}
@@ -840,9 +840,8 @@ export default async function TicketDetailPage({
                     <div className="text-right">
                       <span className="font-medium tracking-tight text-xs">×{u.quantity}</span>
                       {u.part.costCents != null && (
-                        <div className="text-[10px] text-slate-500">
-                          $
-                          {((u.part.costCents * u.quantity) / 100).toFixed(2)}
+                        <div className="text-[10px] tabular-nums text-slate-500">
+                          {formatCents(u.part.costCents * u.quantity)}
                         </div>
                       )}
                     </div>

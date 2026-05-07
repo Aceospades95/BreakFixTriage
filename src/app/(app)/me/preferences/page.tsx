@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
@@ -30,6 +31,14 @@ export default async function PreferencesPage({
       <PageHeader
         title="My preferences"
         subtitle={`Signed in as ${session.email}`}
+        actions={
+          <Link
+            href="/profile"
+            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+          >
+            ← Profile
+          </Link>
+        }
       />
 
       {searchParams?.error && (

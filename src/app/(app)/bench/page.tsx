@@ -267,7 +267,7 @@ export default async function BenchPage({
                 href="/duplicates"
                 className="mt-2 self-start rounded border border-violet-400/40 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-100 hover:bg-violet-500/20"
               >
-                Resolve at /duplicates →
+                Resolve in queue →
               </Link>
             )}
           </section>
@@ -350,12 +350,24 @@ function CompactTicketList({
     shortDescription: string;
   }>;
 }) {
+  const now = new Date();
   return (
     <ul className="space-y-1.5 text-xs">
-      {tickets.slice(0, 10).map((t) => (
+      {tickets.slice(0, 10).map((t) => {
+        // Round-8 §2B — aging cue: red left-border at 14d, double
+        // emphasis at 21d. Bench cards with no urgency styling
+        // were too easy to ignore.
+        const days = daysInState(t, now);
+        const ageCls =
+          days >= 21
+            ? "border-l-2 border-l-red-500 bg-red-500/5 pl-2"
+            : days >= 14
+              ? "border-l-2 border-l-amber-500/70 pl-2"
+              : "";
+        return (
         <li
           key={t.id}
-          className="flex flex-wrap items-center gap-x-2 gap-y-1"
+          className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${ageCls}`}
         >
           <Link
             href={`/tickets/${t.id}`}
@@ -369,7 +381,8 @@ function CompactTicketList({
             {t.shortDescription}
           </span>
         </li>
-      ))}
+        );
+      })}
       {tickets.length > 10 && (
         <li className="text-slate-500">…and {tickets.length - 10} more</li>
       )}

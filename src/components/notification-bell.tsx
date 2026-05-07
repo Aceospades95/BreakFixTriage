@@ -57,7 +57,7 @@ export function NotificationBell({
       }
     >
       <div className="flex items-center justify-between border-b border-surface-border px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+        <span className="text-xs font-semibold tracking-wide text-slate-200">
           Notifications
         </span>
         {count > 0 && (

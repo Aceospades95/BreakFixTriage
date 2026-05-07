@@ -240,8 +240,22 @@ function MonthBars({
           <div
             key={r.month.toISOString()}
             className="flex flex-1 justify-center text-[10px] text-slate-500"
+            title={r.month.toLocaleDateString(undefined, {
+              month: "long",
+              year: "numeric",
+              timeZone: "UTC",
+            })}
           >
-            {r.month.toISOString().slice(5, 7)}
+            {/* Round-8 §2H — short month + 2-digit year ("Jun '25")
+                instead of just the numeric month so operators can
+                tell at a glance which year they're looking at. */}
+            {r.month
+              .toLocaleDateString("en-US", {
+                month: "short",
+                year: "2-digit",
+                timeZone: "UTC",
+              })
+              .replace(" ", " '")}
           </div>
         ))}
       </div>

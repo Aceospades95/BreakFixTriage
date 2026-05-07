@@ -695,7 +695,7 @@ export default async function HomePage() {
                 label="Active routes"
                 value={todaysRoutes.length}
                 href="/scheduling"
-                hint="Routes scheduled for today."
+                hint="Routes scheduled for today (planned + in progress). Matches the count on /scheduling."
               />
             </div>
 

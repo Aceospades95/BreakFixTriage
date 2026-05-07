@@ -5,7 +5,7 @@ import { StatePill } from "@/components/state-pill";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
-import { humanise } from "@/lib/format";
+import { formatCents, humanise } from "@/lib/format";
 import { sweepQuotesAction } from "@/server/actions/quotes";
 
 export const dynamic = "force-dynamic";
@@ -192,9 +192,9 @@ export default async function QuotesPage({
                   <td className="px-3 py-2">
                     <QuoteStatusPill status={q.status} />
                   </td>
-                  <td className="px-3 py-2 font-medium tracking-tight text-xs">
+                  <td className="px-3 py-2 text-xs tabular-nums">
                     {q.amountCents != null
-                      ? `$${(q.amountCents / 100).toFixed(2)}`
+                      ? formatCents(q.amountCents)
                       : q.diagnosticOnly
                         ? "diagnostic"
                         : "—"}

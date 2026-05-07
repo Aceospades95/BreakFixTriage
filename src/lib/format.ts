@@ -67,3 +67,36 @@ export function formatStatus(state: TicketState): string {
 export function formatSource(source: string): string {
   return humaniseEnum(source);
 }
+
+/**
+ * Round-6 §2B — humanise a Prisma model name (PascalCase /
+ * camelCase) into a sentence-case English phrase.
+ *
+ *   humaniseEntity("RouteStop")     → "Route stop"
+ *   humaniseEntity("StaffSchedule") → "Staff schedule"
+ *   humaniseEntity("PortalToken")   → "Portal token"
+ *   humaniseEntity("Ticket")        → "Ticket"
+ *   humaniseEntity("EmailRule")     → "Email rule"
+ *   humaniseEntity("User")          → "User"
+ *
+ * Splits on word boundaries (lowercase → uppercase, or
+ * uppercase-followed-by-uppercase-then-lowercase for run-on
+ * acronyms like `URLPath` → "URL path"). The first word is
+ * capitalised; the rest are lowercased.
+ *
+ * Sibling to `humaniseEnum` (which targets ALL_CAPS_SNAKE) — keep
+ * both, do not over-generalise. The audit page uses
+ * `humaniseEntity` for the "on" column so PascalCase model names
+ * stop rendering as `Routestop` / `Staffschedule`.
+ */
+export function humaniseEntity(value: string): string {
+  if (!value) return value;
+  const parts = value
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/\s+/)
+    .filter(Boolean);
+  return parts
+    .map((p, i) => (i === 0 ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : p.toLowerCase()))
+    .join(" ");
+}

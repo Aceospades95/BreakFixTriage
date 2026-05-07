@@ -8,7 +8,7 @@ import { LocalTime } from "@/components/local-time";
 import { EntityDiff } from "@/components/audit/EntityDiff";
 import { IdChip, hrefForEntity } from "@/components/ui/IdChip";
 import { formatAuditAction } from "@/lib/audit/format";
-import { humanise } from "@/lib/format";
+import { humaniseEntity } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -302,7 +302,7 @@ export default async function AdminAuditLogPage({
                   </span>
                   <span className="text-slate-500">on</span>
                   <span className="text-slate-200">
-                    {humanise(log.entityType)}
+                    {humaniseEntity(log.entityType)}
                   </span>
                   <IdChip
                     value={log.entityId}

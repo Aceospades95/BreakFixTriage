@@ -88,6 +88,18 @@ export default async function RouteDetailPage({
                   incidentNumber: true,
                   state: true,
                   source: true,
+                  // Round-7 §2D — when a synthetic was merged into
+                  // this surviving INC, surface the synthetic's
+                  // incidentNumber as a muted annotation so the
+                  // route stop card preserves history without
+                  // green-linking a closed/retired SYN id.
+                  mergedFrom: {
+                    where: { source: TicketSource.ROUTE_PICKUP },
+                    select: {
+                      incidentNumber: true,
+                      closedAt: true,
+                    },
+                  },
                 },
               },
             },
@@ -149,7 +161,14 @@ export default async function RouteDetailPage({
 
       <div className="mb-6 grid gap-3 rounded-lg border border-surface-border bg-surface-muted/60 p-4 sm:grid-cols-3">
         <Meta label="Vehicle" value={route.vehicleRef ?? "—"} />
-        <Meta label="Optimizer" value={route.optimizerName ?? "—"} />
+        <Meta
+          label="Optimizer"
+          value={
+            route.optimizerName
+              ? humaniseOptimizerName(route.optimizerName)
+              : "—"
+          }
+        />
         <Meta
           label="Last optimized"
           value={
@@ -297,7 +316,7 @@ export default async function RouteDetailPage({
                               <>
                                 <Link
                                   href={`/tickets/${sd.ticket.id}`}
-                                  className="text-accent hover:underline"
+                                  className="whitespace-nowrap text-accent hover:underline"
                                 >
                                   {sd.ticket.incidentNumber}
                                 </Link>
@@ -310,6 +329,23 @@ export default async function RouteDetailPage({
                                   </span>
                                 )}
                                 <StatePill state={sd.ticket.state} />
+                                {sd.ticket.mergedFrom &&
+                                  sd.ticket.mergedFrom.length > 0 && (
+                                    <span
+                                      className="text-[10px] italic text-slate-500"
+                                      title="This device was originally added to a synthetic ticket that has since been linked to this INC."
+                                    >
+                                      merged from{" "}
+                                      {sd.ticket.mergedFrom
+                                        .map((m) => m.incidentNumber)
+                                        .join(", ")}
+                                      {sd.ticket.mergedFrom[0]?.closedAt
+                                        ? ` ${sd.ticket.mergedFrom[0].closedAt
+                                            .toISOString()
+                                            .slice(0, 10)}`
+                                        : ""}
+                                    </span>
+                                  )}
                               </>
                             )}
                             {sd.removedAt ? (
@@ -644,4 +680,14 @@ function swap<T>(arr: readonly T[], i: number, j: number): T[] {
   out[i] = other;
   out[j] = tmp;
   return out;
+}
+
+function humaniseOptimizerName(name: string): string {
+  // Round-7 §2C — meta tile shows the optimizer name in title
+  // case ("Nearest neighbor") instead of the kebab-case wire form
+  // ("nearest-neighbor"). Mirrors the §2D /scheduling subline that
+  // renders "optimized by nearest neighbor".
+  const flat = name.replace(/[-_]/g, " ").trim();
+  if (flat.length === 0) return name;
+  return flat.charAt(0).toUpperCase() + flat.slice(1).toLowerCase();
 }

@@ -90,12 +90,16 @@ function detectSpecial(query: string): PaletteItem | null {
   const upper = q.toUpperCase();
 
   // Ticket numbers — INC* or SYN-*. The Round-5 §2.11 INC URL
-  // redirect resolves the URL form back to a cuid.
+  // redirect resolves the URL form back to a cuid. Round-11 §1A —
+  // the `hint` field renders in user-facing JSX, so it must be
+  // humanised, not a URL path. The label already carries the
+  // ticket number; the hint adds entity context without leaking
+  // the underlying route.
   if (/^(INC|SYN-)[A-Z0-9-]+$/i.test(upper)) {
     return {
       id: `ticket:${upper}`,
       label: `Open ticket ${upper}`,
-      hint: `/tickets/${upper}`,
+      hint: "Ticket",
       href: `/tickets/${upper}`,
       searchText: upper,
     };
@@ -106,7 +110,7 @@ function detectSpecial(query: string): PaletteItem | null {
     return {
       id: `school:${upper}`,
       label: `Find school ${upper}`,
-      hint: "Filter on /admin/schools",
+      hint: "Filter the schools list",
       href: `/admin/schools?q=${encodeURIComponent(upper)}`,
       searchText: upper,
     };
@@ -118,7 +122,7 @@ function detectSpecial(query: string): PaletteItem | null {
     return {
       id: `device:${upper}`,
       label: `Find device ${upper}`,
-      hint: "Search on /admin/devices",
+      hint: "Search the devices list",
       href: `/admin/devices?q=${encodeURIComponent(upper)}`,
       searchText: upper,
     };

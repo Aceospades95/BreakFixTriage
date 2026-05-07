@@ -75,7 +75,7 @@ export function ScanClient() {
             type="text"
             value={manualValue}
             onChange={(e) => setManualValue(e.target.value)}
-            placeholder="INC2200126, SN-1234, BX-101"
+            placeholder="e.g. INC2200126, SN-1234, BX-101"
             className="flex-1 rounded border border-surface-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none"
             autoComplete="off"
             spellCheck={false}

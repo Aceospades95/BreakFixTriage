@@ -426,7 +426,7 @@ export default async function SchoolProfilePage({
             <input
               type="text"
               name="label"
-              placeholder="Jane Doe · IT lead"
+              placeholder="e.g. Jane Doe · IT lead"
               className="w-64 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </label>

@@ -50,7 +50,7 @@ export function ScanWarehouseClient() {
             type="text"
             name="serial"
             ref={inputRef}
-            placeholder="SN-0001 / AT-0001"
+            placeholder="e.g. SN-0001 / AT-0001"
             className="flex-1 rounded border border-surface-border bg-surface px-2 py-1 font-medium tracking-tight text-xs focus:border-accent focus:outline-none"
           />
         </label>

@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { headers } from "next/headers";
 import type { Role } from "@prisma/client";
 import { GlobalSearch } from "@/components/global-search";
 import { HelpMenu } from "@/components/help-menu";
@@ -12,6 +13,7 @@ import { ToastHost } from "@/components/toast-host";
 import { CommandPalette } from "@/components/command-palette";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { touchSession } from "@/lib/auth/sessions";
 import { formatRole } from "@/lib/format";
 
 const MANAGER_ROLES: Role[] = ["ADMIN", "OPS_MANAGER", "DISPATCHER"];
@@ -25,6 +27,20 @@ export default async function AppLayout({
   const readOnly = process.env.READ_ONLY_MODE === "true";
   const isAdmin = session.role === "ADMIN";
   const isManager = MANAGER_ROLES.includes(session.role);
+
+  // Round-11 §1C — debounced session touch on every authenticated
+  // page request. Safe to fire-and-forget: failure must not block
+  // the layout render.
+  const h = headers();
+  const ip =
+    h.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    h.get("x-real-ip") ??
+    null;
+  const ua = h.get("user-agent");
+  void touchSession(session.userId, ip, ua).catch((err) => {
+    console.error("[session-touch] failed:", err);
+  });
+
   const notifications = await prisma.inAppNotification.findMany({
     where: { recipientUserId: session.userId, readAt: null },
     orderBy: { createdAt: "desc" },

@@ -69,7 +69,7 @@ export default async function NewSchoolPage({
               <input
                 type="text"
                 name="code"
-                placeholder="11X101"
+                placeholder="e.g. 11X101"
                 className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight uppercase focus:border-accent focus:outline-none"
               />
             </Field>
@@ -79,7 +79,7 @@ export default async function NewSchoolPage({
               type="text"
               name="name"
               required
-              placeholder="P.S. 101 Bronx"
+              placeholder="e.g. P.S. 101 Bronx"
               className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </Field>
@@ -133,7 +133,7 @@ export default async function NewSchoolPage({
                 type="text"
                 name="latitude"
                 inputMode="decimal"
-                placeholder="40.8448"
+                placeholder="e.g. 40.8448"
                 className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight focus:border-accent focus:outline-none"
               />
             </Field>
@@ -142,7 +142,7 @@ export default async function NewSchoolPage({
                 type="text"
                 name="longitude"
                 inputMode="decimal"
-                placeholder="-73.8648"
+                placeholder="e.g. -73.8648"
                 className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight focus:border-accent focus:outline-none"
               />
             </Field>

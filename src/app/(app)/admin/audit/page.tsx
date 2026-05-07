@@ -383,7 +383,7 @@ export default async function AdminAuditLogPage({
             type="text"
             name="actor"
             defaultValue={searchParams?.actor ?? ""}
-            placeholder="alex@…"
+            placeholder="e.g. alex@…"
             className="w-48 rounded border border-surface-border bg-surface px-2 py-1 text-xs focus:border-accent focus:outline-none"
           />
         </label>

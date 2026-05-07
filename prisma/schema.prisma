@@ -86,15 +86,22 @@ model User {
 // revokedAt is set when the admin button fires OR when the user
 // signs out; null = active.
 model UserSession {
-  id        String    @id @default(cuid())
-  userId    String
-  createdAt DateTime  @default(now())
-  lastSeenAt DateTime @default(now())
-  ip        String?
-  userAgent String?
-  revokedAt DateTime?
+  id            String    @id @default(cuid())
+  userId        String
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  // Round-11 §1C — store hashed forensics, never raw IP / UA. The
+  // hash is salted with AUTH_SESSION_SALT so an offline attacker
+  // who steals a copy of the table can't reverse the IP space.
+  ipHash        String?
+  uaFingerprint String?
+  // Round-11 §1C — explicit expiry mirrors the NextAuth maxAge
+  // (12h) so the panel can label rows past their expiry as
+  // "expired" without comparing against the JWT.
+  expiresAt     DateTime?
+  revokedAt     DateTime?
 
-  user      User      @relation("UserSessionsOwner", fields: [userId], references: [id], onDelete: Cascade)
+  user          User      @relation("UserSessionsOwner", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, revokedAt])
   @@index([lastSeenAt])

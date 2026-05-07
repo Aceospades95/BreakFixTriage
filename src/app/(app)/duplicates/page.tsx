@@ -170,12 +170,11 @@ export default async function DuplicatesPage({
                         type="text"
                         name="targetIncidentNumber"
                         required
-                        // Round-10 §1B — placeholder is visually
-                        // distinct from a real incident number
-                        // (e.g. INC0001234) by using "INC#" so
-                        // operators don't mistake the placeholder
-                        // for a valid value.
-                        placeholder="INC#"
+                        // Round-11 §1B — placeholder is a concrete
+                        // example so the format is unmistakable.
+                        // Renders italic in light violet so it
+                        // can't be mistaken for a real value.
+                        placeholder="e.g. INC1234567"
                         className="w-44 rounded border border-violet-500/40 bg-violet-500/5 px-2 py-1 text-sm font-medium uppercase tracking-tight placeholder:normal-case placeholder:text-violet-400/40 placeholder:italic focus:border-violet-300 focus:outline-none"
                       />
                     </label>

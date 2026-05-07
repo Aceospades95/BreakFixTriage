@@ -109,7 +109,7 @@ export default async function HolidaysPage({
               name="label"
               required
               maxLength={120}
-              placeholder="Memorial Day"
+              placeholder="e.g. Memorial Day"
               className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </label>

@@ -133,7 +133,7 @@ export default async function TwoFactorPage() {
                   required
                   inputMode="numeric"
                   pattern="\d{6}"
-                  placeholder="123456"
+                  placeholder="e.g. 123456"
                   className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-medium tracking-tight text-sm focus:border-accent focus:outline-none"
                 />
                 <button
@@ -178,7 +178,7 @@ export default async function TwoFactorPage() {
                   required
                   inputMode="numeric"
                   pattern="\d{6}"
-                  placeholder="123456"
+                  placeholder="e.g. 123456"
                   className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-medium tracking-tight text-sm focus:border-accent focus:outline-none"
                 />
                 <button

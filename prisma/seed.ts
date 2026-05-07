@@ -11,6 +11,7 @@
 
 import { PrismaClient, Role, TicketState } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { buildFederalHolidaysForYear } from "../src/lib/holidays/federal";
 
 const prisma = new PrismaClient();
 
@@ -343,9 +344,11 @@ async function seedDefaults() {
     }
   }
 
-  // Seed US federal holidays for the current year.
+  // Seed US federal holidays for the current year. Round-11 §1D
+  // moved the builder into src/lib/holidays/federal.ts so the
+  // /admin/holidays "Auto-seed" action can call the same source.
   const year = new Date().getUTCFullYear();
-  const holidays = buildFederalHolidaysForSeed(year);
+  const holidays = buildFederalHolidaysForYear(year);
   let holidayCount = 0;
   for (const h of holidays) {
     const existing = await prisma.holiday.findFirst({
@@ -361,52 +364,6 @@ async function seedDefaults() {
   if (holidayCount > 0) {
     console.log(`[seed] seeded ${holidayCount} US federal holiday(s) for ${year}`);
   }
-}
-
-function buildFederalHolidaysForSeed(year: number): { name: string; date: Date }[] {
-  return [
-    { name: "New Year's Day", date: new Date(Date.UTC(year, 0, 1)) },
-    { name: "Memorial Day", date: lastMondayOfMonth(year, 4) },
-    { name: "Independence Day", date: new Date(Date.UTC(year, 6, 4)) },
-    { name: "Labor Day", date: firstMondayOfMonth(year, 8) },
-    { name: "Thanksgiving Day", date: nthDayOfMonth(year, 10, 4, 4) },
-    { name: "Christmas Day", date: new Date(Date.UTC(year, 11, 25)) },
-  ];
-}
-
-function firstMondayOfMonth(year: number, month: number): Date {
-  for (let d = 1; d <= 7; d++) {
-    const date = new Date(Date.UTC(year, month, d));
-    if (date.getUTCDay() === 1) return date;
-  }
-  throw new Error("unreachable");
-}
-
-function lastMondayOfMonth(year: number, month: number): Date {
-  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  for (let d = lastDay; d >= lastDay - 6; d--) {
-    const date = new Date(Date.UTC(year, month, d));
-    if (date.getUTCDay() === 1) return date;
-  }
-  throw new Error("unreachable");
-}
-
-function nthDayOfMonth(
-  year: number,
-  month: number,
-  weekday: number,
-  n: number,
-): Date {
-  let count = 0;
-  for (let d = 1; d <= 31; d++) {
-    const date = new Date(Date.UTC(year, month, d));
-    if (date.getUTCMonth() !== month) break;
-    if (date.getUTCDay() === weekday) {
-      count++;
-      if (count === n) return date;
-    }
-  }
-  throw new Error("unreachable");
 }
 
 main()

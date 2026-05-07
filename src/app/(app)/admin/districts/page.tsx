@@ -43,19 +43,19 @@ export default async function AdminDistrictsPage({
         >
           <input
             name="name"
-            placeholder="Bronx"
+            placeholder="e.g. Bronx"
             required
             className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
           />
           <input
             name="code"
-            placeholder="BRONX"
+            placeholder="e.g. BRONX"
             required
             className="rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight uppercase focus:border-accent focus:outline-none"
           />
           <input
             name="region"
-            placeholder="NYC"
+            placeholder="e.g. NYC"
             className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
           />
           <button

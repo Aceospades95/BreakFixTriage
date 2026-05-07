@@ -71,11 +71,11 @@ const SURFACES: SurfaceCheck[] = [
     requiredAudits: ['action: "auth:login"', '"auth:failed"'],
   },
   {
-    name: "User session revoke (Round-10 §1F)",
+    name: "User session revoke (Round-10 §1F + Round-11 §1C)",
     files: ["src/server/actions/2fa.ts"],
     requiredAudits: [
       '"2fa:admin-reset"',
-      '"user.sessions_revoked"',
+      '"user.sessions.revoke_all"',
     ],
   },
   {

@@ -140,7 +140,7 @@ export default async function InvoicesPage({
                             type="text"
                             name="poNumber"
                             required
-                            placeholder="PO-2025-00123"
+                            placeholder="e.g. PO-2025-00123"
                             className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
                           />
                         </label>
@@ -153,7 +153,7 @@ export default async function InvoicesPage({
                             name="amount"
                             required
                             inputMode="decimal"
-                            placeholder="199.00"
+                            placeholder="e.g. 199.00"
                             defaultValue={
                               latestQuote.amountCents != null
                                 ? (latestQuote.amountCents / 100).toFixed(2)

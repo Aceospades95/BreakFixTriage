@@ -226,17 +226,38 @@ export const authOptions: NextAuthOptions = {
             },
           },
         });
-        // Round-10 §1F — create the UserSession row on every
-        // successful sign-in. ip + userAgent are unavailable from
-        // the NextAuth callback; the session-touch middleware
-        // backfills them on the first authenticated request.
+        // Round-10 §1F + Round-11 §1C — create the UserSession
+        // row on every successful sign-in. ip + UA are unavailable
+        // from the NextAuth callback (no Request object), so the
+        // session-touch in (app)/layout.tsx backfills them on the
+        // first authenticated page render. expiresAt mirrors the
+        // 12h NextAuth maxAge.
         await prisma.userSession.create({
           data: {
             userId: user.id,
+            expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
           },
         });
       } catch (err) {
         console.error("[auth] signIn audit/session failed:", err);
+      }
+    },
+    /**
+     * Round-11 §1C — sign-out closes the active session row. We
+     * only revoke the most-recent active row, not every session
+     * for the user, because the user may still be signed in on a
+     * second device.
+     */
+    async signOut({ token }) {
+      const userId = (token?.id as string | undefined) ?? null;
+      if (!userId) return;
+      try {
+        const { revokeMostRecentSessionForUser } = await import(
+          "@/lib/auth/sessions"
+        );
+        await revokeMostRecentSessionForUser(userId);
+      } catch (err) {
+        console.error("[auth] signOut session-revoke failed:", err);
       }
     },
   },

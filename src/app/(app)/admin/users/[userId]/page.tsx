@@ -207,13 +207,13 @@ export default async function EditUserPage({
 }
 
 async function RecentSessionsPanel({ userId }: { userId: string }) {
-  // Round-10 §1F — last 10 sessions with timestamp + IP +
-  // user-agent fingerprint + (active) tag if revokedAt is null.
+  // Round-10 §1F + Round-11 §1C — last 10 sessions with timestamp
+  // + ipHash + uaFingerprint + (active) tag if revokedAt is null.
   // The "Sign out all sessions" button revokes every active row
-  // and writes an audit row.
+  // and writes an audit row (action=user.sessions.revoke_all).
   const sessions = await prisma.userSession.findMany({
     where: { userId },
-    orderBy: { createdAt: "desc" },
+    orderBy: { lastSeenAt: "desc" },
     take: 10,
   });
   const activeCount = sessions.filter((s) => s.revokedAt == null).length;
@@ -241,13 +241,13 @@ async function RecentSessionsPanel({ userId }: { userId: string }) {
           {sessions.map((s) => (
             <li key={s.id} className="flex items-center gap-3 py-2">
               <span className="tabular-nums text-slate-300">
-                {s.createdAt.toISOString().replace("T", " ").slice(0, 16)}
+                {s.lastSeenAt.toISOString().replace("T", " ").slice(0, 16)}
               </span>
               <span className="text-slate-500">
-                {s.ip ?? "—"}
+                {s.ipHash ?? "—"}
               </span>
               <span className="flex-1 truncate text-slate-500">
-                {s.userAgent ?? "(no user agent recorded)"}
+                {s.uaFingerprint ?? "(no UA recorded)"}
               </span>
               {s.revokedAt == null ? (
                 <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-200">

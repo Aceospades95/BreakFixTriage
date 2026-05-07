@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
+import { buildFederalHolidaysForYear } from "@/lib/holidays/federal";
 
 /**
  * Round-3 §A2 — holidays admin.
@@ -149,4 +150,53 @@ export async function deleteHolidayAction(formData: FormData) {
 
   revalidatePath("/admin/holidays");
   redirect("/admin/holidays?ok=Holiday+deleted");
+}
+
+/**
+ * Round-11 §1D — kebab "Auto-seed US federal holidays" action.
+ *
+ * Idempotent: skips any (date, GLOBAL, null) row that already
+ * exists. Writes one audit row per inserted holiday so a future
+ * /admin/audit walk can show what got created and when. The full
+ * 11-row federal list lives in src/lib/holidays/federal.ts.
+ */
+export async function seedFederalHolidaysAction() {
+  const session = await requireRole(PERMISSIONS.USERS_MANAGE);
+  const year = new Date().getUTCFullYear();
+  const holidays = buildFederalHolidaysForYear(year);
+
+  let createdCount = 0;
+  for (const h of holidays) {
+    const existing = await prisma.holiday.findFirst({
+      where: { date: h.date, scope: "GLOBAL", scopeId: null },
+    });
+    if (existing) continue;
+    const created = await prisma.holiday.create({
+      data: { date: h.date, label: h.name, scope: "GLOBAL" },
+    });
+    await writeAudit({
+      actorUserId: session.userId,
+      entityType: "Holiday",
+      entityId: created.id,
+      action: "create",
+      after: {
+        date: created.date.toISOString().slice(0, 10),
+        label: created.label,
+        scope: created.scope,
+        scopeId: null,
+        source: "federal-auto-seed",
+      },
+      reason: `Auto-seed federal holidays for ${year}`,
+    });
+    createdCount++;
+  }
+
+  revalidatePath("/admin/holidays");
+  redirect(
+    `/admin/holidays?ok=${encodeURIComponent(
+      createdCount === 0
+        ? `All ${year} federal holidays already present`
+        : `Seeded ${createdCount} federal holiday${createdCount === 1 ? "" : "s"} for ${year}`,
+    )}`,
+  );
 }

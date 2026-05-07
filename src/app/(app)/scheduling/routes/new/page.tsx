@@ -113,7 +113,7 @@ export default async function NewRoutePage({
               <input
                 type="text"
                 name="vehicleRef"
-                placeholder="VAN-02"
+                placeholder="e.g. VAN-02"
                 className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
               />
             </label>

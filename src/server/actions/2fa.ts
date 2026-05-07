@@ -201,15 +201,11 @@ export async function adminResetTotpAction(formData: FormData) {
 }
 
 /**
- * Round-10 §1F — admin "Sign out all sessions" for a user.
+ * Round-10 §1F + Round-11 §1C — admin "Sign out all sessions".
  *
  * Sets revokedAt on every active UserSession row for the target.
- * The session-touch middleware sees revokedAt and treats the
- * session as invalid; users are forced to sign in again on their
- * next request.
- *
- * Audit row: action=user.sessions_revoked with the count of
- * sessions that were revoked.
+ * Audit row uses the dotted action `user.sessions.revoke_all` per
+ * the R11 brief.
  */
 export async function revokeAllUserSessionsAction(formData: FormData) {
   const session = await requireRole(PERMISSIONS.USERS_MANAGE);
@@ -218,22 +214,20 @@ export async function revokeAllUserSessionsAction(formData: FormData) {
     redirect("/admin/users?error=Missing+user+id");
   }
 
-  const result = await prisma.userSession.updateMany({
-    where: { userId, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
+  const { revokeAllSessionsForUser } = await import("@/lib/auth/sessions");
+  const revokedCount = await revokeAllSessionsForUser(userId);
 
   await writeAudit({
     actorUserId: session.userId,
     entityType: "User",
     entityId: userId,
-    action: "user.sessions_revoked",
-    after: { revokedCount: result.count },
-    reason: `Admin revoked ${result.count} session${result.count === 1 ? "" : "s"}`,
+    action: "user.sessions.revoke_all",
+    after: { revokedCount },
+    reason: `Admin revoked ${revokedCount} session${revokedCount === 1 ? "" : "s"}`,
   });
 
   revalidatePath(`/admin/users/${userId}`);
   redirect(
-    `/admin/users/${userId}?ok=Revoked+${result.count}+session${result.count === 1 ? "" : "s"}`,
+    `/admin/users/${userId}?ok=Revoked+${revokedCount}+session${revokedCount === 1 ? "" : "s"}`,
   );
 }

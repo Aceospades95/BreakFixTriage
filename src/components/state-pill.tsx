@@ -90,7 +90,7 @@ export function StatePill({ state }: { state: TicketState }) {
     <span
       title={state}
       className={cn(
-        "inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-semibold tracking-wide",
+        "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-semibold tracking-wide",
         LANE_COLOR[lane],
       )}
     >

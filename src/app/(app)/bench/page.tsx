@@ -351,18 +351,21 @@ function CompactTicketList({
   }>;
 }) {
   return (
-    <ul className="space-y-1 text-xs">
+    <ul className="space-y-1.5 text-xs">
       {tickets.slice(0, 10).map((t) => (
-        <li key={t.id} className="flex items-center gap-2">
+        <li
+          key={t.id}
+          className="flex flex-wrap items-center gap-x-2 gap-y-1"
+        >
           <Link
             href={`/tickets/${t.id}`}
-            className="font-medium tracking-tight text-accent hover:underline"
+            className="whitespace-nowrap font-medium tracking-tight text-accent hover:underline"
           >
             {t.incidentNumber}
           </Link>
           <StatePill state={t.state} />
           <SlaBadge ticket={t} compact />
-          <span className="ml-auto truncate text-slate-500">
+          <span className="basis-full truncate text-slate-500">
             {t.shortDescription}
           </span>
         </li>

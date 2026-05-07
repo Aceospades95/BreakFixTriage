@@ -151,6 +151,32 @@ for file in "${FILES[@]}"; do
         print "$ARGV:$line: rule(cli) \xc2\xb7 $tok\n";
       }
     }
+
+    # Rule 5: known enum values rendered as user-facing JSX text.
+    # Round-7 §2A + §2B extend the gate to catch single-word
+    # QuoteStatus / ImportType / ImportSource / JobType / TicketPriority
+    # values that the underscore-required Rule 2 misses. The list is
+    # explicit so legitimate prose (e.g. "Send the email") is not
+    # falsely flagged.
+    my %ENUM_VALUES = map { $_ => 1 } qw(
+      DRAFT SENT APPROVED DECLINED CANCELLED NO_RESPONSE
+      TICKETS SCHOOLS DEVICES USERS PARTS DEVICE_MODELS
+      SN_CSV MANUAL_CSV SNOW_API SERVICENOW SERVICE_NOW
+      PICKUP DELIVERY ONSITE_REPAIR
+      LOW NORMAL HIGH CRITICAL
+    );
+    while ($src =~ />([^<>{}\n]{1,300})</g) {
+      my $text = $1;
+      my $pos  = $-[0] + 1;
+      my $before = substr($src, 0, $pos);
+      next if in_code_or_pre($before);
+      my $line = line_at($src, $pos);
+      while ($text =~ /\b([A-Z][A-Z0-9_]{2,})\b/g) {
+        my $tok = $1;
+        next unless $ENUM_VALUES{$tok};
+        print "$ARGV:$line: rule(enum) \xc2\xb7 $tok\n";
+      }
+    }
   ' "$file" >> "$scan_output" || true
 done
 

@@ -5,6 +5,7 @@ import { StatePill } from "@/components/state-pill";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { humanise } from "@/lib/format";
 import { sweepQuotesAction } from "@/server/actions/quotes";
 
 export const dynamic = "force-dynamic";
@@ -246,9 +247,9 @@ function QuoteStatusPill({ status }: { status: QuoteStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide ${cls[status]}`}
     >
-      {status}
+      {humanise(status)}
     </span>
   );
 }

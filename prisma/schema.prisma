@@ -1138,6 +1138,12 @@ enum EmailEvent {
   ticket_closed
   // Round-6 §3B — manual operator-to-SPOC ticket update.
   ticket_update_to_spoc
+  // Round-7 §3B — quote approve (school user) + pickup complete.
+  // `quote_sent` and `delivery_scheduled` already exist above.
+  // `quote_approved_internal` stays for the existing internal-only
+  // notify when an operator approves on the school's behalf.
+  quote_approved
+  pickup_completed
 }
 
 enum EmailLogStatus {

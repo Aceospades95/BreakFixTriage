@@ -316,6 +316,48 @@ const TEMPLATE_SEEDS: TemplateSeed[] = [
       },
     },
   },
+  // Round-7 §3B — quote approved (school user) + pickup completed.
+  {
+    key: "quote_approved",
+    subject: "Quote approved for {{ticket.number}}",
+    bodyHtml:
+      "<p>Quote for ticket <strong>{{ticket.number}}</strong> ({{ticket.school}}) was approved.</p>" +
+      "{{#reason}}<p>Note: {{reason}}</p>{{/reason}}" +
+      '<p><a href="{{link}}">View ticket</a></p>',
+    bodyText:
+      "Quote for ticket {{ticket.number}} ({{ticket.school}}) was approved.\n" +
+      "{{#reason}}Note: {{reason}}\n{{/reason}}\n" +
+      "View ticket: {{link}}",
+    variables: {
+      type: "object",
+      required: ["ticket", "link"],
+      properties: {
+        ticket: { type: "object" },
+        link: { type: "string" },
+        reason: { type: "string" },
+      },
+    },
+  },
+  {
+    key: "pickup_completed",
+    subject: "Pickup completed for {{ticket.number}}",
+    bodyHtml:
+      "<p>Pickup for ticket <strong>{{ticket.number}}</strong> ({{ticket.school}}) was completed.</p>" +
+      "<p>The device is in our hands; you'll see status updates as the repair moves forward.</p>" +
+      '<p><a href="{{link}}">View ticket</a></p>',
+    bodyText:
+      "Pickup for ticket {{ticket.number}} ({{ticket.school}}) was completed.\n" +
+      "The device is in our hands; you'll see status updates as the repair moves forward.\n\n" +
+      "View ticket: {{link}}",
+    variables: {
+      type: "object",
+      required: ["ticket", "link"],
+      properties: {
+        ticket: { type: "object" },
+        link: { type: "string" },
+      },
+    },
+  },
   // Round-6 §3B — manual operator-to-SPOC ticket update.
   {
     key: "ticket_update_to_spoc",

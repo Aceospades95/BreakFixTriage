@@ -75,6 +75,9 @@ const FAMILY_BY_EVENT: Record<EmailEvent, RecipientContext["family"]> = {
   ticket_closed: "ticket",
   // Round-6 §3B — manual SPOC ticket update.
   ticket_update_to_spoc: "ticket",
+  // Round-7 §3B — quote approval + pickup completion.
+  quote_approved: "quote",
+  pickup_completed: "delivery",
 };
 
 interface DispatchedRule {

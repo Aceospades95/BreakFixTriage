@@ -91,9 +91,65 @@ describe("Round-7 §3A: notification trigger smoke (R6 events)", () => {
   });
 });
 
-// Round-7 §3B will extend this file to cover the next four events
-// (quote_sent, quote_approved, delivery_scheduled, pickup_completed).
-// Until then, the R7_EVENTS list is asserted only as a registry.
+describe("Round-7 §3B: notification trigger smoke (next 4 events)", () => {
+  it("EmailEvent enum carries every R7 §3B event", () => {
+    const schema = readFileSync(join(ROOT, "prisma/schema.prisma"), "utf8");
+    for (const event of R7_EVENTS) {
+      expect(
+        schema.includes(`\n  ${event}\n`) ||
+          schema.includes(`\n  ${event}\r\n`),
+        `EmailEvent enum should declare "${event}"`,
+      ).toBe(true);
+    }
+  });
+
+  it("template seeds cover every R7 §3B event", () => {
+    const keys = new Set(TEMPLATE_SEEDS.map((s) => s.key));
+    for (const event of R7_EVENTS) {
+      expect(keys.has(event), `TEMPLATE_SEEDS missing key "${event}"`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("each R7 §3B event has at least one dispatchEmailEvent call site", () => {
+    const candidates: string[] = [];
+    function walk(dir: string): void {
+      const entries = require("fs").readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === "node_modules" || entry.name === ".next") continue;
+          walk(full);
+        } else if (
+          entry.name.endsWith(".ts") &&
+          !entry.name.endsWith(".test.ts")
+        ) {
+          candidates.push(full);
+        }
+      }
+    }
+    walk(join(ROOT, "src"));
+
+    const callSitesByEvent: Record<string, string[]> = {};
+    for (const event of R7_EVENTS) callSitesByEvent[event] = [];
+    for (const file of candidates) {
+      const src = readFileSync(file, "utf8");
+      for (const event of R7_EVENTS) {
+        if (src.includes(`dispatchEmailEvent("${event}"`)) {
+          callSitesByEvent[event]!.push(file);
+        }
+      }
+    }
+
+    for (const event of R7_EVENTS) {
+      expect(
+        callSitesByEvent[event]!.length,
+        `dispatchEmailEvent("${event}", ...) is missing — wire the call in the action that fires this event`,
+      ).toBeGreaterThan(0);
+    }
+  });
+});
 
 describe("Round-7 §3A/§3B: dispatchEmailEvent is the only mailer chokepoint", () => {
   it("no direct nodemailer / resend.send / transporter.sendMail outside lib/email", () => {

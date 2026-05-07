@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { JobStatus, JobType } from "@prisma/client";
+import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { dispatchEmailEvent } from "@/lib/email";
 import { buildRoute, createJob } from "@/lib/scheduling/jobs";
 import { cancelRoute, reorderRoute } from "@/lib/scheduling/routes";
 import { updateStopStatus } from "@/lib/scheduling/stops";
@@ -119,6 +121,44 @@ export async function buildRouteAction(formData: FormData) {
       actorUserId: session.userId,
     });
     newRouteId = route.id;
+
+    // Round-7 §3B — fire delivery_scheduled for every DELIVERY job
+    // on the new route, once per attached ticket. dispatchEmailEvent
+    // is the chokepoint; an admin EmailRule with notifyOnEnter=true
+    // delivers the email.
+    try {
+      const deliveryStops = await prisma.routeStop.findMany({
+        where: { routeId: route.id, job: { type: JobType.DELIVERY } },
+        include: {
+          job: {
+            select: {
+              ticketLinks: { select: { ticketId: true } },
+              schoolId: true,
+            },
+          },
+        },
+      });
+      for (const stop of deliveryStops) {
+        for (const link of stop.job.ticketLinks) {
+          await dispatchEmailEvent("delivery_scheduled", {
+            ticketId: link.ticketId,
+            schoolId: stop.job.schoolId,
+            routeId: route.id,
+            actorUserId: session.userId,
+            variables: {
+              ticketId: link.ticketId,
+              routeId: route.id,
+              date: parsed.data.date,
+            },
+          });
+        }
+      }
+    } catch (dispatchErr) {
+      console.error(
+        `[buildRouteAction] delivery_scheduled dispatch failed for route ${route.id}:`,
+        dispatchErr,
+      );
+    }
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : "Failed to build route";
   }
@@ -239,6 +279,43 @@ export async function updateStopStatusAction(formData: FormData) {
       actorUserId: session.userId,
       reason: parsed.data.reason,
     });
+
+    // Round-7 §3B — fire pickup_completed when a Pickup stop
+    // transitions to COMPLETED. dispatchEmailEvent is the chokepoint.
+    if (parsed.data.status === JobStatus.COMPLETED) {
+      try {
+        const stop = await prisma.routeStop.findUnique({
+          where: { id: parsed.data.stopId },
+          include: {
+            job: {
+              select: {
+                type: true,
+                schoolId: true,
+                ticketLinks: { select: { ticketId: true } },
+              },
+            },
+          },
+        });
+        if (stop?.job.type === JobType.PICKUP) {
+          for (const link of stop.job.ticketLinks) {
+            await dispatchEmailEvent("pickup_completed", {
+              ticketId: link.ticketId,
+              schoolId: stop.job.schoolId,
+              actorUserId: session.userId,
+              variables: {
+                ticketId: link.ticketId,
+                stopId: parsed.data.stopId,
+              },
+            });
+          }
+        }
+      } catch (dispatchErr) {
+        console.error(
+          `[updateStopStatusAction] pickup_completed dispatch failed for ${parsed.data.stopId}:`,
+          dispatchErr,
+        );
+      }
+    }
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : "Stop update failed";
   }

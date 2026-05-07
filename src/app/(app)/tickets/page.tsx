@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
-import { BulkSelectionWatcher } from "@/components/bulk-selection-watcher";
+import { TicketsBulkActions } from "@/components/tickets-bulk-actions";
 import {
   bulkAssignAction,
   bulkTransitionAction,
@@ -368,17 +368,30 @@ export default async function TicketsPage({
       </form>
 
       {canTransition && tickets.length > 0 && (
-        <BulkActionForm
-          tickets={tickets}
-          assignableUsers={assignableUsers}
+        <TicketsBulkActions
           returnTo={returnTo}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          baseQuery={{
-            ...(stateFilter ? { state: stateFilter } : {}),
-            ...(query ? { q: query } : {}),
-          }}
-        />
+          bulkTransitionAction={bulkTransitionAction}
+          bulkAssignAction={bulkAssignAction}
+          assignableUsers={assignableUsers.map((u) => ({
+            id: u.id,
+            name: u.name,
+          }))}
+          transitionOptions={Object.values(TicketState).map((s) => ({
+            value: s,
+            label: humanise(s),
+          }))}
+        >
+          <TicketTable
+            tickets={tickets}
+            withCheckbox
+            sortKey={sortKey}
+            sortDir={sortDir}
+            baseQuery={{
+              ...(stateFilter ? { state: stateFilter } : {}),
+              ...(query ? { q: query } : {}),
+            }}
+          />
+        </TicketsBulkActions>
       )}
 
       {!canTransition && (
@@ -404,125 +417,6 @@ export default async function TicketsPage({
         />
       )}
     </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Bulk action form (client-free: buttons submit the enclosing form to
-// different actions via the `formAction` attribute)
-// ---------------------------------------------------------------------------
-
-function BulkActionForm({
-  tickets,
-  assignableUsers,
-  returnTo,
-  sortKey,
-  sortDir,
-  baseQuery,
-}: {
-  tickets: Array<{
-    id: string;
-    incidentNumber: string;
-    priority: TicketPriority;
-    state: TicketState;
-    stateEnteredAt: Date | null;
-    reportedAt: Date;
-    shortDescription: string;
-    school: { name: string };
-    device: { serialNumber: string } | null;
-    assignee: { name: string } | null;
-  }>;
-  assignableUsers: { id: string; name: string; role: string }[];
-  returnTo: string;
-  sortKey: string;
-  sortDir: "asc" | "desc";
-  baseQuery: Record<string, string>;
-}) {
-  return (
-    <form id="tickets-bulk-form">
-      <input type="hidden" name="returnTo" value={returnTo} />
-      <BulkSelectionWatcher formId="tickets-bulk-form" inputName="ticketIds">
-        {(count) => (
-      <div
-        className="mb-2 flex flex-wrap items-end gap-3 rounded border border-surface-border bg-surface-muted/40 p-3 text-xs"
-        data-testid="bulk-actions"
-      >
-        <span className="text-[10px] tracking-wide text-slate-300">
-          Bulk actions{count > 0 ? ` (${count} selected)` : ""}
-        </span>
-        <label className="flex items-center gap-1">
-          Transition to:
-          <select
-            name="to"
-            defaultValue=""
-            className="rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
-          >
-            <option value="" disabled>
-              pick state…
-            </option>
-            {Object.values(TicketState).map((s) => (
-              <option key={s} value={s}>
-                {humanise(s)}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            name="reason"
-            placeholder="reason (optional)"
-            className="w-40 rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
-          />
-          <button
-            type="submit"
-            formAction={bulkTransitionAction}
-            disabled={count === 0}
-            title={count === 0 ? "Select at least one ticket" : undefined}
-            className="rounded bg-accent px-2 py-0.5 text-xs font-semibold hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Apply
-          </button>
-        </label>
-        <label className="flex items-center gap-1">
-          Assign to:
-          <select
-            name="assigneeUserId"
-            defaultValue=""
-            className="rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
-          >
-            <option value="">— unassign —</option>
-            {assignableUsers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            formAction={bulkAssignAction}
-            disabled={count === 0}
-            title={count === 0 ? "Select at least one ticket" : undefined}
-            className="rounded bg-accent px-2 py-0.5 text-xs font-semibold hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Apply
-          </button>
-        </label>
-        <span className="text-slate-500">
-          Actions apply to checked rows only.
-        </span>
-      </div>
-        )}
-      </BulkSelectionWatcher>
-
-      <div className="overflow-x-auto rounded-lg border border-surface-border">
-        <TicketTable
-          tickets={tickets}
-          withCheckbox
-          sortKey={sortKey}
-          sortDir={sortDir}
-          baseQuery={baseQuery}
-        />
-      </div>
-    </form>
   );
 }
 

@@ -94,9 +94,17 @@ describe("Round-10: Round-9 regression suite (structural)", () => {
   });
 
   // §2F — Tickets bulk actions sentence-case + humanise.
+  // Round-11 §HOTFIX-1 moved the option-mapping into a
+  // `transitionOptions` array prop on the new client component.
+  // The humanise() call survives, just at a different layer.
   it("/tickets bulk-actions Transition-to humanises the enum", () => {
-    const src = read("src/app/(app)/tickets/page.tsx");
-    expect(src).toMatch(/Object\.values\(TicketState\)\.map\(\(s\) => \(\s*<option key=\{s\} value=\{s\}>\s*\{humanise\(s\)\}/);
+    const page = read("src/app/(app)/tickets/page.tsx");
+    expect(page).toMatch(
+      /transitionOptions=\{Object\.values\(TicketState\)\.map\(\(s\)\s*=>\s*\(\{\s*value:\s*s,\s*label:\s*humanise\(s\)/,
+    );
+    const island = read("src/components/tickets-bulk-actions.tsx");
+    expect(island).toMatch(/transitionOptions\.map\(\(o\)\s*=>\s*\(/);
+    expect(island).toContain("{o.label}");
   });
 
   // §2G — auto-refresh "off" / "every Ns" caption (R9 §2G ship).

@@ -29,10 +29,17 @@ export function RouteMap({
   stops,
   title = "Route map",
   mapboxToken,
+  isAdmin = false,
 }: {
   stops: Point[];
   title?: string;
   mapboxToken?: string | null;
+  /**
+   * Round-6 §2C — when true, the SVG fallback panel reveals the env
+   * var name behind a "Why am I seeing the SVG fallback?" disclosure.
+   * Non-admins only see the first sentence.
+   */
+  isAdmin?: boolean;
 }) {
   const withCoords = stops.filter(
     (s): s is Point & { latitude: number; longitude: number } =>
@@ -110,8 +117,20 @@ export function RouteMap({
       {!mapboxUrl && (
         <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-[10px] text-amber-200/80">
           Mapbox token not configured — showing built-in SVG preview.
-          Set <code className="rounded bg-surface px-1">NEXT_PUBLIC_MAPBOX_TOKEN</code> to
-          enable tile maps.
+          {isAdmin && (
+            <details className="mt-1 inline-block">
+              <summary className="cursor-pointer text-amber-200 underline-offset-2 hover:underline">
+                Why am I seeing the SVG fallback?
+              </summary>
+              <span className="mt-1 block text-amber-200/80">
+                Set{" "}
+                <code className="rounded bg-surface px-1">
+                  NEXT_PUBLIC_MAPBOX_TOKEN
+                </code>{" "}
+                in your environment to enable tile maps.
+              </span>
+            </details>
+          )}
         </div>
       )}
       {mapboxUrl ? (

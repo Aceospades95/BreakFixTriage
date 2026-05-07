@@ -428,3 +428,58 @@ add/remove with SNOW reconcile) and N2 (people scheduling).
 > new feature streams as schema + orchestration + minimal
 > read views; the rest defers explicitly in the §QA checklist
 > (`docs/round-4-qa-checklist.md`) with reasons per item.
+
+## Round-6 touchpoints
+
+The Round-6 brief is narrow (3 sections, ~14 leaf items). The
+touchpoints below are the files each section reads or writes.
+This is a map, not a refactor — no shape changes in §0.
+
+- **§3C CI grep hard-gate:** `.github/workflows/ci.yml`,
+  `scripts/check-forbidden-tokens.sh`, `.cigrep-allow`.
+  Mirrors `tests/forbidden-tokens.test.ts` so a failed scan
+  flunks both `vitest run` (local) and the GitHub Actions job
+  (PR gate).
+- **§1A / §1B redirect fixes:** `src/server/actions/stop-devices.ts`
+  — `addDeviceToStopAction`, `removeDeviceFromStopAction` redirect
+  targets currently land on `/scheduling/routes` (plural index that
+  404s); switch to `/scheduling/routes/{routeId}`.
+- **§1C `/scheduling/routes`:** new
+  `src/app/(app)/scheduling/routes/page.tsx` — option (b) chosen,
+  body is `notFound()` so the chromed `/not-found` renders. See
+  `docs/round-6-assumptions.md`.
+- **§2A audit cuid resolve:** `src/server/actions/stop-devices.ts`
+  (writer side) + new helper in `src/lib/audit/format.ts`
+  (`formatStopLabel(stop, route)`).
+- **§2B humaniseEntity:** new export in `src/lib/format.ts`;
+  `src/app/(app)/admin/audit/page.tsx` swaps `humanise` →
+  `humaniseEntity` for the entity-type label.
+- **§2C Mapbox admin disclosure:** `src/components/route-map.tsx`
+  splits the fallback message — first sentence always; second
+  sentence behind a collapsible disclosure rendered only when
+  `session.role === ADMIN` (caller passes `isAdmin` prop).
+- **§2D `/scheduling` subline:** route card subline in
+  `src/app/(app)/scheduling/page.tsx` drops `optimizer=...` form,
+  shows English ("optimized by nearest neighbor"), admin-only.
+- **§2E audit IdChip click-through:** `IdChip` already accepts
+  `href`. `src/components/ui/IdChip.tsx` already exports
+  `hrefForEntity` — extend the mapping so RouteStop chips link
+  to `/scheduling/routes/{routeId}#stop-{stopId}` (needs
+  `parentEntityId` on the audit row; we read from the JSON `after`
+  column for now to avoid a migration this round).
+- **§2F portal anchors:** `src/app/portal/[token]/page.tsx`
+  wraps each linked stat tile in `<Link>` with status filter
+  applied via search param.
+- **§3A notification triggers:** new `EmailEvent` enum values
+  (`status_in_repair`, `status_parts_ordered`, `ticket_closed`,
+  `ticket_update_to_spoc`) in `prisma/schema.prisma` + a
+  generated migration. Dispatch:
+  `src/server/actions/tickets.ts` (assign), state-machine
+  transitions in `src/lib/workflow/transition.ts` or whatever
+  performs the transition write today. Seed: extend
+  `src/lib/email/template-seed-data.ts`.
+- **§3B Email SPOC + Print WO:** new
+  `src/components/tickets/EmailSpocButton.tsx` (client) +
+  `src/server/actions/tickets-email.ts` (server action) +
+  `src/app/(app)/tickets/[ticketId]/print/page.tsx` +
+  template seed.

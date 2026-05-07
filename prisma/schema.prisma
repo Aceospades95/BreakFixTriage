@@ -64,8 +64,40 @@ model User {
   inAppNotifications InAppNotification[] @relation("InAppNotificationRecipient")
   partMovements     PartMovement[]     @relation("PartMovementUser")
   timeEntries       TimeEntry[]        @relation("UserTimeEntries")
+  /// Round-10 §1F — sign-in sessions tracked for the
+  /// /admin/users/[id] Recent sessions panel + Sign out all
+  /// sessions affordance.
+  sessions          UserSession[]      @relation("UserSessionsOwner")
 
   @@index([role])
+}
+
+// Round-10 §1F — UserSession.
+//
+// One row per authenticated browser. Created on sign-in by the
+// NextAuth events hook in lib/auth/auth.ts; lastSeenAt bumps on
+// each authenticated request via middleware. Admins revoke every
+// active row for a user with the "Sign out all sessions" button on
+// /admin/users/[id]; the corresponding audit row is
+// action=user.sessions_revoked.
+//
+// IP + userAgent fingerprints capture enough to spot anomalies
+// (different city, fresh device) without storing raw cookies.
+// revokedAt is set when the admin button fires OR when the user
+// signs out; null = active.
+model UserSession {
+  id        String    @id @default(cuid())
+  userId    String
+  createdAt DateTime  @default(now())
+  lastSeenAt DateTime @default(now())
+  ip        String?
+  userAgent String?
+  revokedAt DateTime?
+
+  user      User      @relation("UserSessionsOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([lastSeenAt])
 }
 
 model District {

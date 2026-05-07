@@ -226,8 +226,17 @@ export const authOptions: NextAuthOptions = {
             },
           },
         });
+        // Round-10 §1F — create the UserSession row on every
+        // successful sign-in. ip + userAgent are unavailable from
+        // the NextAuth callback; the session-touch middleware
+        // backfills them on the first authenticated request.
+        await prisma.userSession.create({
+          data: {
+            userId: user.id,
+          },
+        });
       } catch (err) {
-        console.error("[auth] signIn audit failed:", err);
+        console.error("[auth] signIn audit/session failed:", err);
       }
     },
   },

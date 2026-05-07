@@ -10,7 +10,7 @@ import {
   resetUserPasswordAction,
   updateUserAction,
 } from "@/server/actions/admin";
-import { adminResetTotpAction } from "@/server/actions/2fa";
+import { adminResetTotpAction, revokeAllUserSessionsAction } from "@/server/actions/2fa";
 import { humanise } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -200,6 +200,68 @@ export default async function EditUserPage({
           </p>
         )}
       </section>
+
+      <RecentSessionsPanel userId={user.id} />
     </>
+  );
+}
+
+async function RecentSessionsPanel({ userId }: { userId: string }) {
+  // Round-10 §1F — last 10 sessions with timestamp + IP +
+  // user-agent fingerprint + (active) tag if revokedAt is null.
+  // The "Sign out all sessions" button revokes every active row
+  // and writes an audit row.
+  const sessions = await prisma.userSession.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+  const activeCount = sessions.filter((s) => s.revokedAt == null).length;
+  return (
+    <section className="mt-6 max-w-2xl rounded-lg border border-surface-border bg-surface-muted p-6">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Recent sessions
+        </h2>
+        {activeCount > 0 && (
+          <form action={revokeAllUserSessionsAction}>
+            <input type="hidden" name="userId" value={userId} />
+            <ConfirmButton
+              message={`Sign out all ${activeCount} active session${activeCount === 1 ? "" : "s"} for this user? They'll need to sign in again.`}
+            >
+              Sign out all sessions
+            </ConfirmButton>
+          </form>
+        )}
+      </div>
+      {sessions.length === 0 ? (
+        <p className="text-sm text-slate-400">No sessions recorded yet.</p>
+      ) : (
+        <ul className="divide-y divide-surface-border text-xs">
+          {sessions.map((s) => (
+            <li key={s.id} className="flex items-center gap-3 py-2">
+              <span className="tabular-nums text-slate-300">
+                {s.createdAt.toISOString().replace("T", " ").slice(0, 16)}
+              </span>
+              <span className="text-slate-500">
+                {s.ip ?? "—"}
+              </span>
+              <span className="flex-1 truncate text-slate-500">
+                {s.userAgent ?? "(no user agent recorded)"}
+              </span>
+              {s.revokedAt == null ? (
+                <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-200">
+                  active
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-500">
+                  revoked {s.revokedAt.toISOString().slice(0, 10)}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

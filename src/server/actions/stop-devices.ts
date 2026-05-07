@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
+import { formatStopLabel } from "@/lib/audit/format";
 
 /**
  * Round-4 §N1 — add / remove a device line on a route stop.
@@ -313,7 +314,14 @@ export async function removeDeviceFromStop(input: {
         ticketId: true,
         deviceId: true,
         removedAt: true,
-        stop: { select: { routeId: true } },
+        stop: {
+          select: {
+            routeId: true,
+            sequence: true,
+            route: { select: { date: true } },
+            job: { select: { school: { select: { name: true } } } },
+          },
+        },
       },
     });
     if (!sd) throw new Error("Stop device line not found");
@@ -340,6 +348,13 @@ export async function removeDeviceFromStop(input: {
       },
     });
 
+    // Round-6 §2A — resolve the stop cuid into a human label so
+    // /admin/audit doesn't show "stop cmotifeq30009406if73wy5fj".
+    const stopLabel = formatStopLabel(
+      { sequence: sd.stop.sequence, school: sd.stop.job.school },
+      { date: sd.stop.route.date },
+    );
+
     await writeAudit(
       {
         actorUserId: session.userId,
@@ -350,6 +365,7 @@ export async function removeDeviceFromStop(input: {
           stopDeviceId: sd.id,
           deviceId: sd.deviceId,
           ticketId: sd.ticketId,
+          stopLabel,
           reason: input.reason ?? null,
         },
         reason: input.reason ?? null,
@@ -363,8 +379,12 @@ export async function removeDeviceFromStop(input: {
           entityType: "Ticket",
           entityId: sd.ticketId,
           action: "route.stop.device.removed",
-          after: { stopId: sd.stopId, reason: input.reason ?? null },
-          reason: `Removed from stop ${sd.stopId} by ${session.name}${input.reason ? `: ${input.reason}` : ""}`,
+          after: {
+            stopId: sd.stopId,
+            stopLabel,
+            reason: input.reason ?? null,
+          },
+          reason: `Removed from ${stopLabel} by ${session.name}${input.reason ? `: ${input.reason}` : ""}`,
         },
         tx,
       );

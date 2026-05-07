@@ -91,3 +91,27 @@ export function formatAuditAction(action: string): FormattedAction {
     .join(" ");
   return { kind: "generic", label: friendly };
 }
+
+/**
+ * Round-6 §2A — render a stop reference for human-facing copy
+ * (audit reasons, comments, notification template variables).
+ *
+ * The stop's underlying cuid is meaningless to operators; the
+ * canonical label is `stop {sequence} — {school name} — {date}`
+ * where date is the route's planned date (YYYY-MM-DD). Reused at
+ * every site that previously embedded a raw stop cuid in
+ * user-facing text.
+ *
+ * Both `stop` and `route` are passed in already loaded — the
+ * helper does no DB work. Callers thread the lookups through the
+ * same transaction that writes the audit row so the label is
+ * consistent with the audit row's snapshot of the world.
+ */
+export function formatStopLabel(
+  stop: { sequence: number; school?: { name: string } | null },
+  route: { date: Date },
+): string {
+  const date = route.date.toISOString().slice(0, 10);
+  const school = stop.school?.name ?? "(school unknown)";
+  return `stop ${stop.sequence} — ${school} — ${date}`;
+}

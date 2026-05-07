@@ -2,6 +2,7 @@ import { TicketState } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { humanise } from "@/lib/format";
 import {
   getDigestRecipients,
   getEscalationMultiplier,
@@ -122,8 +123,8 @@ export default async function SettingsPage({
                   key={state}
                   className="flex items-center gap-2 text-xs"
                 >
-                  <span className="w-40 font-medium tracking-tight uppercase text-slate-400">
-                    {state}
+                  <span className="w-40 text-slate-300">
+                    {humanise(state)}
                   </span>
                   <input
                     type="text"
@@ -143,7 +144,7 @@ export default async function SettingsPage({
           </h2>
           <Field
             label="Digest recipients"
-            hint="One email per line. The daily digest script (npm run digest) sends to everyone on this list."
+            hint="One email per line. A scheduled job sends this digest each morning to everyone listed below."
           >
             <textarea
               name="digestRecipients"
@@ -169,9 +170,8 @@ export default async function SettingsPage({
           Bulk close stale tickets
         </h2>
         <p className="mb-4 text-xs text-slate-400">
-          Closes every ticket in the selected state whose
-          <code className="mx-1 font-medium tracking-tight">stateEnteredAt</code>
-          is older than the supplied day threshold. Runs through the
+          Closes every ticket that has sat in the chosen state longer than
+          the threshold. Runs through the
           state machine, so guards still apply. Maximum 500 tickets per
           run.
         </p>
@@ -193,7 +193,7 @@ export default async function SettingsPage({
                 .filter((s) => s !== "CLOSED" && s !== "ON_HOLD")
                 .map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {humanise(s)}
                   </option>
                 ))}
             </select>

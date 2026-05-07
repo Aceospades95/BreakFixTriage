@@ -14,37 +14,40 @@ import { StatusEditor } from "./status-editor";
 
 export const dynamic = "force-dynamic";
 
-/** Human-readable labels for each state */
+/**
+ * Human-readable labels for each state. Round-8 §1A: sentence case
+ * is the canonical render — first letter capitalised, the rest in
+ * lowercase except for documented acronyms (RMA, SLA, etc.). The
+ * Title Case mix from Round-3 / Round-4 is now consistent
+ * sentence case with humanise() (which preserves the acronyms).
+ */
 const STATE_LABELS: Record<TicketState, string> = {
   IMPORTED: "Imported",
   TRIAGE: "Triage",
-  AWAITING_PICKUP: "Awaiting Pickup",
-  PICKUP_SCHEDULED: "Pickup Scheduled",
-  IN_WAREHOUSE: "In Warehouse",
+  AWAITING_PICKUP: "Awaiting pickup",
+  PICKUP_SCHEDULED: "Pickup scheduled",
+  IN_WAREHOUSE: "In warehouse",
   DIAGNOSIS: "Diagnosis",
-  AWAITING_PARTS: "Awaiting Parts",
-  PARTS_ORDERED: "Parts Ordered",
-  IN_REPAIR: "In Repair",
-  REPAIR_COMPLETED: "Repair Completed",
-  AWAITING_ONSITE: "Awaiting Onsite",
-  ONSITE_IN_PROGRESS: "Onsite In Progress",
-  QUOTE_REQUIRED: "Quote Required",
-  QUOTE_SENT: "Quote Sent",
-  QUOTE_APPROVED: "Quote Approved",
-  QUOTE_DECLINED: "Quote Declined",
-  QUOTE_NO_RESPONSE: "Quote No Response",
+  AWAITING_PARTS: "Awaiting parts",
+  PARTS_ORDERED: "Parts ordered",
+  IN_REPAIR: "In repair",
+  REPAIR_COMPLETED: "Repair completed",
+  AWAITING_ONSITE: "Awaiting onsite",
+  ONSITE_IN_PROGRESS: "Onsite in progress",
+  QUOTE_REQUIRED: "Quote required",
+  QUOTE_SENT: "Quote sent",
+  QUOTE_APPROVED: "Quote approved",
+  QUOTE_DECLINED: "Quote declined",
+  QUOTE_NO_RESPONSE: "Quote no response",
   MANUFACTURER_RMA: "Manufacturer RMA",
-  OUT_OF_SCOPE: "Out of Scope",
-  PENDING_DELIVERY: "Pending Delivery",
-  DELIVERY_SCHEDULED: "Delivery Scheduled",
+  OUT_OF_SCOPE: "Out of scope",
+  PENDING_DELIVERY: "Pending delivery",
+  DELIVERY_SCHEDULED: "Delivery scheduled",
   RETURNED: "Returned",
-  INVOICE_REQUIRED: "Invoice Required",
+  INVOICE_REQUIRED: "Invoice required",
   CLOSED: "Closed",
   REOPENED: "Reopened",
-  ON_HOLD: "On Hold",
-  // Round-4 §N1: shorter than the slot — operators see this on
-  // the bench card a lot, so the parenthetical helps without
-  // taking three lines.
+  ON_HOLD: "On hold",
   PENDING_PICKUP_UNLINKED: "Pending pickup (unlinked)",
 };
 

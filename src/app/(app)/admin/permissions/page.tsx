@@ -116,7 +116,7 @@ export default async function PermissionsPage({
                 {EDITABLE_ROLES.map(({ role, label }) => (
                   <th
                     key={role}
-                    className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-400"
+                    className="px-3 py-2 text-center text-xs font-medium tracking-wide text-slate-300"
                   >
                     {label}
                   </th>
@@ -139,16 +139,18 @@ export default async function PermissionsPage({
                       key={perm}
                       className="transition hover:bg-surface-muted/30"
                     >
-                      <td className="sticky left-0 z-10 bg-surface px-3 py-2">
+                      <td
+                        className="sticky left-0 z-10 bg-surface px-3 py-2"
+                        title={perm}
+                      >
+                        {/* Round-8 §1B: machine permission slug
+                            (e.g. "tickets:read") is now in the title
+                            attribute only — operators see the human
+                            label. The full token still surfaces on
+                            hover for power users + screen readers. */}
                         <div className="text-sm text-slate-200">
                           {permLabel(key)}
                         </div>
-                        {/* Round-4 §G9: permission slug rendered as
-                            an identifier — `<code>` is the only
-                            place font-mono is allowed (§G14 lint). */}
-                        <code className="text-[10px] text-slate-500">
-                          {perm}
-                        </code>
                       </td>
                       {EDITABLE_ROLES.map(({ role }) => {
                         const checked = grid[role]!.has(perm);

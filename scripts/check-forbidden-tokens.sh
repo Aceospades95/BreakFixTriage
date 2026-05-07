@@ -177,6 +177,35 @@ for file in "${FILES[@]}"; do
         print "$ARGV:$line: rule(enum) \xc2\xb7 $tok\n";
       }
     }
+
+    # Round-8 paragraph1B - devnote / env-var / URL-path / round-tag leaks
+    # in user-visible JSX text. Each phrase is one observed leaking
+    # into operator copy and worth catching automatically:
+    #   - on the roadmap - devnote read as a promise by operators
+    #   - Round-N - round identifier in user-visible copy
+    #   - redeploy - inside prose
+    #   - bare /admin/path /profile/path /me/path inside JSX text
+    #     (paths are fine in href attributes, not in prose)
+    while ($src =~ />([^<>{}\n]{1,300})</g) {
+      my $text = $1;
+      my $pos  = $-[0] + 1;
+      my $before = substr($src, 0, $pos);
+      next if in_code_or_pre($before);
+      my $line = line_at($src, $pos);
+      if ($text =~ /\b(on the roadmap)\b/i) {
+        print "$ARGV:$line: rule(devnote) \xc2\xb7 on the roadmap\n";
+      }
+      if ($text =~ /\b(Round-\d+)\b/) {
+        print "$ARGV:$line: rule(round-tag) \xc2\xb7 $1\n";
+      }
+      if ($text =~ /\bredeploy\b/i) {
+        print "$ARGV:$line: rule(devnote) \xc2\xb7 redeploy\n";
+      }
+      while ($text =~ m{(?<![\w/])(/admin/[a-z0-9_-]+|/profile/[a-z0-9_-]+|/me/[a-z0-9_-]+)}g) {
+        my $tok = $1;
+        print "$ARGV:$line: rule(url-in-prose) \xc2\xb7 $tok\n";
+      }
+    }
   ' "$file" >> "$scan_output" || true
 done
 

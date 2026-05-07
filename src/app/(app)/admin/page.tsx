@@ -84,7 +84,7 @@ export default async function AdminHomePage() {
       href: "/admin/email-rules",
       title: "Email rules",
       count: null,
-      description: "Recipient + template per event (Round-3 read-only preview)",
+      description: "Recipient + template per event",
     },
     {
       href: "/admin/email-templates",

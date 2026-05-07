@@ -236,9 +236,8 @@ export default async function FinanceDashboardPage() {
             {formatCents(partsConsumedValueCents)}
           </div>
           <div className="mt-1 text-xs text-slate-400">
-            Total value of parts consumed on repairs. Sums{" "}
-            <code>|quantity| × Part.costCents</code> across every CONSUMED
-            movement in the window.
+            Total value of parts pulled out of inventory and consumed on
+            repairs over the last twelve months.
           </div>
         </div>
       </section>

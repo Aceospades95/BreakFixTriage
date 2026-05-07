@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { humanise } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -57,8 +58,8 @@ export default async function AdminUsersPage() {
                   {u.email}
                 </td>
                 <td className="px-3 py-2">
-                  <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase">
-                    {u.role}
+                  <span className="inline-flex items-center whitespace-nowrap rounded bg-surface-border px-2 py-0.5 text-[10px] font-medium tracking-wide">
+                    {humanise(u.role)}
                   </span>
                 </td>
                 <td className="px-3 py-2 text-xs text-slate-400">

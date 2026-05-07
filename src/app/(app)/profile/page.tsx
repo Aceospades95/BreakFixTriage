@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { changeOwnPasswordAction } from "@/server/actions/admin";
+import { humanise } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -47,8 +48,8 @@ export default async function ProfilePage({
             <dd className="font-medium tracking-tight text-xs">{session.email}</dd>
             <dt className="text-slate-400">Role</dt>
             <dd>
-              <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase">
-                {session.role}
+              <span className="inline-flex items-center whitespace-nowrap rounded bg-surface-border px-2 py-0.5 text-[10px] font-medium tracking-wide">
+                {humanise(session.role)}
               </span>
             </dd>
             <dt className="text-slate-400">Districts</dt>

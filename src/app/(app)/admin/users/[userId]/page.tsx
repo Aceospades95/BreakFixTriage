@@ -11,6 +11,7 @@ import {
   updateUserAction,
 } from "@/server/actions/admin";
 import { adminResetTotpAction } from "@/server/actions/2fa";
+import { humanise } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -90,7 +91,7 @@ export default async function EditUserPage({
               >
                 {Object.values(Role).map((r) => (
                   <option key={r} value={r}>
-                    {r}
+                    {humanise(r)}
                   </option>
                 ))}
               </select>
@@ -196,8 +197,8 @@ export default async function EditUserPage({
           </div>
         ) : (
           <p className="text-sm text-slate-400">
-            Not enrolled. The user can enroll from their own{" "}
-            <code className="font-medium tracking-tight">/profile/2fa</code> page.
+            Not enrolled. The user can enroll from their own profile
+            page.
           </p>
         )}
       </section>

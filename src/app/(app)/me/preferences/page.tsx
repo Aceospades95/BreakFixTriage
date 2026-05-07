@@ -109,8 +109,9 @@ export default async function PreferencesPage({
             </label>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Per-event channel toggles (in-app vs. email per event) and a
-            timezone selector are on the roadmap.
+            Channels are coarse for now: turn email on or off, and turn
+            in-app on or off. Finer-grained per-event controls and a
+            timezone selector are coming later.
           </p>
         </fieldset>
 

@@ -287,9 +287,8 @@ export default async function PeopleSchedulingPage({
       </div>
 
       <p className="mt-4 text-xs text-slate-500">
-        On-route blocks are derived from Route rows — edit the Route to
-        change them. The Day view is the default; a Week view is on the
-        roadmap.
+        On-route blocks come from the route schedule itself — edit the
+        route to change them.
       </p>
     </>
   );

@@ -112,16 +112,12 @@ export default async function NewImportPage({
       {/* ServiceNow sync (only for tickets) */}
       {selectedType === "tickets" && (
         <section className="mb-6 max-w-2xl rounded-lg border border-surface-border bg-surface-muted p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+          <h2 className="text-sm font-semibold tracking-wide text-slate-300">
             Pull from ServiceNow
           </h2>
           <p className="mt-2 text-xs text-slate-400">
-            Calls the ServiceNow Table API and feeds the results through the
-            normal import pipeline. Uses{" "}
-            <code className="font-medium tracking-tight">SERVICENOW_BASE_URL</code>,{" "}
-            <code className="font-medium tracking-tight">SERVICENOW_USERNAME</code>, and{" "}
-            <code className="font-medium tracking-tight">SERVICENOW_PASSWORD</code> from the
-            environment.
+            Pulls open incident tickets from your ServiceNow instance and
+            feeds the results through the normal import pipeline.
           </p>
           <div className="mt-4">
             {snConfigured ? (
@@ -135,8 +131,8 @@ export default async function NewImportPage({
               </form>
             ) : (
               <p className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
-                ServiceNow is not configured for this deployment. Set the
-                three env vars above and redeploy to enable the sync button.
+                ServiceNow sync isn't connected yet — ask your administrator
+                to wire it up.
               </p>
             )}
           </div>

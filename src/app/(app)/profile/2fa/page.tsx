@@ -226,7 +226,8 @@ export default async function TwoFactorPage() {
           </h3>
           <ul className="space-y-2">
             <li>
-              Six-digit TOTP, ±30s clock drift tolerance, RFC 6238 compliant.
+              Six-digit codes from your authenticator app refresh every
+              30 seconds.
             </li>
             <li>
               Ten one-use recovery codes generated at enable time.
@@ -236,7 +237,7 @@ export default async function TwoFactorPage() {
             </li>
             <li>
               Lost both your device and the recovery codes? An admin can
-              reset it from <code>/admin/users</code>.
+              reset it for you.
             </li>
           </ul>
         </aside>

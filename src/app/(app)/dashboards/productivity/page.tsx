@@ -119,10 +119,10 @@ export default async function ProductivityPage({
 
       <p className="mt-4 text-xs text-slate-500">
         Closed count is measured at ticket closure time. Turnaround is
-        reportedAt → closedAt. Time logged is the sum of every{" "}
-        <span className="font-medium tracking-tight">TimeEntry</span> that finished in the
-        window. Readers who haven't logged any time yet show 0h — this is
-        expected for roles that don't track time (drivers, dispatch).
+        the elapsed time from when a ticket was reported to when it was
+        closed. Time logged sums every time entry that finished in the
+        window. Roles that don't track time (drivers, dispatch) show 0h
+        — that's expected.
       </p>
     </>
   );

@@ -25,6 +25,7 @@ export default async function SchedulingPage({
   const session = await requireRole(PERMISSIONS.SCHEDULING_READ);
   const canWrite = can(session.role, PERMISSIONS.SCHEDULING_WRITE);
   const canBuild = can(session.role, PERMISSIONS.ROUTES_BUILD);
+  const isAdmin = session.role === "ADMIN";
 
   const [
     activeRoutes,
@@ -142,8 +143,13 @@ export default async function SchedulingPage({
                       </div>
                       <div className="text-xs text-slate-400">
                         {r.stops.length} stop
-                        {r.stops.length === 1 ? "" : "s"} · optimizer=
-                        {r.optimizerName ?? "—"}
+                        {r.stops.length === 1 ? "" : "s"}
+                        {isAdmin && r.optimizerName && (
+                          <span className="text-slate-500">
+                            {" · optimized by "}
+                            {humaniseOptimizer(r.optimizerName)}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <RouteStatusPill status={r.status} />
@@ -417,4 +423,12 @@ function RouteStatusPill({
       {humanise(status)}
     </span>
   );
+}
+
+function humaniseOptimizer(name: string): string {
+  // Round-6 §2D — admin-only optimizer subline. Drop the key=value
+  // form ("optimizer=nearest-neighbor"); render English instead.
+  // Known kebab-case optimizer names land here; unknown values
+  // fall through with hyphens replaced by spaces.
+  return name.replace(/[-_]/g, " ").trim();
 }

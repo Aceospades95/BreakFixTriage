@@ -114,6 +114,87 @@ export default async function AdminAuditLogPage({
     for (const t of tickets) incidentNumberByCuid.set(t.id, t.incidentNumber);
   }
 
+  // Round-7 §2E — batch-resolve human labels for the other entity
+  // types whose entity-id pill previously rendered a raw cuid.
+  // RouteStop / StaffSchedule / PortalToken each get one targeted
+  // findMany; missing rows fall back to the cuid (audit history
+  // can outlive the underlying entity).
+  const stopIds = logs
+    .filter((l) => l.entityType === "RouteStop")
+    .map((l) => l.entityId);
+  const stopLabelByCuid = new Map<string, string>();
+  if (stopIds.length > 0) {
+    const stops = await prisma.routeStop.findMany({
+      where: { id: { in: stopIds } },
+      select: {
+        id: true,
+        sequence: true,
+        route: { select: { date: true } },
+        job: { select: { school: { select: { name: true } } } },
+      },
+    });
+    for (const s of stops) {
+      stopLabelByCuid.set(
+        s.id,
+        `stop ${s.sequence} — ${s.job.school.name} — ${s.route.date.toISOString().slice(0, 10)}`,
+      );
+    }
+  }
+
+  const scheduleIds = logs
+    .filter((l) => l.entityType === "StaffSchedule")
+    .map((l) => l.entityId);
+  const scheduleLabelByCuid = new Map<string, string>();
+  if (scheduleIds.length > 0) {
+    const schedules = await prisma.staffSchedule.findMany({
+      where: { id: { in: scheduleIds } },
+      select: { id: true, kind: true, date: true, userId: true },
+    });
+    const userIds = Array.from(new Set(schedules.map((s) => s.userId)));
+    const users =
+      userIds.length > 0
+        ? await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+    for (const s of schedules) {
+      scheduleLabelByCuid.set(
+        s.id,
+        `${s.kind.replace(/_/g, " ").toLowerCase()} · ${nameById.get(s.userId) ?? "(unknown)"} · ${s.date.toISOString().slice(0, 10)}`,
+      );
+    }
+  }
+
+  const portalTokenIds = logs
+    .filter((l) => l.entityType === "PortalToken")
+    .map((l) => l.entityId);
+  const portalTokenLabelByCuid = new Map<
+    string,
+    { label: string; schoolId: string }
+  >();
+  if (portalTokenIds.length > 0) {
+    const tokens = await prisma.portalToken.findMany({
+      where: { id: { in: portalTokenIds } },
+      select: {
+        id: true,
+        label: true,
+        schoolId: true,
+        school: { select: { name: true } },
+      },
+    });
+    for (const t of tokens) {
+      const lbl = t.label
+        ? `${t.school.name} · ${t.label}`
+        : `${t.school.name} · portal token`;
+      portalTokenLabelByCuid.set(t.id, {
+        label: lbl,
+        schoolId: t.schoolId,
+      });
+    }
+  }
+
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function buildHref(overrides: Partial<SearchParams>): string {
@@ -325,6 +406,18 @@ export default async function AdminAuditLogPage({
                       log.entityType === "Ticket"
                         ? incidentNumberByCuid.get(log.entityId)
                         : undefined;
+                    const stopLabel =
+                      log.entityType === "RouteStop"
+                        ? stopLabelByCuid.get(log.entityId)
+                        : undefined;
+                    const scheduleLabel =
+                      log.entityType === "StaffSchedule"
+                        ? scheduleLabelByCuid.get(log.entityId)
+                        : undefined;
+                    const portalToken =
+                      log.entityType === "PortalToken"
+                        ? portalTokenLabelByCuid.get(log.entityId)
+                        : undefined;
                     const ctx = {
                       incidentNumber: incident,
                       routeId:
@@ -332,11 +425,17 @@ export default async function AdminAuditLogPage({
                           ? (after.routeId as string)
                           : undefined,
                       schoolId:
-                        typeof after?.schoolId === "string"
+                        portalToken?.schoolId ??
+                        (typeof after?.schoolId === "string"
                           ? (after.schoolId as string)
-                          : undefined,
+                          : undefined),
                     };
-                    const display = incident ?? log.entityId;
+                    const display =
+                      incident ??
+                      stopLabel ??
+                      scheduleLabel ??
+                      portalToken?.label ??
+                      log.entityId;
                     return (
                       <IdChipWithCopy
                         value={display}

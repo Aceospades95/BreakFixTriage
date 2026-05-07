@@ -38,19 +38,15 @@ export function NotificationBell({
           className="flex cursor-pointer items-center gap-1 rounded border border-transparent px-2 py-1 text-sm text-slate-300 transition hover:border-surface-border hover:text-white"
         >
           <span className="text-base" aria-hidden="true">🔔</span>
-          {count > 0 ? (
+          {count > 0 && (
+            // Round-9 §2I — hide the badge entirely at zero
+            // (matches GitHub / Linear). The bell itself remains
+            // visible; absence of badge = no unread notifications.
             <span
               aria-hidden="true"
               className="rounded-full bg-red-500/80 px-1.5 text-[10px] font-bold text-white"
             >
               {count > 99 ? "99+" : count}
-            </span>
-          ) : (
-            <span
-              aria-hidden="true"
-              className="rounded-full bg-slate-500/30 px-1.5 text-[10px] font-bold text-slate-300"
-            >
-              0
             </span>
           )}
         </button>

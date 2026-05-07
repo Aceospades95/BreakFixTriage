@@ -7,6 +7,7 @@ import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { humanise } from "@/lib/format";
 import {
   bulkAssignAction,
   bulkTransitionAction,
@@ -439,8 +440,11 @@ function BulkActionForm({
   return (
     <form>
       <input type="hidden" name="returnTo" value={returnTo} />
-      <div className="mb-2 flex flex-wrap items-end gap-3 rounded border border-surface-border bg-surface-muted/40 p-3 text-xs">
-        <span className="text-[10px] uppercase tracking-wide text-slate-400">
+      <div
+        className="mb-2 flex flex-wrap items-end gap-3 rounded border border-surface-border bg-surface-muted/40 p-3 text-xs"
+        data-testid="bulk-actions"
+      >
+        <span className="text-[10px] tracking-wide text-slate-300">
           Bulk actions
         </span>
         <label className="flex items-center gap-1">
@@ -455,7 +459,7 @@ function BulkActionForm({
             </option>
             {Object.values(TicketState).map((s) => (
               <option key={s} value={s}>
-                {s}
+                {humanise(s)}
               </option>
             ))}
           </select>
@@ -659,7 +663,9 @@ function TicketTable({
               {t.reportedAt.toISOString().slice(0, 10)}
             </td>
             <td className="px-3 py-2 text-slate-300">
-              <span className="line-clamp-1">{t.shortDescription}</span>
+              <span className="line-clamp-1" title={t.shortDescription}>
+                {t.shortDescription}
+              </span>
             </td>
           </tr>
         ))}

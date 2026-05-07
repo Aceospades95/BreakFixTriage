@@ -95,11 +95,17 @@ export function AutoRefresh({
         aria-label="Also poll on interval"
       />
       Auto-refresh
-      {enabled && (
-        <span className="font-medium tracking-tight text-[10px] text-slate-500">
-          {countdown}s
-        </span>
-      )}
+      <span className="text-[10px] text-slate-500">
+        {/* Round-9 §2G — explicit label for the auto-refresh state.
+            "every {N}s · {countdown}" when enabled, "off" otherwise. */}
+        {enabled ? (
+          <>
+            · refreshes every {intervalSeconds}s · {countdown}s
+          </>
+        ) : (
+          <>· off</>
+        )}
+      </span>
     </label>
   );
 }

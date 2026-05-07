@@ -327,7 +327,10 @@ export function KanbanBoard({
                             </span>
                             <SlaBadge ticket={t} compact />
                           </div>
-                          <div className="mt-1 line-clamp-1 text-slate-300">
+                          <div
+                            className="mt-1 line-clamp-1 text-slate-300"
+                            title={t.shortDescription}
+                          >
                             {t.shortDescription}
                           </div>
                           <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
@@ -432,7 +435,10 @@ export function KanbanBoard({
                           </span>
                           <SlaBadge ticket={t} compact />
                         </div>
-                        <div className="mt-1 line-clamp-2 text-slate-300">
+                        <div
+                          className="mt-1 line-clamp-2 text-slate-300"
+                          title={t.shortDescription}
+                        >
                           {t.shortDescription}
                         </div>
                         <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">

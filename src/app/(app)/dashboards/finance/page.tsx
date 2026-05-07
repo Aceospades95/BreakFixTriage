@@ -199,7 +199,7 @@ export default async function FinanceDashboardPage() {
         </h2>
         {recentPos.length === 0 ? (
           <p className="text-sm text-slate-400">
-            Every issued PO has been invoiced. 🎉
+            All caught up — every issued PO has been invoiced.
           </p>
         ) : (
           <ul className="space-y-1 text-sm">

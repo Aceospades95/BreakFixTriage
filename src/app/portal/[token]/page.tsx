@@ -193,8 +193,20 @@ export default async function PortalPage({
               {openTickets.map((t) => (
                 <li
                   key={t.id}
-                  className="rounded-lg border border-surface-border bg-surface-muted/60 p-4"
+                  id={`ticket-${t.incidentNumber}`}
+                  className="scroll-mt-20 rounded-lg border border-surface-border bg-surface-muted/60 focus-within:border-accent"
                 >
+                  {/* Round-7 §2F — wrap the card body in an anchor so
+                      keyboard nav (Tab) reaches each ticket and screen
+                      readers announce them as a link rather than plain
+                      text. The anchor target is the same card's id —
+                      a token-scoped read-only detail page is filed for
+                      R8 (see docs/round-7-backlog.md). */}
+                  <a
+                    href={`#ticket-${t.incidentNumber}`}
+                    className="block rounded-lg p-4 hover:bg-surface-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    aria-label={`Ticket ${t.incidentNumber}`}
+                  >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium tracking-tight text-sm text-accent">
                       {t.incidentNumber}
@@ -212,6 +224,7 @@ export default async function PortalPage({
                   <div className="mt-1 text-sm text-slate-300">
                     {t.shortDescription}
                   </div>
+                  </a>
                 </li>
               ))}
             </ul>
@@ -229,22 +242,29 @@ export default async function PortalPage({
               {closedTickets.map((t) => (
                 <li
                   key={t.id}
-                  className="flex items-center gap-3 rounded border border-surface-border bg-surface-muted/40 px-3 py-1.5"
+                  id={`ticket-${t.incidentNumber}`}
+                  className="scroll-mt-20 rounded border border-surface-border bg-surface-muted/40 focus-within:border-accent"
                 >
-                  <span className="font-medium tracking-tight text-xs text-slate-400">
-                    {t.incidentNumber}
-                  </span>
-                  {t.device && (
-                    <span className="font-medium tracking-tight text-xs text-slate-500">
-                      {t.device.assetTag ?? t.device.serialNumber}
+                  <a
+                    href={`#ticket-${t.incidentNumber}`}
+                    className="flex items-center gap-3 rounded px-3 py-1.5 hover:bg-surface-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    aria-label={`Ticket ${t.incidentNumber} (closed)`}
+                  >
+                    <span className="font-medium tracking-tight text-xs text-slate-400">
+                      {t.incidentNumber}
                     </span>
-                  )}
-                  <span className="flex-1 truncate text-slate-300">
-                    {t.shortDescription}
-                  </span>
-                  <span className="text-xs text-slate-500">
-                    closed {t.closedAt?.toISOString().slice(0, 10) ?? "—"}
-                  </span>
+                    {t.device && (
+                      <span className="font-medium tracking-tight text-xs text-slate-500">
+                        {t.device.assetTag ?? t.device.serialNumber}
+                      </span>
+                    )}
+                    <span className="flex-1 truncate text-slate-300">
+                      {t.shortDescription}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      closed {t.closedAt?.toISOString().slice(0, 10) ?? "—"}
+                    </span>
+                  </a>
                 </li>
               ))}
             </ul>

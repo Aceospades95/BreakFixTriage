@@ -21,6 +21,14 @@ const ACRONYMS = new Set([
   "DBN",
   "NYC",
   "ID",
+  // Round-8 §1E — acronyms used in operator-facing copy.
+  "PTO",
+  "OOO",
+  "TOTP",
+  "URL",
+  "API",
+  "CSV",
+  "INC",
 ]);
 
 /**

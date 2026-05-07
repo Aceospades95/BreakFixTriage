@@ -35,11 +35,34 @@ const SELF_SERVE_KINDS: StaffScheduleKind[] = [
   StaffScheduleKind.TRAINING,
 ];
 
+/**
+ * Round-8 §1E — accept either an integer minutes-since-midnight
+ * value (legacy /me/schedule form, kept for compatibility) OR an
+ * HH:MM string from `<input type="time">` (the /scheduling/people
+ * popover form). The pre-process converts HH:MM to minutes before
+ * the schema validates the int range.
+ */
+function coerceTimeToMinutes(input: unknown): number | unknown {
+  if (typeof input === "string" && /^\d{1,2}:\d{2}$/.test(input)) {
+    const [h, m] = input.split(":").map((p) => parseInt(p, 10));
+    if (Number.isFinite(h!) && Number.isFinite(m!)) {
+      return h! * 60 + m!;
+    }
+  }
+  return input;
+}
+
 const createSchema = z.object({
   userId: z.string().min(1),
   date: z.coerce.date(),
-  startMinute: z.coerce.number().int().min(0).max(24 * 60),
-  endMinute: z.coerce.number().int().min(1).max(24 * 60),
+  startMinute: z.preprocess(
+    coerceTimeToMinutes,
+    z.coerce.number().int().min(0).max(24 * 60),
+  ),
+  endMinute: z.preprocess(
+    coerceTimeToMinutes,
+    z.coerce.number().int().min(1).max(24 * 60),
+  ),
   kind: z.nativeEnum(StaffScheduleKind),
   note: z.string().trim().max(500).optional(),
 });

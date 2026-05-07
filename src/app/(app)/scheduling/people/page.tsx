@@ -104,12 +104,48 @@ export default async function PeopleSchedulingPage({
           ` · ${totalRoutes} on route`
         }
         actions={
-          <a
-            href={`/scheduling/people?date=${shiftDate(date, -1).toISOString().slice(0, 10)}`}
-            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-          >
-            ←
-          </a>
+          <div className="flex items-center gap-2">
+            {/* Round-8 §1E — full date-nav strip: prev / Today /
+                next + a date input the operator can type into. */}
+            <a
+              href={`/scheduling/people?date=${shiftDate(date, -1).toISOString().slice(0, 10)}`}
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+              title="Previous day"
+            >
+              ←
+            </a>
+            <a
+              href="/scheduling/people"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              Today
+            </a>
+            <a
+              href={`/scheduling/people?date=${shiftDate(date, 1).toISOString().slice(0, 10)}`}
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+              title="Next day"
+            >
+              →
+            </a>
+            <form
+              method="get"
+              action="/scheduling/people"
+              className="flex items-center gap-1"
+            >
+              <input
+                type="date"
+                name="date"
+                defaultValue={date.toISOString().slice(0, 10)}
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="rounded border border-surface-border px-2 py-1 text-xs hover:border-accent"
+              >
+                Go
+              </button>
+            </form>
+          </div>
         }
       />
 
@@ -232,11 +268,20 @@ export default async function PeopleSchedulingPage({
                           />
                           <select
                             name="kind"
-                            defaultValue={StaffScheduleKind.WAREHOUSE}
+                            defaultValue={StaffScheduleKind.PTO}
                             className="rounded border border-surface-border bg-surface px-1 py-0.5 text-[11px]"
                           >
+                            {/* Round-8 §1E — strip ON_ROUTE (derived
+                                from Route rows) AND WAREHOUSE (a
+                                role, not a block type) from the
+                                operator-facing dropdown. PTO is the
+                                default since most blocks land there. */}
                             {Object.values(StaffScheduleKind)
-                              .filter((k) => k !== StaffScheduleKind.ON_ROUTE)
+                              .filter(
+                                (k) =>
+                                  k !== StaffScheduleKind.ON_ROUTE &&
+                                  k !== StaffScheduleKind.WAREHOUSE,
+                              )
                               .map((k) => (
                                 <option key={k} value={k}>
                                   {humanise(k)}
@@ -244,22 +289,22 @@ export default async function PeopleSchedulingPage({
                               ))}
                           </select>
                           <div className="flex gap-1">
+                            {/* Round-8 §1E — HH:MM time pickers
+                                replace the integer-minute inputs.
+                                The server action accepts either form
+                                (preprocess converts HH:MM → minutes). */}
                             <input
-                              type="number"
+                              type="time"
                               name="startMinute"
-                              min={0}
-                              max={24 * 60 - 1}
-                              defaultValue={dayStartMinute}
-                              className="w-16 rounded border border-surface-border bg-surface px-1 py-0.5 text-[11px]"
+                              defaultValue={minuteToTimeValue(dayStartMinute)}
+                              className="rounded border border-surface-border bg-surface px-1 py-0.5 text-[11px]"
                               required
                             />
                             <input
-                              type="number"
+                              type="time"
                               name="endMinute"
-                              min={1}
-                              max={24 * 60}
-                              defaultValue={dayEndMinute}
-                              className="w-16 rounded border border-surface-border bg-surface px-1 py-0.5 text-[11px]"
+                              defaultValue={minuteToTimeValue(dayEndMinute)}
+                              className="rounded border border-surface-border bg-surface px-1 py-0.5 text-[11px]"
                               required
                             />
                           </div>
@@ -299,12 +344,17 @@ function parseDateParam(s: string | undefined): Date {
     const d = new Date(s + "T00:00:00Z");
     if (!Number.isNaN(d.getTime())) return d;
   }
+  // Round-8 §1E — default to TODAY in the operator's local timezone.
+  // The previous getUTCFullYear/Month/Date version landed on
+  // tomorrow when the server was UTC and the operator was in ET
+  // late in the day. Use local-time getters so the default lines
+  // up with the operator's calendar day.
   const today = new Date();
   return new Date(
     Date.UTC(
-      today.getUTCFullYear(),
-      today.getUTCMonth(),
-      today.getUTCDate(),
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
       0,
       0,
       0,
@@ -322,4 +372,13 @@ function formatMinutes(m: number): string {
   const suffix = h < 12 ? "a" : "p";
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return min === 0 ? `${h12}${suffix}` : `${h12}:${String(min).padStart(2, "0")}${suffix}`;
+}
+
+function minuteToTimeValue(m: number): string {
+  // Round-8 §1E — convert minutes-since-midnight to "HH:MM" so
+  // <input type="time"> renders an editable picker. Inverse of
+  // the coerceTimeToMinutes preprocess in the server action.
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }

@@ -1130,6 +1130,14 @@ enum EmailEvent {
   sla_breach_warning
   sla_breached
   daily_digest
+  // Round-6 §3A — four highest-impact status-change events with
+  // dedicated rules so admins can recipient-design per state. The
+  // generic `ticket_status_changed` stays for catch-all rules.
+  status_in_repair
+  status_parts_ordered
+  ticket_closed
+  // Round-6 §3B — manual operator-to-SPOC ticket update.
+  ticket_update_to_spoc
 }
 
 enum EmailLogStatus {

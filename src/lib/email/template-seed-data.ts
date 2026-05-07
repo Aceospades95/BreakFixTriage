@@ -235,4 +235,93 @@ export const TEMPLATE_SEEDS: TemplateSeed[] = [
       },
     },
   },
+  // Round-6 §3A — four highest-impact status-change templates.
+  {
+    key: "status_in_repair",
+    subject: "Ticket {{ticket.number}} is now in repair",
+    bodyHtml:
+      "<p>{{ticket.number}} ({{ticket.school}}) entered <strong>In repair</strong>.</p>" +
+      "<p>{{ticket.summary}}</p>" +
+      '<p><a href="{{link}}">View ticket</a></p>',
+    bodyText:
+      "{{ticket.number}} ({{ticket.school}}) entered In repair.\n" +
+      "{{ticket.summary}}\n\n" +
+      "View ticket: {{link}}",
+    variables: {
+      type: "object",
+      required: ["ticket", "link"],
+      properties: {
+        ticket: { type: "object" },
+        link: { type: "string" },
+      },
+    },
+  },
+  {
+    key: "status_parts_ordered",
+    subject: "Parts ordered for {{ticket.number}}",
+    bodyHtml:
+      "<p>{{ticket.number}} ({{ticket.school}}) is waiting on parts. Status: <strong>Parts ordered</strong>.</p>" +
+      "<p>{{ticket.summary}}</p>" +
+      '<p><a href="{{link}}">View ticket</a></p>',
+    bodyText:
+      "{{ticket.number}} ({{ticket.school}}): parts ordered.\n" +
+      "{{ticket.summary}}\n\n" +
+      "View ticket: {{link}}",
+    variables: {
+      type: "object",
+      required: ["ticket", "link"],
+      properties: {
+        ticket: { type: "object" },
+        link: { type: "string" },
+      },
+    },
+  },
+  {
+    key: "ticket_closed",
+    subject: "Ticket {{ticket.number}} closed",
+    bodyHtml:
+      "<p>{{ticket.number}} ({{ticket.school}}) is now <strong>Closed</strong>.</p>" +
+      "<p>{{ticket.summary}}</p>" +
+      "{{#reason}}<p>Reason: {{reason}}</p>{{/reason}}" +
+      '<p><a href="{{link}}">View ticket</a></p>',
+    bodyText:
+      "{{ticket.number}} ({{ticket.school}}) is now closed.\n" +
+      "{{ticket.summary}}\n" +
+      "{{#reason}}Reason: {{reason}}\n{{/reason}}\n" +
+      "View ticket: {{link}}",
+    variables: {
+      type: "object",
+      required: ["ticket", "link"],
+      properties: {
+        ticket: { type: "object" },
+        link: { type: "string" },
+        reason: { type: "string" },
+      },
+    },
+  },
+  // Round-6 §3B — manual operator-to-SPOC ticket update.
+  {
+    key: "ticket_update_to_spoc",
+    subject: "Update on {{ticket.number}} ({{ticket.school}})",
+    bodyHtml:
+      "<p>Hi,</p>" +
+      "<p>Quick update on ticket <strong>{{ticket.number}}</strong>:</p>" +
+      "<p>{{body}}</p>" +
+      "<p>Current status: {{ticket.status}}</p>" +
+      '<p><a href="{{link}}">View ticket</a></p>',
+    bodyText:
+      "Hi,\n\nQuick update on ticket {{ticket.number}}:\n\n" +
+      "{{body}}\n\n" +
+      "Current status: {{ticket.status}}\n\n" +
+      "View ticket: {{link}}",
+    variables: {
+      type: "object",
+      required: ["ticket", "body", "link"],
+      properties: {
+        ticket: { type: "object" },
+        body: { type: "string" },
+        link: { type: "string" },
+      },
+    },
+  },
 ];

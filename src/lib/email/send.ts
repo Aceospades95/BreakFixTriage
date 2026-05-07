@@ -69,6 +69,12 @@ const FAMILY_BY_EVENT: Record<EmailEvent, RecipientContext["family"]> = {
   sla_breach_warning: "internal",
   sla_breached: "internal",
   daily_digest: "internal",
+  // Round-6 §3A — four highest-impact status events.
+  status_in_repair: "ticket",
+  status_parts_ordered: "ticket",
+  ticket_closed: "ticket",
+  // Round-6 §3B — manual SPOC ticket update.
+  ticket_update_to_spoc: "ticket",
 };
 
 interface DispatchedRule {

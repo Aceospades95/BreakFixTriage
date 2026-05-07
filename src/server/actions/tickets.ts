@@ -9,6 +9,7 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { createInAppNotification } from "@/lib/notifications/in-app";
+import { dispatchEmailEvent } from "@/lib/email";
 import {
   GuardFailedError,
   InvalidTransitionError,
@@ -270,6 +271,31 @@ export async function updateTicketAction(formData: FormData) {
             body: existing.shortDescription,
             linkHref: `/tickets/${existing.id}`,
           });
+
+          // Round-6 §3A — fire the ticket_assigned email rule(s).
+          // dispatchEmailEvent is the choke point (G4 invariant).
+          // Skipped when the operator assigns the ticket to themself
+          // because nobody wants an email about their own action.
+          try {
+            await dispatchEmailEvent("ticket_assigned", {
+              ticketId: existing.id,
+              schoolId: existing.schoolId,
+              actorUserId: session.userId,
+              variables: {
+                ticketId: existing.id,
+                incidentNumber: existing.incidentNumber,
+                shortDescription: existing.shortDescription,
+                assigneeUserId: after.assignedUserId,
+                fromAssigneeUserId: existing.assignedUserId,
+              },
+            });
+          } catch (err) {
+            // Audit-only failure — assignment already persisted.
+            console.error(
+              `[updateTicket] ticket_assigned dispatch failed for ${existing.id}:`,
+              err,
+            );
+          }
         }
       }
     }

@@ -1,13 +1,32 @@
 import type { Prisma, PrismaClient, Ticket, TicketState } from "@prisma/client";
+import { EmailEvent } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit, type TransitionType } from "@/lib/audit/audit";
 import { publish } from "@/lib/events/bus";
+import { dispatchEmailEvent } from "@/lib/email/send";
+import { getEffectiveNotifyOnEnter, readStatusConfig } from "./status-config";
 import {
   GuardFailedError,
   InvalidTransitionError,
   WorkflowError,
 } from "./errors";
 import { canTransition } from "./states";
+
+/**
+ * Round-6 §3A — map the four targeted "enter this state" transitions
+ * to their EmailEvent. transitionTicket fires the matching event
+ * after the audit + TicketEvent commit, gated on the `notifyOnEnter`
+ * flag for the destination state.
+ *
+ * Other transitions deliberately do NOT auto-fire emails — operators
+ * who want notifications on every state change configure a rule on
+ * the generic `ticket_status_changed` event instead.
+ */
+const NOTIFY_EVENT_BY_STATE: Partial<Record<TicketState, EmailEvent>> = {
+  IN_REPAIR: EmailEvent.status_in_repair,
+  PARTS_ORDERED: EmailEvent.status_parts_ordered,
+  CLOSED: EmailEvent.ticket_closed,
+};
 
 export interface TransitionOptions {
   /** Human-readable reason for the transition. Recorded in TicketEvent. */
@@ -261,5 +280,46 @@ export async function transitionTicket(
   );
   // Publish after commit so SSE subscribers only see persisted edges.
   publish({ topic: "tickets.changed", ticketId });
+  // Round-6 §3A — fire the targeted status-change email AFTER the
+  // transaction commits so a queued send never references a state
+  // that ended up rolled back. Gated on the destination state's
+  // `notifyOnEnter` config flag (server-side, authoritative).
+  await maybeDispatchTransitionEmail(db as PrismaClient, updated, opts);
   return updated;
+}
+
+async function maybeDispatchTransitionEmail(
+  db: PrismaClient,
+  ticket: Ticket,
+  opts: TransitionOptions,
+): Promise<void> {
+  const event = NOTIFY_EVENT_BY_STATE[ticket.state];
+  if (!event) return;
+  const config = await readStatusConfig();
+  if (!getEffectiveNotifyOnEnter(ticket.state, config)) return;
+  try {
+    await dispatchEmailEvent(
+      event,
+      {
+        ticketId: ticket.id,
+        schoolId: ticket.schoolId,
+        actorUserId: opts.actorUserId ?? null,
+        variables: {
+          ticketId: ticket.id,
+          incidentNumber: ticket.incidentNumber,
+          state: ticket.state,
+          reason: opts.reason ?? null,
+        },
+      },
+      db,
+    );
+  } catch (err) {
+    // A transient dispatch failure must not undo the transition. The
+    // EmailLog row that dispatchEmailEvent writes carries the failure
+    // detail; surface to ops via /admin/email-log.
+    console.error(
+      `[transition] email dispatch ${event} failed for ${ticket.id}:`,
+      err,
+    );
+  }
 }

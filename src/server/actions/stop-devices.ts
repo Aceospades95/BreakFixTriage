@@ -296,7 +296,12 @@ export async function addDeviceToStop(
 export async function removeDeviceFromStop(input: {
   stopDeviceId: string;
   reason?: string;
-}): Promise<{ stopId: string; ticketId: string | null; remaining: number }> {
+}): Promise<{
+  stopId: string;
+  routeId: string;
+  ticketId: string | null;
+  remaining: number;
+}> {
   const session = await requireRole(PERMISSIONS.STOPS_UPDATE);
 
   return prisma.$transaction(async (tx) => {
@@ -308,6 +313,7 @@ export async function removeDeviceFromStop(input: {
         ticketId: true,
         deviceId: true,
         removedAt: true,
+        stop: { select: { routeId: true } },
       },
     });
     if (!sd) throw new Error("Stop device line not found");
@@ -317,7 +323,12 @@ export async function removeDeviceFromStop(input: {
       const remaining = await tx.stopDevice.count({
         where: { stopId: sd.stopId, removedAt: null },
       });
-      return { stopId: sd.stopId, ticketId: sd.ticketId, remaining };
+      return {
+        stopId: sd.stopId,
+        routeId: sd.stop.routeId,
+        ticketId: sd.ticketId,
+        remaining,
+      };
     }
 
     await tx.stopDevice.update({
@@ -363,7 +374,12 @@ export async function removeDeviceFromStop(input: {
       where: { stopId: sd.stopId, removedAt: null },
     });
 
-    return { stopId: sd.stopId, ticketId: sd.ticketId, remaining };
+    return {
+      stopId: sd.stopId,
+      routeId: sd.stop.routeId,
+      ticketId: sd.ticketId,
+      remaining,
+    };
   });
 }
 
@@ -371,10 +387,25 @@ export async function removeDeviceFromStop(input: {
  * Form-action wrapper for add. Used when the brief calls for an
  * inline form / drawer; the page can also call addDeviceToStop
  * directly when richer UI affordances are needed.
+ *
+ * Round-6 §1A: redirects land on the route detail page
+ * (`/scheduling/routes/{routeId}`), not the plural index that 404s.
+ * The routeId is resolved from the stopId once at the top of the
+ * action so every redirect path uses the same target.
  */
 export async function addDeviceToStopAction(formData: FormData) {
   const stopId = formData.get("stopId")?.toString() ?? "";
   const kind = formData.get("kind")?.toString();
+
+  const stop = stopId
+    ? await prisma.routeStop.findUnique({
+        where: { id: stopId },
+        select: { routeId: true },
+      })
+    : null;
+  const routeRedirect = stop
+    ? `/scheduling/routes/${stop.routeId}`
+    : "/scheduling";
 
   if (kind === "existing") {
     const parsed = addExistingSchema.safeParse({
@@ -384,7 +415,7 @@ export async function addDeviceToStopAction(formData: FormData) {
     });
     if (!parsed.success) {
       redirect(
-        `/scheduling/routes?error=${encodeURIComponent(parsed.error.issues[0]!.message)}`,
+        `${routeRedirect}?error=${encodeURIComponent(parsed.error.issues[0]!.message)}`,
       );
     }
     await addDeviceToStop(parsed.data);
@@ -399,22 +430,28 @@ export async function addDeviceToStopAction(formData: FormData) {
     });
     if (!parsed.success) {
       redirect(
-        `/scheduling/routes?error=${encodeURIComponent(parsed.error.issues[0]!.message)}`,
+        `${routeRedirect}?error=${encodeURIComponent(parsed.error.issues[0]!.message)}`,
       );
     }
     await addDeviceToStop(parsed.data);
   } else {
     redirect(
-      `/scheduling/routes?error=${encodeURIComponent("Unknown add kind")}`,
+      `${routeRedirect}?error=${encodeURIComponent("Unknown add kind")}`,
     );
   }
 
-  revalidatePath(`/scheduling/routes`);
+  if (stop) revalidatePath(`/scheduling/routes/${stop.routeId}`);
   redirect(
-    `/scheduling/routes?ok=${encodeURIComponent("Device added to stop")}`,
+    `${routeRedirect}?ok=${encodeURIComponent("Device added to stop")}`,
   );
 }
 
+/**
+ * Round-6 §1B: redirects land on `/scheduling/routes/{routeId}`
+ * for both the success and the empty-stop-prompt branches. The
+ * inner `removeDeviceFromStop` now returns `routeId` so the action
+ * doesn't need a second DB round-trip.
+ */
 export async function removeDeviceFromStopAction(formData: FormData) {
   const parsed = removeSchema.safeParse({
     stopDeviceId: formData.get("stopDeviceId"),
@@ -422,22 +459,22 @@ export async function removeDeviceFromStopAction(formData: FormData) {
   });
   if (!parsed.success) {
     redirect(
-      `/scheduling/routes?error=${encodeURIComponent(parsed.error.issues[0]!.message)}`,
+      `/scheduling?error=${encodeURIComponent(parsed.error.issues[0]!.message)}`,
     );
   }
-  const { stopId, remaining } = await removeDeviceFromStop(parsed.data);
-  revalidatePath(`/scheduling/routes`);
+  const { routeId, remaining } = await removeDeviceFromStop(parsed.data);
+  revalidatePath(`/scheduling/routes/${routeId}`);
   // Important toast (Round-4 pre-work-1): operator should
   // acknowledge the "stop is now empty" prompt before it disappears.
   if (remaining === 0) {
     redirect(
-      `/scheduling/routes/${stopId}?important=1&ok=${encodeURIComponent(
+      `/scheduling/routes/${routeId}?important=1&ok=${encodeURIComponent(
         "Device removed. This stop now has no devices — cancel the stop?",
       )}`,
     );
   }
   redirect(
-    `/scheduling/routes?ok=${encodeURIComponent("Device removed from stop")}`,
+    `/scheduling/routes/${routeId}?ok=${encodeURIComponent("Device removed from stop")}`,
   );
 }
 

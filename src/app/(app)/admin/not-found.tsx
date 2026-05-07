@@ -32,7 +32,7 @@ const ADMIN_ROUTES = [
 
 export default function AdminNotFound() {
   return (
-    <div data-not-found="admin">
+    <div data-testid="chromed-not-found" data-not-found="admin">
       <PageHeader
         title="Page not found"
         subtitle="That admin URL doesn't match any route. Common destinations below."

@@ -46,7 +46,7 @@ const KNOWN_ROUTES: { href: string; label: string }[] = [
 
 export default function NotFound() {
   return (
-    <>
+    <div data-testid="chromed-not-found" data-not-found="app">
       <PageHeader
         title="Page not found"
         subtitle="That URL doesn't match any route in the app. Possible alternatives below."
@@ -79,6 +79,6 @@ export default function NotFound() {
           </p>
         </div>
       </div>
-    </>
+    </div>
   );
 }

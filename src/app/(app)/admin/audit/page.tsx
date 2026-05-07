@@ -52,7 +52,27 @@ interface SearchParams {
   actor?: string;
   entityId?: string;
   page?: string;
+  // Round-9 §1E — quick-filter on the action slug. Currently only
+  // "auth_failed" is wired, exposed as a "Failed sign-ins" chip;
+  // future quick filters extend the QUICK_FILTERS map.
+  quick?: string;
 }
+
+/**
+ * Round-9 §1E — quick filters that pre-set common action-slug
+ * predicates without forcing operators to type into the entity-id
+ * box. Add a new entry → it shows as a chip below the category
+ * row. Each entry's `action` is the AuditLog.action prefix used
+ * in the where clause.
+ */
+const QUICK_FILTERS: { value: string; label: string; actionPrefix: string }[] =
+  [
+    {
+      value: "auth_failed",
+      label: "Failed sign-ins",
+      actionPrefix: "auth:failed",
+    },
+  ];
 
 export default async function AdminAuditLogPage({
   searchParams,
@@ -86,6 +106,12 @@ export default async function AdminAuditLogPage({
     where.actor = {
       email: { contains: searchParams.actor, mode: "insensitive" },
     };
+  }
+  const activeQuick = searchParams?.quick
+    ? QUICK_FILTERS.find((q) => q.value === searchParams.quick)
+    : undefined;
+  if (activeQuick) {
+    where.action = { startsWith: activeQuick.actionPrefix };
   }
 
   const [logs, total] = await Promise.all([
@@ -203,6 +229,7 @@ export default async function AdminAuditLogPage({
       cats: selectedCats.join(","),
       ...(searchParams?.actor ? { actor: searchParams.actor } : {}),
       ...(searchParams?.entityId ? { entityId: searchParams.entityId } : {}),
+      ...(searchParams?.quick ? { quick: searchParams.quick } : {}),
       ...overrides,
     };
     const sp = new URLSearchParams();
@@ -300,7 +327,8 @@ export default async function AdminAuditLogPage({
         })}
         {(selectedCats.length > 0 ||
           searchParams?.actor ||
-          searchParams?.entityId) && (
+          searchParams?.entityId ||
+          searchParams?.quick) && (
           <Link
             href="/admin/audit"
             className="ml-2 text-slate-500 hover:text-white"
@@ -308,6 +336,31 @@ export default async function AdminAuditLogPage({
             clear all
           </Link>
         )}
+      </div>
+
+      {/* Round-9 §1E — Quick filters */}
+      <div className="mb-5 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-500">Quick filters:</span>
+        {QUICK_FILTERS.map((q) => {
+          const active = searchParams?.quick === q.value;
+          return (
+            <Link
+              key={q.value}
+              href={buildHref({
+                quick: active ? undefined : q.value,
+                page: undefined,
+              })}
+              className={
+                "rounded-full border px-2.5 py-0.5 transition " +
+                (active
+                  ? "border-amber-500/60 bg-amber-500/15 text-amber-100"
+                  : "border-surface-border text-slate-300 hover:border-accent")
+              }
+            >
+              {q.label}
+            </Link>
+          );
+        })}
       </div>
 
       {/* Optional secondary filter (actor / entityId text inputs).

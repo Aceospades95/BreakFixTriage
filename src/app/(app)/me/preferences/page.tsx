@@ -106,14 +106,21 @@ export default async function PreferencesPage({
               Email me a daily digest
             </label>
             <label className="flex items-center gap-2 text-xs">
-              Hour (0–23):
+              Send at:
+              {/* Round-9 §1C — HH:MM time picker. Server action
+                  parses HH:MM → integer hour for the existing
+                  digestHour column. Operators get a familiar
+                  picker; the underlying schema is unchanged. */}
               <input
-                type="number"
+                type="time"
                 name="digestHour"
-                min={0}
-                max={23}
-                defaultValue={pref?.digestHour ?? 7}
-                className="w-16 rounded border border-surface-border bg-surface px-2 py-1 text-xs"
+                step={3600}
+                defaultValue={
+                  pref?.digestHour != null
+                    ? `${String(pref.digestHour).padStart(2, "0")}:00`
+                    : "07:00"
+                }
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-xs"
               />
             </label>
           </div>

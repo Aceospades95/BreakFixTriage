@@ -26,7 +26,21 @@ const updateSchema = z.object({
   digestOptIn: z
     .union([z.literal("on"), z.literal("off"), z.literal("")])
     .optional(),
-  digestHour: z.coerce.number().int().min(0).max(23).optional(),
+  // Round-9 §1C — accept either a plain integer hour (legacy form)
+  // OR an HH:MM string from <input type="time"> (the preferences
+  // page picker). The preprocess strips minutes — daily digests
+  // fire on the hour, so :30 / :15 round down to the parsed hour.
+  digestHour: z
+    .preprocess(
+      (raw) => {
+        if (typeof raw === "string" && /^\d{1,2}:\d{2}$/.test(raw)) {
+          return parseInt(raw.split(":")[0]!, 10);
+        }
+        return raw;
+      },
+      z.coerce.number().int().min(0).max(23),
+    )
+    .optional(),
 });
 
 export async function updatePreferencesAction(formData: FormData) {

@@ -40,25 +40,57 @@ const providers: NextAuthOptions["providers"] = [
       if (!credentials?.email || !credentials?.password) return null;
       const email = credentials.email.trim().toLowerCase();
 
+      // Round-9 §1E — log failed-sign-in attempts so /admin/audit
+      // has data to display under the "Failed sign-ins" filter
+      // chip. Wrapped in a helper closure so every early-return
+      // path that's a failure writes one row, exactly once.
+      const auditFailed = async (reason: string, userId?: string) => {
+        try {
+          await prisma.auditLog.create({
+            data: {
+              actorUserId: userId ?? null,
+              entityType: "User",
+              entityId: userId ?? "anonymous",
+              action: "auth:failed",
+              after: { email, reason },
+            },
+          });
+        } catch {
+          // Audit-write failure must not block the sign-in flow.
+        }
+      };
+
       // Rate limit per email to stop dictionary attacks. We deliberately
       // key on the *attempted* email rather than the requester IP so a
       // bot hitting a hundred inboxes doesn't fly under a per-IP limit.
       const limit = checkRateLimit(`signin:${email}`, SIGNIN_LIMIT);
-      if (!limit.allowed) return null;
+      if (!limit.allowed) {
+        await auditFailed("rate_limited");
+        return null;
+      }
 
       const user = await prisma.user.findUnique({
         where: { email },
         include: { districts: { select: { districtId: true } } },
       });
-      if (!user || !user.active || !user.passwordHash) return null;
+      if (!user || !user.active || !user.passwordHash) {
+        await auditFailed("unknown_user_or_inactive");
+        return null;
+      }
       const ok = await bcrypt.compare(credentials.password, user.passwordHash);
-      if (!ok) return null;
+      if (!ok) {
+        await auditFailed("bad_password", user.id);
+        return null;
+      }
 
       // 2FA gate: if the user has TOTP enabled, they must submit either
       // a valid six-digit code OR a one-use recovery code.
       if (user.totpEnabledAt && user.totpSecret) {
         const submitted = (credentials.totpCode ?? "").trim();
-        if (!submitted) return null;
+        if (!submitted) {
+          await auditFailed("totp_required", user.id);
+          return null;
+        }
 
         const totpOk = verifyTotp(submitted, user.totpSecret);
         if (!totpOk) {
@@ -72,7 +104,10 @@ const providers: NextAuthOptions["providers"] = [
             }
           }
           const updated = consumeRecoveryCode(submitted, codes);
-          if (updated == null) return null;
+          if (updated == null) {
+            await auditFailed("bad_totp", user.id);
+            return null;
+          }
           await prisma.user.update({
             where: { id: user.id },
             data: { backupCodes: JSON.stringify(updated) },

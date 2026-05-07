@@ -47,9 +47,48 @@ export function ScanClient() {
     }
   }
 
+  // Round-9 §1B — manual entry fallback. Warehouse machines
+  // sometimes deny camera permission or use USB barcode scanners
+  // that emulate keyboard input. Operators type the code into
+  // this input + Enter / click Go and it runs the same lookup
+  // the camera scan would.
+  const [manualValue, setManualValue] = useState("");
+
   return (
     <div className="space-y-6">
       <QrScanner onScan={handleScan} label="Camera viewfinder" />
+
+      <form
+        className="rounded-lg border border-surface-border bg-surface-muted/40 p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const v = manualValue.trim();
+          if (!v) return;
+          handleScan(v);
+        }}
+      >
+        <label className="mb-2 block text-xs text-slate-300">
+          Or enter an asset tag, serial, or incident number
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={manualValue}
+            onChange={(e) => setManualValue(e.target.value)}
+            placeholder="INC2200126, SN-1234, BX-101"
+            className="flex-1 rounded border border-surface-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button
+            type="submit"
+            disabled={!manualValue.trim() || pending}
+            className="rounded bg-accent px-3 py-2 text-sm font-semibold transition hover:bg-accent-strong disabled:opacity-50"
+          >
+            Go
+          </button>
+        </div>
+      </form>
 
       {pending && (
         <div className="text-center text-sm text-slate-400">

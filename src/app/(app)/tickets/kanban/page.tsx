@@ -57,13 +57,16 @@ const DEFAULT_LABELS: Partial<Record<TicketState, { title: string; hint: string 
   DELIVERY_SCHEDULED: { title: "Delivery scheduled", hint: "On a return route" },
   RETURNED: { title: "Returned", hint: "Back with customer" },
   INVOICE_REQUIRED: { title: "Invoice required", hint: "Needs PO" },
+  // Round-9 §1D — Closed column at the right edge. Same header
+  // treatment + count badge + "+N more" pagination as the other
+  // columns. The "Only with tickets" toggle hides it when empty.
+  CLOSED: { title: "Closed", hint: "Done — left here as a record" },
 };
 
 /** States that should never appear as kanban columns. */
 const KANBAN_EXCLUDED: readonly TicketState[] = [
-  // IMPORTED is intentionally NOT excluded — see DEFAULT_LABELS above
-  // and findings §2#2.
-  "CLOSED",
+  // IMPORTED + CLOSED stay as columns; CLOSED was excluded before
+  // Round-9 §1D promoted it to a terminal-state column.
   "REOPENED",
   "ON_HOLD",
 ];
@@ -92,16 +95,41 @@ export default async function KanbanPage() {
       };
     });
 
-  const tickets = await prisma.ticket.findMany({
-    where: { state: { in: columns.map((c) => c.state) } },
-    orderBy: { stateEnteredAt: "asc" },
-    include: {
-      school: { select: { name: true, code: true } },
-      device: { select: { serialNumber: true } },
-      assignee: { select: { name: true } },
-    },
-    take: 1500,
-  });
+  // Round-9 §1D — Closed tickets join the board, but they're
+  // ordered most-recent-first (closedAt desc) and capped at 100
+  // so the historical tail doesn't dominate the query budget.
+  // In-flight columns keep the oldest-first (stateEnteredAt asc)
+  // ordering so SLA-aging cards bubble to the top.
+  const inFlightStates = columns
+    .map((c) => c.state)
+    .filter((s) => s !== "CLOSED");
+  const wantClosed = columns.some((c) => c.state === "CLOSED");
+
+  const [inFlightTickets, closedTickets] = await Promise.all([
+    prisma.ticket.findMany({
+      where: { state: { in: inFlightStates } },
+      orderBy: { stateEnteredAt: "asc" },
+      include: {
+        school: { select: { name: true, code: true } },
+        device: { select: { serialNumber: true } },
+        assignee: { select: { name: true } },
+      },
+      take: 1500,
+    }),
+    wantClosed
+      ? prisma.ticket.findMany({
+          where: { state: "CLOSED" },
+          orderBy: { closedAt: "desc" },
+          include: {
+            school: { select: { name: true, code: true } },
+            device: { select: { serialNumber: true } },
+            assignee: { select: { name: true } },
+          },
+          take: 100,
+        })
+      : Promise.resolve([]),
+  ]);
+  const tickets = [...inFlightTickets, ...closedTickets];
 
   const boardTickets = tickets.map((t) => ({
     id: t.id,

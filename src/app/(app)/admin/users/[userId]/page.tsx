@@ -118,6 +118,7 @@ export default async function EditUserPage({
                   <label
                     key={d.id}
                     className="flex items-center gap-2 text-sm text-slate-200"
+                    title={`District code: ${d.code}`}
                   >
                     <input
                       type="checkbox"
@@ -126,10 +127,7 @@ export default async function EditUserPage({
                       defaultChecked={userDistrictIds.has(d.id)}
                       className="accent-accent"
                     />
-                    {d.name}{" "}
-                    <span className="font-medium tracking-tight text-xs text-slate-500">
-                      {d.code}
-                    </span>
+                    {d.name}
                   </label>
                 ))}
               </div>

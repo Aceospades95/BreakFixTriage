@@ -167,4 +167,33 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
+  events: {
+    /**
+     * Round-8 §3A — sign-in audit. Writes an `auth:login` audit
+     * row on every successful sign-in so /admin/users can surface
+     * a "last sign-in" column without a schema migration. The
+     * audit row carries enough context for a future
+     * recent-sessions panel: actorUserId, account.provider, and
+     * the User.email at sign-in time.
+     */
+    async signIn({ user, account, isNewUser }) {
+      if (!user?.id) return;
+      try {
+        await prisma.auditLog.create({
+          data: {
+            actorUserId: user.id,
+            entityType: "User",
+            entityId: user.id,
+            action: "auth:login",
+            after: {
+              provider: account?.provider ?? "credentials",
+              isNewUser: Boolean(isNewUser),
+            },
+          },
+        });
+      } catch (err) {
+        console.error("[auth] signIn audit failed:", err);
+      }
+    },
+  },
 };

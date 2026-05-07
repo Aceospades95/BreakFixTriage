@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
+import { LocalTime } from "@/components/local-time";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
@@ -16,6 +17,22 @@ export default async function AdminUsersPage() {
       districts: { include: { district: { select: { name: true } } } },
     },
   });
+
+  // Round-8 §3A — last sign-in per user, derived from the
+  // `auth:login` audit row written in lib/auth/auth.ts events.
+  // One groupBy across all visible users; users who haven't
+  // signed in since the audit hook landed render "—".
+  const lastSignIns = await prisma.auditLog.groupBy({
+    by: ["actorUserId"],
+    where: { action: "auth:login", actorUserId: { not: null } },
+    _max: { createdAt: true },
+  });
+  const lastSignInByUserId = new Map<string, Date>();
+  for (const row of lastSignIns) {
+    if (row.actorUserId && row._max.createdAt) {
+      lastSignInByUserId.set(row.actorUserId, row._max.createdAt);
+    }
+  }
 
   return (
     <>
@@ -41,6 +58,7 @@ export default async function AdminUsersPage() {
               <th className="px-3 py-2 font-medium">Role</th>
               <th className="px-3 py-2 font-medium">Districts</th>
               <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Last sign-in</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-border">
@@ -76,12 +94,22 @@ export default async function AdminUsersPage() {
                     <span className="text-slate-500">disabled</span>
                   )}
                 </td>
+                <td className="px-3 py-2 text-xs text-slate-400">
+                  {lastSignInByUserId.has(u.id) ? (
+                    <LocalTime
+                      date={lastSignInByUserId.get(u.id)!}
+                      mode="relative"
+                    />
+                  ) : (
+                    <span className="text-slate-600">—</span>
+                  )}
+                </td>
               </tr>
             ))}
             {users.length === 0 && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-3 py-8 text-center text-slate-400"
                 >
                   No users yet.

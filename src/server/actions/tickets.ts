@@ -317,3 +317,67 @@ export async function updateTicketAction(formData: FormData) {
   revalidatePath("/");
   redirect(`/tickets/${parsed.data.ticketId}`);
 }
+
+/**
+ * Round-10 §2F — bench "Pick up" affordance. Assigns the ticket
+ * to the current session user. Audited like every other write.
+ *
+ * Distinct from updateTicketAction so:
+ *   - The audit action slug reads "ticket.pick_up" (operator-
+ *     readable as "Ticket pick up" via humanise format).
+ *   - The redirect lands back on /bench (not the ticket detail).
+ *   - Unassigned-only invariant: throws if the ticket already has
+ *     an assignee. Avoids a tech accidentally stealing work from
+ *     a peer.
+ */
+export async function pickUpTicketAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.TICKETS_WRITE);
+  const ticketId = formData.get("ticketId")?.toString();
+  if (!ticketId) {
+    redirect("/bench?error=Missing+ticket+id");
+  }
+
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: { id: true, assignedUserId: true, incidentNumber: true },
+  });
+  if (!ticket) {
+    redirect("/bench?error=Ticket+not+found");
+  }
+  if (ticket.assignedUserId) {
+    redirect(
+      `/bench?error=${encodeURIComponent(
+        `${ticket.incidentNumber} is already assigned`,
+      )}`,
+    );
+  }
+
+  await prisma.ticket.update({
+    where: { id: ticket.id },
+    data: { assignedUserId: session.userId },
+  });
+
+  await writeAudit({
+    actorUserId: session.userId,
+    entityType: "Ticket",
+    entityId: ticket.id,
+    action: "ticket.pick_up",
+    before: { assignedUserId: null },
+    after: { assignedUserId: session.userId },
+    reason: `${session.name} picked up ${ticket.incidentNumber}`,
+  });
+
+  await createInAppNotification({
+    recipientUserId: session.userId,
+    kind: "TICKET_ASSIGNED",
+    title: `Picked up ${ticket.incidentNumber}`,
+    body: "It's on your bench now.",
+    linkHref: `/tickets/${ticket.id}`,
+  });
+
+  revalidatePath("/bench");
+  revalidatePath("/");
+  redirect(
+    `/bench?ok=${encodeURIComponent(`Picked up ${ticket.incidentNumber}`)}`,
+  );
+}

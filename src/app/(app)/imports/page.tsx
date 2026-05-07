@@ -216,7 +216,10 @@ export default async function ImportsPage({
                     {humanise(b.status)}
                   </td>
                   <td className="px-3 py-2">{b._count.rows}</td>
-                  <td className="px-3 py-2 text-xs text-slate-400">
+                  <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-slate-400">
+                    {/* Round-10 §2E — single-line outcome with
+                        tabular-nums so column counts align cleanly
+                        across rows. */}
                     {outcome}
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-400">

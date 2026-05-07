@@ -40,8 +40,28 @@ export default async function EmailTemplatesPage() {
       />
 
       {templates.length === 0 ? (
-        <div className="rounded border border-surface-border bg-surface-muted/30 p-10 text-center text-sm text-slate-400">
-          <p>No templates yet — click "Seed default templates" above to add the standard set.</p>
+        // Round-10 §2G — promote the empty-state to a CTA banner
+        // so admins immediately see the seed action.
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-5">
+          <div>
+            <h2 className="text-sm font-semibold text-amber-100">
+              No templates configured yet
+            </h2>
+            <p className="mt-1 text-xs text-amber-200/80">
+              Click "Seed default templates" to add the standard set
+              (ticket created, ticket assigned, status changed, daily
+              digest, etc.). You can edit any of them after they're
+              seeded.
+            </p>
+          </div>
+          <form action={seedDefaultTemplatesAction}>
+            <button
+              type="submit"
+              className="rounded bg-accent px-4 py-2 text-sm font-semibold transition hover:bg-accent-strong"
+            >
+              Seed default templates
+            </button>
+          </form>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-surface-border">

@@ -1,5 +1,6 @@
 import type { TicketState } from "@prisma/client";
 import {
+  DEFAULT_SLA_DAYS,
   daysInState,
   slaHealth,
   slaLabel,
@@ -38,15 +39,27 @@ export function SlaBadge({
         ? "bg-amber-500/20 text-amber-200 border-amber-500/40"
         : "bg-emerald-500/20 text-emerald-200 border-emerald-500/40";
 
+  // Round-10 §2I — extended tooltip surfaces reportedAt + threshold
+  // so operators reading the bench can see the SLA math without
+  // navigating into the ticket detail.
+  const reportedDate = ticket.reportedAt.toISOString().slice(0, 10);
+  const thresholdDays = DEFAULT_SLA_DAYS[ticket.state];
+  const thresholdText =
+    thresholdDays == null ? "no threshold" : `threshold ${thresholdDays}d`;
+  const tooltip =
+    health === "na"
+      ? `Reported ${reportedDate} · ${days}d in ${humaniseEnum(ticket.state)} · no SLA`
+      : `Reported ${reportedDate} · ${days}d in ${humaniseEnum(ticket.state)} · ${thresholdText}${
+          health === "breached"
+            ? " · breached"
+            : health === "approaching"
+              ? " · approaching"
+              : ""
+        }`;
+
   return (
     <span
-      title={
-        health === "na"
-          ? "No SLA defined for this state"
-          : `${days} day${days === 1 ? "" : "s"} in ${humaniseEnum(ticket.state)}${
-              health === "breached" ? " (breached)" : health === "approaching" ? " (approaching)" : ""
-            }`
-      }
+      title={tooltip}
       className={cn(
         // Round-2 §14: sans stack across the board; tight tracking
         // keeps the badge compact without monospace.

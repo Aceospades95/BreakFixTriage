@@ -10,6 +10,7 @@ import {
   daysInState,
   slaHealth,
 } from "@/lib/reports/sla";
+import { pickUpTicketAction } from "@/server/actions/tickets";
 
 export const dynamic = "force-dynamic";
 
@@ -234,7 +235,7 @@ export default async function BenchPage({
             {unassigned.length === 0 ? (
               <p className="text-xs text-slate-400">empty</p>
             ) : (
-              <CompactTicketList tickets={unassigned} />
+              <CompactTicketList tickets={unassigned} pickUpEnabled />
             )}
           </section>
           <section className="flex w-80 shrink-0 flex-col rounded-lg border border-violet-500/30 bg-violet-500/5 p-4">
@@ -343,6 +344,7 @@ function TicketList({
 
 function CompactTicketList({
   tickets,
+  pickUpEnabled = false,
 }: {
   tickets: Array<{
     id: string;
@@ -352,6 +354,10 @@ function CompactTicketList({
     reportedAt: Date;
     shortDescription: string;
   }>;
+  // Round-10 §2F — when true, render a "Pick up" button on each
+  // card. Used by the Unassigned column on /bench so a tech can
+  // claim work in one click.
+  pickUpEnabled?: boolean;
 }) {
   const now = new Date();
   return (
@@ -380,6 +386,18 @@ function CompactTicketList({
           </Link>
           <StatePill state={t.state} />
           <SlaBadge ticket={t} compact />
+          {pickUpEnabled && (
+            <form action={pickUpTicketAction} className="ml-auto">
+              <input type="hidden" name="ticketId" value={t.id} />
+              <button
+                type="submit"
+                className="rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent hover:bg-accent/20"
+                title="Assign this ticket to me"
+              >
+                Pick up
+              </button>
+            </form>
+          )}
           <span className="basis-full truncate text-slate-500">
             {t.shortDescription}
           </span>

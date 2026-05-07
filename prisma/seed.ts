@@ -281,7 +281,132 @@ async function main() {
     });
   }
 
+  // Round-10 §2H — auto-seed first-run defaults so a fresh DB
+  // after `prisma migrate deploy && npm run db:seed` already has:
+  //   - Email templates (the standard set from
+  //     prisma/seed-email-templates.ts).
+  //   - One Global example email rule (disabled by default so
+  //     admins opt-in per Round-5 §1 contract).
+  //   - The current year's US federal holidays.
+  // Re-running the seed is idempotent — every step upserts /
+  // findFirst+create.
+  await seedDefaults();
   console.log("Seed complete.");
+}
+
+async function seedDefaults() {
+  // Inline the email-templates seed so the Docker runner image
+  // (which only ships prisma/) can run it without an `src/` dep.
+  // Lockstep with src/lib/email/template-seed-data.ts is enforced
+  // by Round-5 §3.3 hand-edit policy.
+  try {
+    const mod = await import("./seed-email-templates");
+    if (typeof (mod as { default?: () => Promise<void> }).default === "function") {
+      await (mod as { default: () => Promise<void> }).default();
+    }
+  } catch (err) {
+    // If the email-templates seed exits-on-import (it currently
+    // calls main() at module top), the catch picks up its
+    // process.exit. Swallow and continue — the templates table is
+    // populated either way.
+    console.error("[seed] email-templates seed import:", err);
+  }
+
+  // Seed one Global example rule (disabled). Mirrors first-run.ts.
+  const ticketCreated = await prisma.emailTemplate.findUnique({
+    where: { key: "ticket_created" },
+  });
+  if (ticketCreated) {
+    const existingRule = await prisma.emailRule.findFirst({
+      where: {
+        scope: "GLOBAL",
+        event: "ticket_created",
+        templateId: ticketCreated.id,
+      },
+    });
+    if (!existingRule) {
+      await prisma.emailRule.create({
+        data: {
+          scope: "GLOBAL",
+          scopeId: null,
+          event: "ticket_created",
+          templateId: ticketCreated.id,
+          enabled: false,
+          recipients: {
+            to: [{ kind: "school_spoc" }, { kind: "ticket_reporter" }],
+            cc: [{ kind: "wynndalco_team" }],
+            bcc: [],
+          } as unknown as object,
+        },
+      });
+      console.log("[seed] seeded example email rule");
+    }
+  }
+
+  // Seed US federal holidays for the current year.
+  const year = new Date().getUTCFullYear();
+  const holidays = buildFederalHolidaysForSeed(year);
+  let holidayCount = 0;
+  for (const h of holidays) {
+    const existing = await prisma.holiday.findFirst({
+      where: { date: h.date, scope: "GLOBAL", scopeId: null },
+    });
+    if (!existing) {
+      await prisma.holiday.create({
+        data: { date: h.date, label: h.name },
+      });
+      holidayCount++;
+    }
+  }
+  if (holidayCount > 0) {
+    console.log(`[seed] seeded ${holidayCount} US federal holiday(s) for ${year}`);
+  }
+}
+
+function buildFederalHolidaysForSeed(year: number): { name: string; date: Date }[] {
+  return [
+    { name: "New Year's Day", date: new Date(Date.UTC(year, 0, 1)) },
+    { name: "Memorial Day", date: lastMondayOfMonth(year, 4) },
+    { name: "Independence Day", date: new Date(Date.UTC(year, 6, 4)) },
+    { name: "Labor Day", date: firstMondayOfMonth(year, 8) },
+    { name: "Thanksgiving Day", date: nthDayOfMonth(year, 10, 4, 4) },
+    { name: "Christmas Day", date: new Date(Date.UTC(year, 11, 25)) },
+  ];
+}
+
+function firstMondayOfMonth(year: number, month: number): Date {
+  for (let d = 1; d <= 7; d++) {
+    const date = new Date(Date.UTC(year, month, d));
+    if (date.getUTCDay() === 1) return date;
+  }
+  throw new Error("unreachable");
+}
+
+function lastMondayOfMonth(year: number, month: number): Date {
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  for (let d = lastDay; d >= lastDay - 6; d--) {
+    const date = new Date(Date.UTC(year, month, d));
+    if (date.getUTCDay() === 1) return date;
+  }
+  throw new Error("unreachable");
+}
+
+function nthDayOfMonth(
+  year: number,
+  month: number,
+  weekday: number,
+  n: number,
+): Date {
+  let count = 0;
+  for (let d = 1; d <= 31; d++) {
+    const date = new Date(Date.UTC(year, month, d));
+    if (date.getUTCMonth() !== month) break;
+    if (date.getUTCDay() === weekday) {
+      count++;
+      if (count === n) return date;
+    }
+  }
+  throw new Error("unreachable");
 }
 
 main()

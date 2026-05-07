@@ -64,16 +64,35 @@ export default async function EmailRulesPage() {
       />
 
       {rules.length === 0 ? (
-        <div className="rounded border border-surface-border bg-surface-muted/30 p-10 text-center text-sm text-slate-400">
-          <p>
-            No email rules yet. Click "Seed example rule" above to add a
-            global rule that emails every new ticket to its school's
-            SPOC contacts. You can manage templates at{" "}
-            <Link href="/admin/email-templates" className="text-accent hover:underline">
-              Email templates
-            </Link>
-            .
-          </p>
+        // Round-10 §2G — promote the empty-state to a prominent
+        // CTA banner so admins immediately see the seed action
+        // instead of hunting for the button in the page header.
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-5">
+          <div>
+            <h2 className="text-sm font-semibold text-amber-100">
+              No rules configured yet
+            </h2>
+            <p className="mt-1 text-xs text-amber-200/80">
+              Click "Seed example rule" to start with a sensible
+              default — every new ticket emails its school's SPOC
+              contacts. Manage templates at{" "}
+              <Link
+                href="/admin/email-templates"
+                className="text-amber-200 underline hover:text-amber-50"
+              >
+                Email templates
+              </Link>
+              .
+            </p>
+          </div>
+          <form action={seedExampleRuleAction}>
+            <button
+              type="submit"
+              className="rounded bg-accent px-4 py-2 text-sm font-semibold transition hover:bg-accent-strong"
+            >
+              Seed example rule
+            </button>
+          </form>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-surface-border">

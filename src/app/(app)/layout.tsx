@@ -9,6 +9,7 @@ import { AppShell } from "@/components/sidebar";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ToastHost } from "@/components/toast-host";
+import { CommandPalette } from "@/components/command-palette";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { formatRole } from "@/lib/format";
@@ -104,6 +105,7 @@ export default async function AppLayout({
       <Suspense fallback={null}>
         <ToastHost />
       </Suspense>
+      <CommandPalette />
     </div>
   );
 }

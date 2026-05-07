@@ -13,6 +13,7 @@ import { humanise } from "@/lib/format";
 import {
   cancelRouteAction,
   reorderRouteAction,
+  updateRouteVehicleAction,
   updateStopStatusAction,
 } from "@/server/actions/scheduling";
 import {
@@ -160,7 +161,11 @@ export default async function RouteDetailPage({
       )}
 
       <div className="mb-6 grid gap-3 rounded-lg border border-surface-border bg-surface-muted/60 p-4 sm:grid-cols-3">
-        <Meta label="Vehicle" value={route.vehicleRef ?? "—"} />
+        <VehicleMeta
+          routeId={route.id}
+          current={route.vehicleRef ?? null}
+          editable={canReorder && routeOpen}
+        />
         <Meta
           label="Optimizer"
           value={
@@ -285,12 +290,22 @@ export default async function RouteDetailPage({
                   </div>
                 )}
 
-                {(stop.stopDevices.length > 0 || (canUpdateStop && routeOpen)) && (
+                {(stop.stopDevices.length > 0 || (canUpdateStop && routeOpen)) && (() => {
+                  // Round-8 §1D — split active vs removed counts so
+                  // operators can tell at a glance which rows are live
+                  // vs tombstoned.
+                  const activeCount = stop.stopDevices.filter(
+                    (d) => d.removedAt == null,
+                  ).length;
+                  const removedCount = stop.stopDevices.length - activeCount;
+                  return (
                   <div className="mt-3 border-t border-surface-border pt-3">
                     <div className="mb-2 flex items-center justify-between">
                       <div className="text-[10px] tracking-wide text-slate-400">
-                        Devices on this stop (
-                        {stop.stopDevices.filter((d) => d.removedAt == null).length}
+                        Devices on this stop ({activeCount} active
+                        {removedCount > 0 && (
+                          <> · {removedCount} removed</>
+                        )}
                         )
                       </div>
                     </div>
@@ -454,7 +469,8 @@ export default async function RouteDetailPage({
                       </details>
                     )}
                   </div>
-                )}
+                  );
+                })()}
 
                 {(stop.attachments.length > 0 || canUpdateStop) && (
                   <div className="mt-3 border-t border-surface-border pt-3">
@@ -690,4 +706,50 @@ function humaniseOptimizerName(name: string): string {
   const flat = name.replace(/[-_]/g, " ").trim();
   if (flat.length === 0) return name;
   return flat.charAt(0).toUpperCase() + flat.slice(1).toLowerCase();
+}
+
+function VehicleMeta({
+  routeId,
+  current,
+  editable,
+}: {
+  routeId: string;
+  current: string | null;
+  editable: boolean;
+}) {
+  // Round-8 §1D — drivers need to record which van they took
+  // without leaving the route detail page. The free-text field is
+  // saved per-route via updateRouteVehicleAction; an audit row
+  // lands on every change. The presented surface is intentionally
+  // minimal — a structured Vehicle table is filed in the backlog.
+  if (!editable) {
+    return <Meta label="Vehicle" value={current ?? "—"} />;
+  }
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-slate-400">
+        Vehicle
+      </div>
+      <form
+        action={updateRouteVehicleAction}
+        className="mt-0.5 flex items-center gap-2"
+      >
+        <input type="hidden" name="routeId" value={routeId} />
+        <input
+          type="text"
+          name="vehicleRef"
+          defaultValue={current ?? ""}
+          placeholder="Van #, plate, etc."
+          maxLength={80}
+          className="flex-1 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+        />
+        <button
+          type="submit"
+          className="rounded border border-surface-border px-2 py-1 text-[10px] text-slate-300 hover:border-accent hover:text-white"
+        >
+          Save
+        </button>
+      </form>
+    </div>
+  );
 }

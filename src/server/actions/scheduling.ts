@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { dispatchEmailEvent } from "@/lib/email";
+import { writeAudit } from "@/lib/audit/audit";
 import { buildRoute, createJob } from "@/lib/scheduling/jobs";
 import { cancelRoute, reorderRoute } from "@/lib/scheduling/routes";
 import { updateStopStatus } from "@/lib/scheduling/stops";
@@ -371,4 +372,66 @@ export async function cancelRouteAction(formData: FormData) {
   revalidatePath("/scheduling");
   revalidatePath(`/scheduling/routes/${parsed.data.routeId}`);
   redirect("/scheduling");
+}
+
+// ---------------------------------------------------------------------------
+// updateRouteVehicleAction (Round-8 §1D)
+// ---------------------------------------------------------------------------
+
+const updateRouteVehicleSchema = z.object({
+  routeId: z.string().min(1),
+  vehicleRef: z.string().trim().max(80).optional(),
+});
+
+/**
+ * Round-8 §1D — driver-side inline editor for the route vehicle ref.
+ * Drivers need to record which van they took without leaving the
+ * route detail page. Writes an audit row so the change is traceable.
+ */
+export async function updateRouteVehicleAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.SCHEDULING_WRITE);
+
+  const parsed = updateRouteVehicleSchema.safeParse({
+    routeId: formData.get("routeId"),
+    vehicleRef: formData.get("vehicleRef")?.toString().trim() || undefined,
+  });
+  if (!parsed.success) {
+    redirect(
+      `/scheduling?error=${encodeURIComponent(
+        parsed.error.issues[0]!.message,
+      )}`,
+    );
+  }
+
+  const existing = await prisma.route.findUnique({
+    where: { id: parsed.data.routeId },
+    select: { id: true, vehicleRef: true },
+  });
+  if (!existing) {
+    redirect(
+      `/scheduling?error=${encodeURIComponent("Route not found")}`,
+    );
+  }
+
+  const next = parsed.data.vehicleRef ?? null;
+  if (existing.vehicleRef !== next) {
+    await prisma.route.update({
+      where: { id: existing.id },
+      data: { vehicleRef: next },
+    });
+    await writeAudit({
+      actorUserId: session.userId,
+      entityType: "Route",
+      entityId: existing.id,
+      action: "vehicle.updated",
+      before: { vehicleRef: existing.vehicleRef },
+      after: { vehicleRef: next },
+      reason: `Vehicle ${existing.vehicleRef ?? "(none)"} → ${next ?? "(none)"}`,
+    });
+  }
+
+  revalidatePath(`/scheduling/routes/${parsed.data.routeId}`);
+  redirect(
+    `/scheduling/routes/${parsed.data.routeId}?ok=${encodeURIComponent("Vehicle updated")}`,
+  );
 }

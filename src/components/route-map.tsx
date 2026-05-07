@@ -104,7 +104,7 @@ export function RouteMap({
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="tabular-nums">
-            {withCoords.length} stops
+            {withCoords.length} stop{withCoords.length === 1 ? "" : "s"}
           </span>
           <span className="tabular-nums">
             {totalKm.toFixed(1)} km total

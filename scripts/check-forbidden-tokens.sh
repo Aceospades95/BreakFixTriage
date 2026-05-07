@@ -201,7 +201,11 @@ for file in "${FILES[@]}"; do
       if ($text =~ /\bredeploy\b/i) {
         print "$ARGV:$line: rule(devnote) \xc2\xb7 redeploy\n";
       }
-      while ($text =~ m{(?<![\w/])(/admin/[a-z0-9_-]+|/profile/[a-z0-9_-]+|/me/[a-z0-9_-]+|/scheduling/[a-z0-9_-]+|/duplicates(?:/[a-z0-9_-]+)?|/imports/[a-z0-9_-]+)}g) {
+      # Round-11 paragraph2G - extend url-in-prose to /tickets /bench
+      # /dashboards (the bug class re-surfaced on the bench card and
+      # the Cmd+K palette in R10/R11). The gate now covers every
+      # top-level path the operator app exposes.
+      while ($text =~ m{(?<![\w/])(/tickets(?:/[a-z0-9_-]+)?|/admin/[a-z0-9_-]+|/profile/[a-z0-9_-]+|/me/[a-z0-9_-]+|/scheduling/[a-z0-9_-]+|/duplicates(?:/[a-z0-9_-]+)?|/imports/[a-z0-9_-]+|/bench(?:/[a-z0-9_-]+)?|/dashboards(?:/[a-z0-9_-]+)?)}g) {
         my $tok = $1;
         print "$ARGV:$line: rule(url-in-prose) \xc2\xb7 $tok\n";
       }
@@ -212,6 +216,19 @@ for file in "${FILES[@]}"; do
       while ($text =~ /\b(20[2-9][0-9])\b/g) {
         my $tok = $1;
         print "$ARGV:$line: rule(year-literal) \xc2\xb7 $tok\n";
+      }
+      # Round-11 paragraph2G - any cuid in prose, broader than the rule 3
+      # cm-prefix check. Catches synthetic test ids and arbitrary
+      # base32-style ids leaking through where humanise() should be.
+      while ($text =~ /\b(c[a-z0-9]{24})\b/g) {
+        my $tok = $1;
+        print "$ARGV:$line: rule(cuid-broad) \xc2\xb7 $tok\n";
+      }
+      # Round-11 paragraph2G - "digest:" leak indicates a Next.js error
+      # boundary string ended up in normal page copy. Anything calling
+      # itself "digest:" in user prose is almost certainly a bug.
+      if ($text =~ /\bdigest:/i) {
+        print "$ARGV:$line: rule(digest-leak) \xc2\xb7 digest:\n";
       }
     }
   ' "$file" >> "$scan_output" || true

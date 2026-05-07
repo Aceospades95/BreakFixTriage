@@ -11,7 +11,7 @@
 
 import { PrismaClient, Role, TicketState } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { buildFederalHolidaysForYear } from "../src/lib/holidays/federal";
+import { seedDefaults } from "./seed-defaults";
 
 const prisma = new PrismaClient();
 
@@ -282,88 +282,16 @@ async function main() {
     });
   }
 
-  // Round-10 §2H — auto-seed first-run defaults so a fresh DB
-  // after `prisma migrate deploy && npm run db:seed` already has:
-  //   - Email templates (the standard set from
-  //     prisma/seed-email-templates.ts).
-  //   - One Global example email rule (disabled by default so
-  //     admins opt-in per Round-5 §1 contract).
-  //   - The current year's US federal holidays.
-  // Re-running the seed is idempotent — every step upserts /
-  // findFirst+create.
-  await seedDefaults();
+  // Round-10 §2H + Round-11 §1E — first-run auto-seed defaults.
+  // The shared seedDefaults() in prisma/seed-defaults.ts owns the
+  // EmailTemplate / EmailRule / Holiday rows so production can
+  // backfill them via `npm run db:seed:defaults` without dragging
+  // in dev fixtures.
+  const r = await seedDefaults(prisma);
+  console.log(
+    `[seed] defaults: templates=${r.templatesUpserted} ruleCreated=${r.ruleCreated} holidaysCreated=${r.holidaysCreated} year=${r.year}`,
+  );
   console.log("Seed complete.");
-}
-
-async function seedDefaults() {
-  // Inline the email-templates seed so the Docker runner image
-  // (which only ships prisma/) can run it without an `src/` dep.
-  // Lockstep with src/lib/email/template-seed-data.ts is enforced
-  // by Round-5 §3.3 hand-edit policy.
-  try {
-    const mod = await import("./seed-email-templates");
-    if (typeof (mod as { default?: () => Promise<void> }).default === "function") {
-      await (mod as { default: () => Promise<void> }).default();
-    }
-  } catch (err) {
-    // If the email-templates seed exits-on-import (it currently
-    // calls main() at module top), the catch picks up its
-    // process.exit. Swallow and continue — the templates table is
-    // populated either way.
-    console.error("[seed] email-templates seed import:", err);
-  }
-
-  // Seed one Global example rule (disabled). Mirrors first-run.ts.
-  const ticketCreated = await prisma.emailTemplate.findUnique({
-    where: { key: "ticket_created" },
-  });
-  if (ticketCreated) {
-    const existingRule = await prisma.emailRule.findFirst({
-      where: {
-        scope: "GLOBAL",
-        event: "ticket_created",
-        templateId: ticketCreated.id,
-      },
-    });
-    if (!existingRule) {
-      await prisma.emailRule.create({
-        data: {
-          scope: "GLOBAL",
-          scopeId: null,
-          event: "ticket_created",
-          templateId: ticketCreated.id,
-          enabled: false,
-          recipients: {
-            to: [{ kind: "school_spoc" }, { kind: "ticket_reporter" }],
-            cc: [{ kind: "wynndalco_team" }],
-            bcc: [],
-          } as unknown as object,
-        },
-      });
-      console.log("[seed] seeded example email rule");
-    }
-  }
-
-  // Seed US federal holidays for the current year. Round-11 §1D
-  // moved the builder into src/lib/holidays/federal.ts so the
-  // /admin/holidays "Auto-seed" action can call the same source.
-  const year = new Date().getUTCFullYear();
-  const holidays = buildFederalHolidaysForYear(year);
-  let holidayCount = 0;
-  for (const h of holidays) {
-    const existing = await prisma.holiday.findFirst({
-      where: { date: h.date, scope: "GLOBAL", scopeId: null },
-    });
-    if (!existing) {
-      await prisma.holiday.create({
-        data: { date: h.date, label: h.name },
-      });
-      holidayCount++;
-    }
-  }
-  if (holidayCount > 0) {
-    console.log(`[seed] seeded ${holidayCount} US federal holiday(s) for ${year}`);
-  }
 }
 
 main()

@@ -385,10 +385,19 @@ const TEMPLATE_SEEDS: TemplateSeed[] = [
   },
 ];
 
-async function main() {
+/**
+ * Round-11 §1E — exported so prisma/seed.ts and the post-deploy
+ * backfill can invoke the upsert loop without triggering the
+ * direct-run process.exit. The previous shape relied on a side-
+ * effect import which silently failed in production, leaving the
+ * EmailTemplate table empty.
+ */
+export async function seedEmailTemplates(
+  client: PrismaClient = prisma,
+): Promise<number> {
   let upserted = 0;
   for (const seed of TEMPLATE_SEEDS) {
-    await prisma.emailTemplate.upsert({
+    await client.emailTemplate.upsert({
       where: { key: seed.key },
       create: {
         key: seed.key,
@@ -406,14 +415,26 @@ async function main() {
     });
     upserted++;
   }
+  return upserted;
+}
+
+async function main() {
+  const upserted = await seedEmailTemplates();
   console.log(`[seed-email-templates] upserted ${upserted} template(s).`);
 }
 
-main()
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// Direct-run guard. tsx supports both CJS and ESM; the ESM check
+// uses import.meta.url and the CJS check falls through to the
+// require.main heuristic.
+const isDirectRun =
+  typeof require !== "undefined" && require.main === module;
+if (isDirectRun) {
+  main()
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

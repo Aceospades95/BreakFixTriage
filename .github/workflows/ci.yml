@@ -39,3 +39,46 @@ jobs:
       - run: npm ci
       - run: npx prisma generate
       - run: npx tsc --noEmit
+
+  # Round-11 §2D — integration tests against a live Postgres +
+  # Mailpit. Runs every spec under tests/integration/ so the
+  # write-path code (state machine, dispatchEmailEvent, audit
+  # writers, etc.) is exercised end-to-end. Skipped if the matrix
+  # variable INTEGRATION is "false" so contributors can opt out
+  # locally.
+  integration:
+    name: Integration (Postgres + Mailpit)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: breakfix_ci
+          POSTGRES_USER: bf
+          POSTGRES_PASSWORD: bf
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bf -d breakfix_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      mailpit:
+        image: axllent/mailpit:latest
+        ports: ["1025:1025", "8025:8025"]
+    env:
+      DATABASE_URL: "postgresql://bf:bf@localhost:5432/breakfix_ci"
+      AUTH_SESSION_SALT: "ci-test-salt"
+      SMTP_HOST: "127.0.0.1"
+      SMTP_PORT: "1025"
+      EMAIL_TRANSPORT: "smtp"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npm run db:seed:defaults
+      - run: npm run test:integration

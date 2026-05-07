@@ -36,6 +36,7 @@ import {
 import { mergeTicketAction, unmergeTicketAction } from "@/server/actions/merge";
 import { totalMinutesForTicket } from "@/lib/time/time-tracking";
 import { humanise } from "@/lib/format";
+import { EmailSpocButton } from "@/components/tickets/EmailSpocButton";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,18 @@ export default async function TicketDetailPage({
     prisma.ticket.findUnique({
       where: { id: params.ticketId },
       include: {
-        school: { include: { district: true, address: true } },
+        school: {
+          include: {
+            district: true,
+            address: true,
+            // Round-6 §3B — count SPOC contacts so the Email SPOC
+            // button knows whether to render disabled.
+            contacts: {
+              where: { receivesTicketEmails: true, email: { not: null } },
+              select: { id: true },
+            },
+          },
+        },
         device: { include: { model: true } },
         assignee: { select: { id: true, name: true, email: true } },
         events: {
@@ -223,6 +235,7 @@ export default async function TicketDetailPage({
 
   const nextStates = allowedNextStates(ticket.state);
   const returnTo = `/tickets/${ticket.id}`;
+  const spocCount = ticket.school.contacts.length;
 
   // Load admin status config for the "Change status" dropdown. Labels
   // may be customized and some states disabled — keep those out of the
@@ -251,6 +264,25 @@ export default async function TicketDetailPage({
           <div className="flex items-center gap-2">
             <SlaBadge ticket={ticket} />
             <StatePill state={ticket.state} />
+            {canWrite && (
+              <EmailSpocButton
+                ticketId={ticket.id}
+                ticketIncidentNumber={ticket.incidentNumber}
+                ticketShortDescription={ticket.shortDescription}
+                ticketState={humanise(ticket.state)}
+                schoolName={ticket.school.name}
+                schoolId={ticket.schoolId}
+                hasSpoc={spocCount > 0}
+              />
+            )}
+            <Link
+              href={`/tickets/${ticket.id}/print?autoprint=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded border border-surface-border px-2 py-1 text-xs text-slate-200 hover:border-accent hover:text-white"
+            >
+              Print Work Order
+            </Link>
           </div>
         }
       />

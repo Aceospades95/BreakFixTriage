@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
+import { BulkSelectionWatcher } from "@/components/bulk-selection-watcher";
 import {
   bulkAssignAction,
   bulkTransitionAction,
@@ -438,14 +439,16 @@ function BulkActionForm({
   baseQuery: Record<string, string>;
 }) {
   return (
-    <form>
+    <form id="tickets-bulk-form">
       <input type="hidden" name="returnTo" value={returnTo} />
+      <BulkSelectionWatcher formId="tickets-bulk-form" inputName="ticketIds">
+        {(count) => (
       <div
         className="mb-2 flex flex-wrap items-end gap-3 rounded border border-surface-border bg-surface-muted/40 p-3 text-xs"
         data-testid="bulk-actions"
       >
         <span className="text-[10px] tracking-wide text-slate-300">
-          Bulk actions
+          Bulk actions{count > 0 ? ` (${count} selected)` : ""}
         </span>
         <label className="flex items-center gap-1">
           Transition to:
@@ -472,7 +475,9 @@ function BulkActionForm({
           <button
             type="submit"
             formAction={bulkTransitionAction}
-            className="rounded bg-accent px-2 py-0.5 text-xs font-semibold hover:bg-accent-strong"
+            disabled={count === 0}
+            title={count === 0 ? "Select at least one ticket" : undefined}
+            className="rounded bg-accent px-2 py-0.5 text-xs font-semibold hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
           >
             Apply
           </button>
@@ -494,7 +499,9 @@ function BulkActionForm({
           <button
             type="submit"
             formAction={bulkAssignAction}
-            className="rounded bg-accent px-2 py-0.5 text-xs font-semibold hover:bg-accent-strong"
+            disabled={count === 0}
+            title={count === 0 ? "Select at least one ticket" : undefined}
+            className="rounded bg-accent px-2 py-0.5 text-xs font-semibold hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
           >
             Apply
           </button>
@@ -503,6 +510,8 @@ function BulkActionForm({
           Actions apply to checked rows only.
         </span>
       </div>
+        )}
+      </BulkSelectionWatcher>
 
       <div className="overflow-x-auto rounded-lg border border-surface-border">
         <TicketTable

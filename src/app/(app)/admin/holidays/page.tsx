@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { ConfirmButton } from "@/components/confirm-button";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
+import { ScopeAndDistrict } from "./scope-and-district";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
 import {
@@ -112,35 +113,9 @@ export default async function HolidaysPage({
               className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] tracking-wide text-slate-400">
-              Scope
-            </span>
-            <select
-              name="scope"
-              defaultValue={HolidayScope.GLOBAL}
-              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
-            >
-              <option value={HolidayScope.GLOBAL}>Global</option>
-              <option value={HolidayScope.DISTRICT}>District</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] tracking-wide text-slate-400">
-              District (when scope = district)
-            </span>
-            <select
-              name="scopeId"
-              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
-            >
-              <option value="">—</option>
-              {districts.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <ScopeAndDistrict
+            districts={districts.map((d) => ({ id: d.id, name: d.name }))}
+          />
           <div className="flex items-end">
             <button
               type="submit"

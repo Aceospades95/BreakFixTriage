@@ -250,7 +250,10 @@ export default async function BenchPage({
                   </span>
                 </div>
                 <div className="text-[10px] tracking-wide text-violet-300/80">
-                  on-route synthetic · resolve at /duplicates
+                  {/* Round-10 §1C — drop the /duplicates URL from
+                      prose; link the words "duplicate queue" via
+                      the existing <Link> below instead. */}
+                  on-route synthetic · resolve in the duplicate queue
                 </div>
               </div>
               <span className="rounded bg-violet-500/20 px-2 py-0.5 text-xs font-medium tabular-nums text-violet-100">

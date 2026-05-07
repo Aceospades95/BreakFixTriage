@@ -170,8 +170,13 @@ export default async function DuplicatesPage({
                         type="text"
                         name="targetIncidentNumber"
                         required
-                        placeholder="INC0001234"
-                        className="w-44 rounded border border-violet-500/40 bg-violet-500/5 px-2 py-1 text-sm font-medium uppercase tracking-tight focus:border-violet-300 focus:outline-none"
+                        // Round-10 §1B — placeholder is visually
+                        // distinct from a real incident number
+                        // (e.g. INC0001234) by using "INC#" so
+                        // operators don't mistake the placeholder
+                        // for a valid value.
+                        placeholder="INC#"
+                        className="w-44 rounded border border-violet-500/40 bg-violet-500/5 px-2 py-1 text-sm font-medium uppercase tracking-tight placeholder:normal-case placeholder:text-violet-400/40 placeholder:italic focus:border-violet-300 focus:outline-none"
                       />
                     </label>
                     <label className="flex flex-1 flex-col gap-1">
@@ -279,13 +284,17 @@ export default async function DuplicatesPage({
             )}
           </li>
         ))}
-        {conflicts.length === 0 && (
-          <li className="rounded border border-surface-border bg-surface-muted/40 p-8 text-center text-sm text-slate-400">
-            {showResolved
-              ? "No resolved conflicts yet."
-              : "The queue is clean. No pending duplicate conflicts."}
-          </li>
-        )}
+        {conflicts.length === 0 &&
+          // Round-10 §1A — only show "queue is clean" when BOTH the
+          // SNOW conflicts list AND the synthetic-pending list are
+          // empty. Showing both at once contradicts itself.
+          (showResolved || unlinkedSynthetics.length === 0) && (
+            <li className="rounded border border-surface-border bg-surface-muted/40 p-8 text-center text-sm text-slate-400">
+              {showResolved
+                ? "No resolved conflicts yet."
+                : "The queue is clean. No pending duplicate conflicts."}
+            </li>
+          )}
       </ul>
     </>
   );

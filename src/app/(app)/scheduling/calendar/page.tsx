@@ -90,21 +90,42 @@ async function renderDay(dateParam: string | undefined, now: Date) {
   const next = new Date(day.getTime() + 24 * 60 * 60 * 1000);
   const prev = new Date(day.getTime() - 24 * 60 * 60 * 1000);
 
-  const routes = await prisma.route.findMany({
-    where: { date: { gte: day, lt: next } },
-    include: {
-      assignee: { select: { name: true } },
-      stops: {
-        select: {
-          id: true,
-          sequence: true,
-          job: { select: { school: { select: { name: true } } } },
+  // Round-7 §2G — load StaffSchedule blocks for the day alongside
+  // route stops so non-driver staff with PTO / Training / Meeting
+  // appear in the Day view. Two parallel queries (Promise.all) keep
+  // the latency unchanged for the route-only case.
+  const [routes, scheduleBlocks] = await Promise.all([
+    prisma.route.findMany({
+      where: { date: { gte: day, lt: next } },
+      include: {
+        assignee: { select: { name: true } },
+        stops: {
+          select: {
+            id: true,
+            sequence: true,
+            job: { select: { school: { select: { name: true } } } },
+          },
+          orderBy: { sequence: "asc" },
         },
-        orderBy: { sequence: "asc" },
       },
-    },
-    orderBy: { date: "asc" },
-  });
+      orderBy: { date: "asc" },
+    }),
+    prisma.staffSchedule.findMany({
+      where: { date: { gte: day, lt: next } },
+      orderBy: [{ startMinute: "asc" }],
+    }),
+  ]);
+  const blockUserIds = Array.from(
+    new Set(scheduleBlocks.map((b) => b.userId)),
+  );
+  const blockUsers =
+    blockUserIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: blockUserIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+  const blockUserName = new Map(blockUsers.map((u) => [u.id, u.name]));
 
   const dayLabel = day.toLocaleDateString(undefined, {
     weekday: "long",
@@ -155,39 +176,92 @@ async function renderDay(dateParam: string | undefined, now: Date) {
         }
       />
 
-      {routes.length === 0 ? (
+      {routes.length === 0 && scheduleBlocks.length === 0 ? (
         <div className="rounded-lg border border-surface-border bg-surface-muted/40 p-10 text-center text-sm text-slate-400">
-          No routes scheduled for {ymd(day)}.
+          No routes or schedule blocks for {ymd(day)}.
         </div>
       ) : (
-        <ul className="space-y-2">
-          {routes.map((r) => (
-            <li
-              key={r.id}
-              className="rounded-lg border border-surface-border bg-surface-muted/60 p-4"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <Link
-                  href={`/scheduling/routes/${r.id}`}
-                  className="font-semibold text-accent hover:underline"
-                >
-                  {r.assignee.name}
-                </Link>
-                <span className="text-xs text-slate-400">
-                  {r.stops.length} stop{r.stops.length === 1 ? "" : "s"} ·{" "}
-                  {humanise(r.status)}
-                </span>
+        <div className="grid gap-6 lg:grid-cols-[1fr_minmax(0,18rem)]">
+          <section>
+            <h2 className="mb-2 text-sm font-semibold tracking-tight text-slate-200">
+              Routes ({routes.length})
+            </h2>
+            {routes.length === 0 ? (
+              <div className="rounded-lg border border-surface-border bg-surface-muted/40 p-6 text-center text-sm text-slate-400">
+                No routes scheduled for {ymd(day)}.
               </div>
-              {r.stops.length > 0 && (
-                <ol className="mt-2 list-inside list-decimal text-xs text-slate-300">
-                  {r.stops.map((s) => (
-                    <li key={s.id}>{s.job.school.name}</li>
-                  ))}
-                </ol>
-              )}
-            </li>
-          ))}
-        </ul>
+            ) : (
+              <ul className="space-y-2">
+                {routes.map((r) => (
+                  <li
+                    key={r.id}
+                    className="rounded-lg border border-surface-border bg-surface-muted/60 p-4"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/scheduling/routes/${r.id}`}
+                        className="font-semibold text-accent hover:underline"
+                      >
+                        {r.assignee.name}
+                      </Link>
+                      <span className="text-xs text-slate-400">
+                        {r.stops.length} stop
+                        {r.stops.length === 1 ? "" : "s"} ·{" "}
+                        {humanise(r.status)}
+                      </span>
+                    </div>
+                    {r.stops.length > 0 && (
+                      <ol className="mt-2 list-inside list-decimal text-xs text-slate-300">
+                        {r.stops.map((s) => (
+                          <li key={s.id}>{s.job.school.name}</li>
+                        ))}
+                      </ol>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <aside>
+            <h2 className="mb-2 text-sm font-semibold tracking-tight text-slate-200">
+              Schedule blocks ({scheduleBlocks.length})
+            </h2>
+            {scheduleBlocks.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-surface-border bg-surface-muted/30 p-6 text-center text-xs text-slate-500">
+                No PTO, training, or meetings scheduled.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {scheduleBlocks.map((b) => (
+                  <li
+                    key={b.id}
+                    className="rounded border-2 border-dashed border-violet-500/40 bg-violet-500/5 p-3 text-xs"
+                  >
+                    <Link
+                      href="/scheduling/people"
+                      className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      title="Open scheduling/people"
+                    >
+                      <div className="font-semibold text-violet-100">
+                        {humanise(b.kind)}
+                      </div>
+                      <div className="text-slate-300">
+                        {blockUserName.get(b.userId) ?? "(unknown)"}
+                      </div>
+                      <div className="text-slate-500">
+                        {minutesToHHMM(b.startMinute)}–{minutesToHHMM(b.endMinute)}
+                      </div>
+                      {b.note && (
+                        <div className="mt-1 text-slate-400">{b.note}</div>
+                      )}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </aside>
+        </div>
       )}
     </>
   );
@@ -458,4 +532,13 @@ async function renderMonth(monthParam: string | undefined, now: Date) {
       </div>
     </>
   );
+}
+
+function minutesToHHMM(m: number): string {
+  const hh = Math.floor(m / 60);
+  const mm = m % 60;
+  const period = hh < 12 ? "am" : "pm";
+  const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  const mmStr = mm.toString().padStart(2, "0");
+  return `${h12}:${mmStr}${period}`;
 }

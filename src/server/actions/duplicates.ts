@@ -96,13 +96,15 @@ export async function linkSyntheticToIncidentAction(formData: FormData) {
     );
   }
 
+  let devicesTransferred = 0;
   try {
-    await mergeTicket({
+    const result = await mergeTicket({
       sourceTicketId: parsed.data.syntheticTicketId,
       targetTicketId: target.id,
       reason: parsed.data.reason ?? "Linked synthetic to SNOW INC#",
       actorUserId: session.userId,
     });
+    devicesTransferred = result.devicesTransferred;
   } catch (err) {
     redirect(
       `/duplicates?error=${encodeURIComponent(
@@ -114,9 +116,16 @@ export async function linkSyntheticToIncidentAction(formData: FormData) {
   revalidatePath("/duplicates");
   revalidatePath("/bench");
   revalidatePath(`/tickets/${target.id}`);
+  // Round-7 §1A — surface the device transfer count so the
+  // operator sees "Linked SYN to INC; 1 device transferred" rather
+  // than just "Linked".
+  const deviceSuffix =
+    devicesTransferred === 0
+      ? ""
+      : `; ${devicesTransferred} device${devicesTransferred === 1 ? "" : "s"} transferred`;
   redirect(
     `/duplicates?ok=${encodeURIComponent(
-      `Linked SYN ticket to ${target.incidentNumber}`,
+      `Linked SYN ticket to ${target.incidentNumber}${deviceSuffix}`,
     )}&dur=6000`,
   );
 }

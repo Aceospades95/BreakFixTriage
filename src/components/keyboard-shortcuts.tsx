@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 const SHORTCUTS: { keys: string; label: string; href?: string; hint?: string }[] = [
   { keys: "/", label: "Focus search" },
   { keys: "?", label: "Toggle this cheat-sheet" },
+  { keys: "Cmd+K", label: "Open command palette", hint: "From any page" },
   { keys: "g t", label: "Tickets", href: "/tickets" },
   { keys: "g q", label: "Quotes", href: "/quotes" },
   { keys: "g s", label: "Scheduling", href: "/scheduling" },
@@ -35,6 +36,10 @@ const SHORTCUTS: { keys: string; label: string; href?: string; hint?: string }[]
   { keys: "g c", label: "Scan", href: "/scan" },
   { keys: "g i", label: "Imports", href: "/imports" },
   { keys: "g d", label: "Dashboards", href: "/dashboards" },
+  // Round-10 §2J — page-local shortcuts on /scheduling/people.
+  { keys: "t", label: "Today", hint: "On /scheduling/people" },
+  { keys: "[", label: "Previous day", hint: "On /scheduling/people" },
+  { keys: "]", label: "Next day", hint: "On /scheduling/people" },
 ];
 
 const ROUTES: Record<string, string> = Object.fromEntries(

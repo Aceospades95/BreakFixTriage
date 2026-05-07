@@ -10,6 +10,7 @@ import {
   createScheduleBlockAction,
   deleteScheduleBlockAction,
 } from "@/server/actions/staff-schedule";
+import { PeopleKeyboardShortcuts } from "./keyboard-shortcuts-island";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +98,7 @@ export default async function PeopleSchedulingPage({
 
   return (
     <>
+      <PeopleKeyboardShortcuts date={date.toISOString().slice(0, 10)} />
       <PageHeader
         title="People schedule"
         subtitle={

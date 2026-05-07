@@ -201,9 +201,17 @@ for file in "${FILES[@]}"; do
       if ($text =~ /\bredeploy\b/i) {
         print "$ARGV:$line: rule(devnote) \xc2\xb7 redeploy\n";
       }
-      while ($text =~ m{(?<![\w/])(/admin/[a-z0-9_-]+|/profile/[a-z0-9_-]+|/me/[a-z0-9_-]+)}g) {
+      while ($text =~ m{(?<![\w/])(/admin/[a-z0-9_-]+|/profile/[a-z0-9_-]+|/me/[a-z0-9_-]+|/scheduling/[a-z0-9_-]+|/duplicates(?:/[a-z0-9_-]+)?|/imports/[a-z0-9_-]+)}g) {
         my $tok = $1;
         print "$ARGV:$line: rule(url-in-prose) \xc2\xb7 $tok\n";
+      }
+      # Round-10 paragraph3F - hardcoded year strings (2024-2099) inside JSX
+      # text are flagged. Use new Date().getFullYear() instead.
+      # Common case: copyright footers and year-in-copy that should
+      # stay current. Tests / fixtures are already excluded.
+      while ($text =~ /\b(20[2-9][0-9])\b/g) {
+        my $tok = $1;
+        print "$ARGV:$line: rule(year-literal) \xc2\xb7 $tok\n";
       }
     }
   ' "$file" >> "$scan_output" || true

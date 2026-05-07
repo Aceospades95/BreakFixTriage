@@ -51,4 +51,39 @@ describe("formatAuditAction", () => {
     expect(out.kind).toBe("generic");
     expect(out.label).toBe("Quote send ticket-skip");
   });
+
+  // Round-8 §1C — stop-status transitions previously rendered raw
+  // ASCII arrows like "Status en route->arrived". They now mirror
+  // the regular transition path with humanised labels + Unicode arrow.
+  it("formats stop-status transitions with the Unicode arrow", () => {
+    const out = formatAuditAction("status:EN_ROUTE->ARRIVED");
+    expect(out.kind).toBe("transition");
+    expect(out.label).toBe("Stop en route → arrived");
+  });
+
+  it("formats stop-status SCHEDULED → EN_ROUTE", () => {
+    const out = formatAuditAction("status:SCHEDULED->EN_ROUTE");
+    expect(out.label).toBe("Stop scheduled → en route");
+  });
+
+  // Round-8 §1C — dot-segmented actions used to render with the
+  // dotted form leaking into prose ("Route.stop.device.added").
+  it("flattens dot-segmented actions into a sentence-case phrase", () => {
+    expect(formatAuditAction("route.stop.device.added").label).toBe(
+      "Route stop device added",
+    );
+    expect(formatAuditAction("route.stop.device.removed").label).toBe(
+      "Route stop device removed",
+    );
+    expect(formatAuditAction("device.transferred").label).toBe(
+      "Device transferred",
+    );
+  });
+
+  // Round-8 §1C — kebab segments preserved.
+  it("keeps hyphens in kebab-case actions", () => {
+    expect(formatAuditAction("snow-merge.cross-school-collision").label).toBe(
+      "Snow-merge cross-school-collision",
+    );
+  });
 });

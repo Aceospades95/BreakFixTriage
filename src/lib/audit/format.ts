@@ -44,6 +44,7 @@ export interface FormattedAction {
 }
 
 const TRANSITION_RE = /^transition:(force:)?([A-Z_]+)->([A-Z_]+)$/;
+const STOP_STATUS_RE = /^status:([A-Z_]+)->([A-Z_]+)$/;
 const EMAIL_RE = /^email:dispatch:([a-z]+):([a-z_]+)$/;
 
 export function formatAuditAction(action: string): FormattedAction {
@@ -60,6 +61,22 @@ export function formatAuditAction(action: string): FormattedAction {
       label: forced
         ? `Force change: ${from} → ${to}`
         : `${from} → ${to}`,
+    };
+  }
+
+  // Round-8 §1C — stop-status transitions logged as
+  // "status:EN_ROUTE->ARRIVED" used to render with the raw ASCII
+  // arrow. Mirror the transition path: humanise both sides + use
+  // the Unicode arrow so the audit log is consistent.
+  const ss = STOP_STATUS_RE.exec(action);
+  if (ss) {
+    const from = humaniseEnum(ss[1]!);
+    const to = humaniseEnum(ss[2]!);
+    return {
+      kind: "transition",
+      from,
+      to,
+      label: `Stop ${from.toLowerCase()} → ${to.toLowerCase()}`,
     };
   }
 
@@ -82,11 +99,18 @@ export function formatAuditAction(action: string): FormattedAction {
     };
   }
 
-  // Heuristic: snake_case → Title Case sentence, hyphens stay.
+  // Heuristic: snake_case + dot-segmented → sentence case phrase,
+  // hyphens stay so "auto-expire" / "snow-merge.cross-school-
+  // collision" preserve their kebab segments. Round-8 §1C: dots
+  // split too so "route.stop.device.added" renders "Route stop
+  // device added" instead of "Route.stop.device.added".
   const friendly = action
-    .split(/[:_]/)
+    .split(/[:_.]/)
+    .filter(Boolean)
     .map((p, i) =>
-      i === 0 ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : p.toLowerCase(),
+      i === 0
+        ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()
+        : p.toLowerCase(),
     )
     .join(" ");
   return { kind: "generic", label: friendly };

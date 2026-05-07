@@ -252,7 +252,8 @@ export async function addDeviceToStop(
       select: { id: true },
     });
 
-    // Audit on the Stop.
+    // Audit on the Stop. Round-6 §2E persists `routeId` in `after`
+    // so the audit IdChip can build /scheduling/routes/{routeId}#stop-{stopId}.
     await writeAudit(
       {
         actorUserId: session.userId,
@@ -266,6 +267,7 @@ export async function addDeviceToStop(
           kind: input.kind,
           syntheticTicketCreated,
           attachedExistingTicket,
+          routeId: stop.routeId,
         },
         reason:
           input.kind === "placeholder"
@@ -366,6 +368,8 @@ export async function removeDeviceFromStop(input: {
           deviceId: sd.deviceId,
           ticketId: sd.ticketId,
           stopLabel,
+          // Round-6 §2E — IdChip context.
+          routeId: sd.stop.routeId,
           reason: input.reason ?? null,
         },
         reason: input.reason ?? null,

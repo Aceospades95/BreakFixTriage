@@ -6,7 +6,8 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { LocalTime } from "@/components/local-time";
 import { EntityDiff } from "@/components/audit/EntityDiff";
-import { IdChip, hrefForEntity } from "@/components/ui/IdChip";
+import { hrefForEntity } from "@/components/ui/IdChip";
+import { IdChipWithCopy } from "@/components/ui/IdChipWithCopy";
 import { formatAuditAction } from "@/lib/audit/format";
 import { humaniseEntity } from "@/lib/format";
 
@@ -97,6 +98,21 @@ export default async function AdminAuditLogPage({
     }),
     prisma.auditLog.count({ where }),
   ]);
+
+  // Round-6 §2E — batch-resolve incident numbers for Ticket entity
+  // rows so the IdChip body shows the human INC# / SYN- prefix
+  // instead of a raw cuid. One DB round trip for the whole page.
+  const ticketIds = logs
+    .filter((l) => l.entityType === "Ticket")
+    .map((l) => l.entityId);
+  const incidentNumberByCuid = new Map<string, string>();
+  if (ticketIds.length > 0) {
+    const tickets = await prisma.ticket.findMany({
+      where: { id: { in: ticketIds } },
+      select: { id: true, incidentNumber: true },
+    });
+    for (const t of tickets) incidentNumberByCuid.set(t.id, t.incidentNumber);
+  }
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -304,10 +320,31 @@ export default async function AdminAuditLogPage({
                   <span className="text-slate-200">
                     {humaniseEntity(log.entityType)}
                   </span>
-                  <IdChip
-                    value={log.entityId}
-                    href={hrefForEntity(log.entityType, log.entityId)}
-                  />
+                  {(() => {
+                    const incident =
+                      log.entityType === "Ticket"
+                        ? incidentNumberByCuid.get(log.entityId)
+                        : undefined;
+                    const ctx = {
+                      incidentNumber: incident,
+                      routeId:
+                        typeof after?.routeId === "string"
+                          ? (after.routeId as string)
+                          : undefined,
+                      schoolId:
+                        typeof after?.schoolId === "string"
+                          ? (after.schoolId as string)
+                          : undefined,
+                    };
+                    const display = incident ?? log.entityId;
+                    return (
+                      <IdChipWithCopy
+                        value={display}
+                        copyValue={log.entityId}
+                        href={hrefForEntity(log.entityType, log.entityId, ctx)}
+                      />
+                    );
+                  })()}
                   <span className="ml-auto text-slate-500">
                     by{" "}
                     {log.actor ? (

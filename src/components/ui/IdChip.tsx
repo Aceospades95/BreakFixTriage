@@ -1,24 +1,29 @@
 /**
- * Round-4 §F4 — shared id chip with optional click-through and
- * copy affordance.
+ * Round-4 §F4 + Round-6 §2E — shared id chip with optional
+ * click-through and copy affordance.
  *
  * Renders an entity id (cuid, incident number, etc.) in a compact
- * pill. When `href` is set, the chip is a `<a>` and clicking the
- * body navigates to the entity. The chip is intentionally NOT
- * `font-mono` (Round-3 §G14 forbids monospace outside `<code>` /
- * `<pre>`); the pill border + tracking-tight class give the
- * "this is an identifier" cue without breaking the convention.
+ * pill. When `href` is set, the chip body is a `<Link>` and clicking
+ * navigates. When `copyValue` is set, a small copy-icon button
+ * sits on the right; clicking the icon copies to the clipboard and
+ * does NOT navigate (Round-6 §2E acceptance).
  *
- * The Round-4 brief asks for a click-to-copy icon next to the
- * value. That needs a client component (`use client` for
- * `navigator.clipboard.writeText`) — the icon-button variant
- * lives in this same file as `IdChipWithCopy` and is exported
- * for callers that need it. The plain `IdChip` is a pure server
- * component (no JS shipped) for pages that don't need copy.
+ * The chip is intentionally NOT `font-mono` — Round-3 §G14 forbids
+ * monospace outside <code>/<pre>; the pill border + tracking
+ * provide the "this is an identifier" cue without breaking the
+ * convention.
+ *
+ * Variants:
+ *   - <IdChip>          — pure server component, no JS shipped.
+ *                         No copy affordance.
+ *   - <IdChipWithCopy>  — client component with a copy-icon button.
+ *                         Use when the value is worth copying
+ *                         (cuids in audit log entries, recipient
+ *                         emails, etc.).
  *
  * Used by:
- *   - /admin/audit (each entry's entity ID)
- *   - merge banners (the merged-into target ID)
+ *   - /admin/audit (every entry's entity id, with copy)
+ *   - merge banners (the merged-into target id)
  *   - portal token rows (token suffix)
  *   - any future surface that renders an entity reference
  */
@@ -62,6 +67,31 @@ export function IdChip({ value, href, className, title }: IdChipProps) {
 }
 
 /**
+ * Round-6 §2E — context object passed to `hrefForEntity` so it can
+ * build canonical URLs that don't have the right id in `entityId`
+ * alone. Examples:
+ *
+ *   - Ticket audit rows store the cuid in `entityId`; the canonical
+ *     URL is `/tickets/{incidentNumber}` so the user-friendly INC#
+ *     shows in the address bar (Round-5 §2.11 redirect resolves
+ *     INC → cuid for us).
+ *   - RouteStop audit rows store the stop cuid in `entityId`; the
+ *     canonical URL is `/scheduling/routes/{routeId}#stop-{stopId}`,
+ *     and `routeId` lives in `after.routeId` per Round-6 §2A/§2E.
+ *   - PortalToken audit rows store the token cuid; the canonical
+ *     URL is `/admin/schools/{schoolId}#portal`, and `schoolId`
+ *     lives in `after.schoolId`.
+ *
+ * `routeId`, `incidentNumber`, `schoolId` are pulled from the
+ * audit row's `after` JSON by the audit page renderer.
+ */
+export interface EntityHrefContext {
+  routeId?: string;
+  incidentNumber?: string;
+  schoolId?: string;
+}
+
+/**
  * Map of `AuditLog.entityType` → href builder. The audit page's
  * EntryCard uses this to decide whether the IdChip should link.
  * Unknown entity types render a plain copy-only chip.
@@ -69,13 +99,23 @@ export function IdChip({ value, href, className, title }: IdChipProps) {
 export function hrefForEntity(
   entityType: string,
   entityId: string,
+  ctx: EntityHrefContext = {},
 ): string | undefined {
   switch (entityType) {
     case "Ticket":
-      return `/tickets/${entityId}`;
+      // Round-6 §2E — prefer the incident number so the URL is
+      // human-readable. Round-5 §2.11 redirect resolves SYN- /
+      // INC- shaped paths back to the cuid URL.
+      return `/tickets/${ctx.incidentNumber ?? entityId}`;
     case "Route":
-    case "RouteStop":
       return `/scheduling/routes/${entityId}`;
+    case "RouteStop":
+      // Round-6 §2E — link to the parent route, scrolling to
+      // the stop anchor. Falls back to no-link when the audit
+      // row predates the routeId-in-after convention.
+      return ctx.routeId
+        ? `/scheduling/routes/${ctx.routeId}#stop-${entityId}`
+        : undefined;
     case "Quote":
       // Quotes don't have a per-quote page today; ticket detail
       // is the canonical surface.
@@ -98,12 +138,12 @@ export function hrefForEntity(
     case "User":
       return `/admin/users/${entityId}`;
     case "StaffSchedule":
-      return `/scheduling/people`;
+      return `/scheduling/people?scheduleId=${entityId}`;
     case "PortalToken":
-      // Portal token chip lives on /admin/schools/[schoolId];
-      // we don't know the schoolId here so the chip stays
-      // copy-only.
-      return undefined;
+      // Round-6 §2E — schoolId lives in audit `after.schoolId`.
+      return ctx.schoolId
+        ? `/admin/schools/${ctx.schoolId}#portal`
+        : undefined;
     default:
       return undefined;
   }

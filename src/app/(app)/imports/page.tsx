@@ -177,10 +177,22 @@ export default async function ImportsPage({
           <tbody className="divide-y divide-surface-border">
             {batches.map((b) => {
               const stats = b.stats ?? {};
-              const outcome =
+              // Round-7 §3C — surface the new "merged-from-synthetic"
+              // bucket when present. Older batches that ran before
+              // R7 don't carry the field; outcome stays the legacy
+              // shape for those.
+              const mergedFromSyn =
+                typeof stats.mergedFromSynthetic === "number"
+                  ? stats.mergedFromSynthetic
+                  : 0;
+              const baseOutcome =
                 stats.created !== undefined
                   ? `${stats.created ?? 0} created · ${stats.updated ?? 0} updated · ${stats.duplicates ?? 0} dupes · ${stats.rejected ?? 0} rejected`
                   : "—";
+              const outcome =
+                mergedFromSyn > 0
+                  ? `${stats.created ?? 0} created · ${mergedFromSyn} merged-from-synthetic · ${stats.updated ?? 0} updated · ${stats.duplicates ?? 0} dupes · ${stats.rejected ?? 0} rejected`
+                  : baseOutcome;
               const ago = formatTimeAgo(b.createdAt);
               return (
                 <tr key={b.id} className="transition hover:bg-surface-muted/40">

@@ -8,6 +8,7 @@ import {
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
 import { detectDuplicates } from "@/lib/duplicates/detect";
+import { reconcileSnowImport } from "@/lib/snow-merge";
 import { parseFile } from "./parse";
 import { mapRawRow, mapRawSchoolRow, mapRawDeviceRow, mapRawUserRow, mapRawPartRow, mapRawDeviceModelRow } from "./mapper";
 import { NormalizedImportRow, NormalizedSchoolRow, NormalizedDeviceRow, NormalizedUserRow, NormalizedPartRow, NormalizedDeviceModelRow } from "./schema";
@@ -47,6 +48,12 @@ export interface ImportResult {
   updated: number;
   duplicates: number;
   rejected: number;
+  /** Round-7 §3C — synthetics auto-merged into imported INCs.
+   *  Optional because non-ticket imports (schools / devices /
+   *  users / parts) don't run the reconcile path. */
+  mergedFromSynthetic?: number;
+  /** Round-7 §3C — same-serial / different-school collisions. */
+  crossSchoolCollisions?: number;
 }
 
 export interface IngestInput {
@@ -196,6 +203,18 @@ export async function runImport(
     }
   }
 
+  // Round-7 §3C — auto-merge synthetic on-route pickups against the
+  // SNOW INC tickets just created in this batch. mergeTicket() runs
+  // post-commit-of-the-source-row so the row commit path stays clean
+  // even if a merge fails (the synthetic stays open and gets an
+  // audit row noting the failure). reconcileSnowImport returns
+  // counts that surface in the import stats blob.
+  const reconcile = await reconcileSnowImport(
+    batch.id,
+    input.uploadedByUserId,
+    db,
+  );
+
   const stats: Prisma.JsonObject = {
     parsed: parsed.rows.length,
     invalid: invalidCount,
@@ -203,6 +222,8 @@ export async function runImport(
     updated,
     duplicates,
     rejected,
+    mergedFromSynthetic: reconcile.mergedFromSynthetic,
+    crossSchoolCollisions: reconcile.crossSchoolCollisions,
   };
 
   await db.importBatch.update({
@@ -226,6 +247,8 @@ export async function runImport(
     updated,
     duplicates,
     rejected,
+    mergedFromSynthetic: reconcile.mergedFromSynthetic,
+    crossSchoolCollisions: reconcile.crossSchoolCollisions,
   };
 }
 

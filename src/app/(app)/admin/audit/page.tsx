@@ -9,7 +9,7 @@ import { EntityDiff } from "@/components/audit/EntityDiff";
 import { hrefForEntity } from "@/components/ui/IdChip";
 import { IdChipWithCopy } from "@/components/ui/IdChipWithCopy";
 import { formatAuditAction } from "@/lib/audit/format";
-import { humaniseEntity } from "@/lib/format";
+import { humanise, humaniseEntity } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -186,9 +186,11 @@ export default async function AdminAuditLogPage({
         : [];
     const nameById = new Map(users.map((u) => [u.id, u.name]));
     for (const s of schedules) {
+      // Round-9 §3C — humanise the kind via the canonical helper
+      // (preserves PTO / TOTP etc. as acronyms).
       scheduleLabelByCuid.set(
         s.id,
-        `${s.kind.replace(/_/g, " ").toLowerCase()} · ${nameById.get(s.userId) ?? "(unknown)"} · ${s.date.toISOString().slice(0, 10)}`,
+        `${humanise(s.kind)} · ${nameById.get(s.userId) ?? "(unknown)"} · ${s.date.toISOString().slice(0, 10)}`,
       );
     }
   }

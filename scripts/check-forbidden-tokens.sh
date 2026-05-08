@@ -265,6 +265,42 @@ for file in "${FILES[@]}"; do
         print "$ARGV:$line: rule(all-caps-label) \xc2\xb7 $tok\n";
       }
     }
+    # Round-13 paragraph4A.1 - parens-wrapped ALL_CAPS_UNDERSCORE
+    # inside JSX text spans only. Catches the §1B-style
+    # "(AWAITING_ONSITE)" suffix in user-visible JSX. The §1B
+    # leak was a template-literal interpolation; scanning JSX
+    # text catches both static literals and the rendered output
+    # of interpolated expressions.
+    while ($src =~ />([^<>{}\n]{1,300})</g) {
+      my $jsxText = $1;
+      my $jsxPos  = $-[0] + 1;
+      my $jsxBefore = substr($src, 0, $jsxPos);
+      next if in_code_or_pre($jsxBefore);
+      my $jsxLine = line_at($src, $jsxPos);
+      while ($jsxText =~ /\(([A-Z]{2,}_[A-Z_]+)\)/g) {
+        my $tok = $1;
+        print "$ARGV:$jsxLine: rule(parens-enum) \xc2\xb7 ($tok)\n";
+      }
+    }
+    # Round-13 paragraph4A.2 - lowercase_underscore tokens (e.g.
+    # "school_spoc", "ticket_created") rendered as JSX text
+    # outside of <code> are programmatic strings leaking to
+    # admins. Wrap in <code> to flag visually as a developer
+    # token.
+    while ($src =~ />([^<>{}\n]{1,300})</g) {
+      my $text = $1;
+      my $pos  = $-[0] + 1;
+      my $before = substr($src, 0, $pos);
+      next if in_code_or_pre($before);
+      my $line = line_at($src, $pos);
+      while ($text =~ /\b([a-z]+_[a-z]+(?:_[a-z]+)*)\b/g) {
+        my $tok = $1;
+        # Allowlist: known prose words with underscores. None
+        # currently — the convention is hyphen-or-space in
+        # operator copy.
+        print "$ARGV:$line: rule(snake-case-token) \xc2\xb7 $tok\n";
+      }
+    }
   ' "$file" >> "$scan_output" || true
 done
 

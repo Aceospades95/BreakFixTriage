@@ -46,8 +46,12 @@ export function ForceChangeForm({
           Pick a target state…
         </option>
         {states.map((s) => (
-          <option key={s.state} value={s.state}>
-            {s.label} ({s.state})
+          // Round-13 §1B — drop the "(AWAITING_ONSITE)" suffix.
+          // The humanised label is sufficient in user-visible
+          // text. Devs and tests grab the raw enum via the
+          // data-state-key attribute below.
+          <option key={s.state} value={s.state} data-state-key={s.state}>
+            {s.label}
           </option>
         ))}
       </select>

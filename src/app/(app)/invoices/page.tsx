@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { QuoteStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
@@ -61,9 +62,12 @@ export default async function InvoicesPage({
       )}
 
       {tickets.length === 0 ? (
-        <div className="rounded border border-surface-border bg-surface-muted/40 p-6 text-center text-sm text-slate-400">
-          Nothing in the invoice queue. 🎉
-        </div>
+        // Round-13 §3C — migrate from emoji-only to the shared
+        // EmptyState component (CircleCheckBig at slate-500).
+        <EmptyState
+          headline="Nothing in the invoice queue"
+          body="When a ticket is closed and the SPOC has approved a quote, it lands here for invoicing. The queue is currently caught up."
+        />
       ) : (
         <ul className="space-y-4">
           {tickets.map((t) => {

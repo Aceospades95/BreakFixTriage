@@ -31,6 +31,7 @@ Every signed-in user reaches them.
 | `/notifications` | any | Personal in-app feed |
 | `/profile` | any | Profile + name |
 | `/profile/2fa` | any | Personal 2FA setup |
+| `/people` | any | Round-13 §1A redirect → `/scheduling/people` |
 | `/[...notfound]` | any | 404 fallback with sitemap |
 | `/admin/[...notfound]` | any | 404 fallback inside admin |
 

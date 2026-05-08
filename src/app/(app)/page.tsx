@@ -14,6 +14,7 @@ import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/auth/rbac";
+import { formatRole } from "@/lib/format";
 import { daysInState, slaHealth } from "@/lib/reports/sla";
 import { getSlaThresholds } from "@/lib/settings/settings";
 import { updateStopStatusAction } from "@/server/actions/scheduling";
@@ -581,7 +582,7 @@ export default async function HomePage() {
                             {user?.name ?? "Unknown"}
                           </div>
                           <div className="font-medium tracking-tight text-[10px] uppercase text-slate-500">
-                            {user?.role ?? "—"}
+                            {user?.role ? formatRole(user.role) : "—"}
                           </div>
                         </div>
                         <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-xs">
@@ -656,10 +657,14 @@ export default async function HomePage() {
                 definition; the tile clicks anchor to the inline
                 breached panel below.
               */}
+              {/* Round-13 §3B — promote the in-page anchor jump
+                  to a filtered /tickets navigation so the card is
+                  a real deep-link, not just a scroll target. The
+                  in-page list below still renders for context. */}
               <Kpi
                 label="SLA breached"
                 value={overdueBreached.length}
-                href="#sla-breached"
+                href="/tickets?slaHealth=breached&state=open"
                 hint="Open tickets where days-in-current-state has crossed that state's SLA threshold."
                 emphasize={overdueBreached.length > 0}
               />

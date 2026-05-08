@@ -9,6 +9,7 @@ import { humanise } from "@/lib/format";
 import {
   upsertHolidayAction,
   deleteHolidayAction,
+  seedFederalHolidaysAction,
 } from "@/server/actions/holidays";
 
 export const dynamic = "force-dynamic";
@@ -128,8 +129,27 @@ export default async function HolidaysPage({
       </section>
 
       {holidays.length === 0 ? (
-        <div className="rounded border border-surface-border bg-surface-muted/30 p-10 text-center text-sm text-slate-400">
-          No holidays in {year} yet.
+        // Round-13 §3G — empty-state with a Seed defaults
+        // affordance so admins viewing a non-current year (or
+        // a fresh tenant on the current year) can populate the
+        // 11 federal holidays in one click.
+        <div className="rounded border border-surface-border bg-surface-muted/30 p-10 text-center">
+          <p className="mb-4 text-sm text-slate-300">
+            No holidays imported yet for {year}.
+          </p>
+          <p className="mb-4 text-xs text-slate-500">
+            Seed the eleven US federal holidays for {year}, or
+            switch year above to view a populated list.
+          </p>
+          <form action={seedFederalHolidaysAction}>
+            <input type="hidden" name="year" value={year} />
+            <button
+              type="submit"
+              className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20"
+            >
+              Seed {year} federal holidays
+            </button>
+          </form>
         </div>
       ) : (
         <ul className="divide-y divide-surface-border rounded-lg border border-surface-border">

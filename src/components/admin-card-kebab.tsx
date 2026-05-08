@@ -87,6 +87,12 @@ export function AdminCardKebab({ actions }: { actions: KebabAction[] }) {
       onKeyDown={onKey}
       onClick={(e) => e.stopPropagation()}
     >
+      {/*
+        Round-13 §3E — kebab hit area expanded to a 44×44 invisible
+        target so touch users hit the WCAG minimum without enlarging
+        the visible glyph. The ⋯ stays a small 16px mark
+        centered inside the larger button.
+      */}
       <button
         type="button"
         aria-label="Quick actions"
@@ -97,9 +103,12 @@ export function AdminCardKebab({ actions }: { actions: KebabAction[] }) {
           setOpen((o) => !o);
           setHighlighted(0);
         }}
-        className="rounded p-1 text-slate-400 transition hover:bg-surface-muted hover:text-white focus:outline-none focus:ring-1 focus:ring-accent"
+        className="flex h-11 w-11 items-center justify-center rounded text-slate-400 transition hover:bg-surface-muted hover:text-white focus:outline-none focus:ring-1 focus:ring-accent"
       >
-        <span aria-hidden="true" className="block leading-none">
+        <span
+          aria-hidden="true"
+          className="block text-base leading-none"
+        >
           ⋯
         </span>
       </button>

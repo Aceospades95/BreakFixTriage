@@ -153,16 +153,27 @@ export async function deleteHolidayAction(formData: FormData) {
 }
 
 /**
- * Round-11 §1D — kebab "Auto-seed US federal holidays" action.
+ * Round-11 §1D + Round-13 §3G — kebab "Auto-seed US federal
+ * holidays" action.
  *
  * Idempotent: skips any (date, GLOBAL, null) row that already
  * exists. Writes one audit row per inserted holiday so a future
  * /admin/audit walk can show what got created and when. The full
  * 11-row federal list lives in src/lib/holidays/federal.ts.
+ *
+ * Optional `year` form field (R13 §3G) lets the empty-state
+ * "Seed defaults" affordance on /admin/holidays?year=2025 seed
+ * the year currently being viewed instead of the current year.
+ * Without the field the action defaults to the current year.
  */
-export async function seedFederalHolidaysAction() {
+export async function seedFederalHolidaysAction(formData?: FormData) {
   const session = await requireRole(PERMISSIONS.USERS_MANAGE);
-  const year = new Date().getUTCFullYear();
+  const yearRaw = formData?.get("year")?.toString();
+  const yearParsed = yearRaw ? parseInt(yearRaw, 10) : NaN;
+  const year =
+    Number.isFinite(yearParsed) && yearParsed >= 2000 && yearParsed <= 2100
+      ? yearParsed
+      : new Date().getUTCFullYear();
   const holidays = buildFederalHolidaysForYear(year);
 
   let createdCount = 0;
@@ -193,7 +204,7 @@ export async function seedFederalHolidaysAction() {
 
   revalidatePath("/admin/holidays");
   redirect(
-    `/admin/holidays?ok=${encodeURIComponent(
+    `/admin/holidays?year=${year}&ok=${encodeURIComponent(
       createdCount === 0
         ? `All ${year} federal holidays already present`
         : `Seeded ${createdCount} federal holiday${createdCount === 1 ? "" : "s"} for ${year}`,

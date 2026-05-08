@@ -84,11 +84,24 @@ else
   echo "ok /admin/holidays?year=${YEAR} has rows"
 fi
 
+# Round-13 §4E — extended health checks. Verify the API
+# surface is up alongside the page-level seed state.
+
+# /api/health — unauthenticated, expected 200.
+health_args=(-sS -L -w "%{http_code}\n" -o /tmp/verify-deploy-health.body)
+status=$(curl "${health_args[@]}" "${BASE_URL}/api/health" || echo "000")
+if [[ "$status" != "200" ]]; then
+  echo "::error::/api/health returned ${status}"
+  failed=$((failed + 1))
+else
+  echo "ok /api/health up"
+fi
+
 if [[ "$failed" -gt 0 ]]; then
   echo ""
-  echo "verify-deploy: ${failed} failure(s)"
+  echo "Round-13 health: FAIL — ${failed} failure(s)"
   exit 1
 fi
 
 echo ""
-echo "verify-deploy: all checks passed"
+echo "Round-13 health: OK"

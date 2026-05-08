@@ -259,9 +259,20 @@ async function RecentSessionsPanel({ userId }: { userId: string }) {
             {sessions.map((s) => {
               const stripPrefix = (v: string | null) =>
                 v == null ? null : v.replace(/^[a-z]+:/i, "");
-              const sessionId = stripPrefix(s.ipHash) ?? "—";
-              const fingerprint =
-                stripPrefix(s.uaFingerprint) ?? "(no fingerprint recorded)";
+              // Round-13 §3H — when neither hash is present, the
+              // session predates ip/UA capture (e.g. seeded
+              // fixtures, very early sessions). Render "Unknown
+              // device" instead of two ambiguous dashes. The
+              // full IP+ASN+OS+browser parser is filed in
+              // docs/round-13-backlog.md as B8 — the current
+              // hash storage is one-way so a parser would also
+              // need a schema change to keep the raw values
+              // alongside.
+              const ip = stripPrefix(s.ipHash);
+              const ua = stripPrefix(s.uaFingerprint);
+              const isUnknown = ip == null && ua == null;
+              const sessionId = isUnknown ? "Unknown device" : (ip ?? "—");
+              const fingerprint = isUnknown ? "" : (ua ?? "(no fingerprint recorded)");
               return (
                 <li
                   key={s.id}

@@ -60,7 +60,9 @@ export default async function DashboardsPage() {
         <Kpi
           label="Aging > 30d"
           value={aging.length}
-          href="/tickets"
+          // Round-13 §3B — link to the filtered list so the card
+          // is a navigation affordance, not just a counter.
+          href="/tickets?ageDays=gte:30&state=open"
           tone={aging.length > 0 ? "warn" : undefined}
         />
       </section>

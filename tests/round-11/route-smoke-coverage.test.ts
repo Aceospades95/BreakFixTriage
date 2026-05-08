@@ -70,6 +70,10 @@ const PRINT_PATHS_OK_TO_SKIP_IN_SPEC = new Set<string>([
   // 404 fallbacks
   "/[...notfound]",
   "/admin/[...notfound]",
+  // Round-13 §1A — /people is a 308 redirect, not a final
+  // destination, so the smoke spec doesn't need to walk it.
+  // The redirect target /scheduling/people IS in the spec.
+  "/people",
 ]);
 
 describe("Round-11 §HOTFIX-2 — sitemap + route smoke coverage", () => {

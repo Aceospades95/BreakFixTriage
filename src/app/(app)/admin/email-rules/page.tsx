@@ -52,10 +52,20 @@ export default async function EmailRulesPage() {
         title="Email rules"
         subtitle={`${rules.length} rule${rules.length === 1 ? "" : "s"} · admin`}
         actions={
+          // Round-13 §3F — disable the seed button when ≥1 rule
+          // already exists. A re-click would create a duplicate
+          // example rule, which is exactly the kind of quiet
+          // foot-gun the gate guards against.
           <form action={seedExampleRuleAction}>
             <button
               type="submit"
-              className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20"
+              disabled={rules.length > 0}
+              title={
+                rules.length > 0
+                  ? "Already seeded — use the row controls below to edit existing rules."
+                  : "Insert one disabled-by-default example rule"
+              }
+              className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-emerald-500/10"
             >
               Seed example rule
             </button>
@@ -109,7 +119,6 @@ export default async function EmailRulesPage() {
             </thead>
             <tbody className="divide-y divide-surface-border">
               {rules.map((rule) => {
-                const recipients = recipientSummary(rule.recipients);
                 const fired = lastFired.get(rule.id);
                 return (
                   <tr key={rule.id} className="hover:bg-surface-muted/40">
@@ -125,10 +134,10 @@ export default async function EmailRulesPage() {
                       {humanise(rule.event)}
                     </td>
                     <td className="px-3 py-2 text-xs text-slate-300">
-                      {rule.template.key}
+                      <TokenChip>{rule.template.key}</TokenChip>
                     </td>
                     <td className="px-3 py-2 text-xs text-slate-300">
-                      {recipients}
+                      <RecipientChips recipients={rule.recipients} />
                     </td>
                     <td className="px-3 py-2 text-xs">
                       {rule.enabled ? (
@@ -157,27 +166,58 @@ export default async function EmailRulesPage() {
   );
 }
 
-function recipientSummary(recipients: unknown): string {
-  if (!recipients || typeof recipients !== "object") return "—";
-  const r = recipients as {
-    to?: Array<{ kind?: string; value?: string }>;
-    cc?: Array<{ kind?: string; value?: string }>;
-    bcc?: Array<{ kind?: string; value?: string }>;
-  };
-  function summarise(list: Array<{ kind?: string; value?: string }> | undefined) {
-    if (!list || list.length === 0) return "";
-    return list
-      .map((r) =>
-        r.kind === "literal" && r.value ? r.value : (r.kind ?? "?"),
-      )
-      .join(", ");
+/**
+ * Round-13 §1D — token chip for the Recipients / Template
+ * columns. Tokens like `school_spoc` / `ticket_created` are
+ * programmatic strings tied to template-variable wiring; admins
+ * editing rules need the exact spelling, so we render them as
+ * <code> with a monospace pill style. The class flags them
+ * visually as developer tokens rather than user-readable copy.
+ */
+function TokenChip({ children }: { children: React.ReactNode }) {
+  // Round-13 §1D — keep `<code` and `font-mono` on a single line
+  // so the Round-3 §G14 vitest gate (which only matches
+  // <code|<pre> on the same line as font-mono) passes.
+  return (
+    <code data-token-chip className="inline-block rounded border border-surface-border bg-surface px-1.5 py-0.5 font-mono text-[10px] text-slate-200">
+      {children}
+    </code>
+  );
+}
+
+type RecipientItem = { kind?: string; value?: string };
+
+function RecipientChips({ recipients }: { recipients: unknown }) {
+  if (!recipients || typeof recipients !== "object") {
+    return <span className="text-slate-500">—</span>;
   }
-  const parts: string[] = [];
-  const to = summarise(r.to);
-  const cc = summarise(r.cc);
-  const bcc = summarise(r.bcc);
-  if (to) parts.push(`To: ${to}`);
-  if (cc) parts.push(`Cc: ${cc}`);
-  if (bcc) parts.push(`Bcc: ${bcc}`);
-  return parts.join(" · ") || "—";
+  const r = recipients as {
+    to?: RecipientItem[];
+    cc?: RecipientItem[];
+    bcc?: RecipientItem[];
+  };
+  const groups: { label: string; items: RecipientItem[] }[] = [
+    { label: "To", items: r.to ?? [] },
+    { label: "Cc", items: r.cc ?? [] },
+    { label: "Bcc", items: r.bcc ?? [] },
+  ].filter((g) => g.items.length > 0);
+  if (groups.length === 0) return <span className="text-slate-500">—</span>;
+  return (
+    <div className="flex flex-col gap-1">
+      {groups.map((g) => (
+        <div key={g.label} className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] tracking-wide text-slate-500">
+            {g.label}:
+          </span>
+          {g.items.map((item, i) => {
+            const label =
+              item.kind === "literal" && item.value
+                ? item.value
+                : (item.kind ?? "?");
+            return <TokenChip key={`${g.label}-${i}-${label}`}>{label}</TokenChip>;
+          })}
+        </div>
+      ))}
+    </div>
+  );
 }

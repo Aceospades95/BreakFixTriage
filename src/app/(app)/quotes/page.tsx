@@ -143,7 +143,18 @@ export default async function QuotesPage({
               }`}
             >
               {tab.label}
-              <span className="ml-1.5 font-medium tracking-tight text-slate-500">{count}</span>
+              {/* Round-13 §3A — count promoted to a nested pill
+                  chip for visual consistency with other filter
+                  rows (matching /tickets, /admin/audit). */}
+              <span
+                className={`ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0 text-[10px] font-medium tracking-tight tabular-nums ${
+                  active
+                    ? "bg-accent/30 text-white"
+                    : "bg-surface-border text-slate-400"
+                }`}
+              >
+                {count}
+              </span>
             </Link>
           );
         })}

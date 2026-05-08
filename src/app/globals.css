@@ -120,34 +120,36 @@
  * Light-mode text overrides. Tailwind's `text-slate-*` and
  * `text-white` literals are baked into hundreds of components;
  * remap them when light mode is active so the visual sweep
- * (§1G.6) doesn't have to touch every component. Applies to both
- * default :root and explicit :root.light.
+ * (§1G.6) doesn't have to touch every component.
+ *
+ * Round-12 §1G hotfix — these MUST be gated on .light (or
+ * :not(.dark) for the system pre-paint window). The previous
+ * shape had a bare `:root` selector which matches in BOTH light
+ * AND dark mode (`:root.dark` is still `:root`), so the remaps
+ * fired in dark mode and turned slate-300 muted text into
+ * slate-700 invisible-on-dark-bg. The :root:not(.dark) form
+ * scopes the remap to "anything that isn't explicitly dark" —
+ * covers system-default-light + the brief no-class window
+ * before the anti-flash script runs.
  */
-:root .text-slate-100,
-:root.light .text-slate-100 { color: rgb(15 23 42); }
-:root .text-slate-200,
-:root.light .text-slate-200 { color: rgb(30 41 59); }
-:root .text-slate-300,
-:root.light .text-slate-300 { color: rgb(51 65 85); }
-:root .text-slate-400,
-:root.light .text-slate-400 { color: rgb(71 85 105); }
-:root .text-slate-500,
-:root.light .text-slate-500 { color: rgb(100 116 139); }
-:root .text-slate-600,
-:root.light .text-slate-600 { color: rgb(107 114 128); }
-:root .text-white,
-:root.light .text-white { color: rgb(15 23 42); }
+:root:not(.dark) .text-slate-100 { color: rgb(15 23 42); }
+:root:not(.dark) .text-slate-200 { color: rgb(30 41 59); }
+:root:not(.dark) .text-slate-300 { color: rgb(51 65 85); }
+:root:not(.dark) .text-slate-400 { color: rgb(71 85 105); }
+:root:not(.dark) .text-slate-500 { color: rgb(100 116 139); }
+:root:not(.dark) .text-slate-600 { color: rgb(107 114 128); }
+:root:not(.dark) .text-white { color: rgb(15 23 42); }
 
 /* Keep primary-action buttons readable in light mode — text-white
  * on the primary forest green background should stay white, not
  * get remapped. */
-:root .bg-accent .text-white,
-:root .bg-accent-strong .text-white,
-:root .bg-primary .text-white,
-:root button.bg-accent,
-:root button.bg-accent-strong,
-:root a.bg-accent,
-:root a.bg-accent-strong,
+:root:not(.dark) .bg-accent .text-white,
+:root:not(.dark) .bg-accent-strong .text-white,
+:root:not(.dark) .bg-primary .text-white,
+:root:not(.dark) button.bg-accent,
+:root:not(.dark) button.bg-accent-strong,
+:root:not(.dark) a.bg-accent,
+:root:not(.dark) a.bg-accent-strong,
 :root.light .bg-accent .text-white,
 :root.light .bg-accent-strong .text-white,
 :root.light .bg-primary .text-white,
@@ -157,19 +159,18 @@
 :root.light a.bg-accent-strong { color: rgb(255 255 255); }
 
 /* Tinted status colors need a darker tint in light mode so they
- * stay readable against the light-tinted banners. */
-:root .text-amber-100, :root .text-amber-200,
-:root.light .text-amber-100, :root.light .text-amber-200 { color: rgb(120 53 15); }
-:root .text-red-100, :root .text-red-200,
-:root.light .text-red-100, :root.light .text-red-200 { color: rgb(127 29 29); }
-:root .text-emerald-100, :root .text-emerald-200,
-:root.light .text-emerald-100, :root.light .text-emerald-200 { color: rgb(6 78 59); }
-:root .text-violet-200,
-:root.light .text-violet-200 { color: rgb(76 29 149); }
-:root .text-indigo-200,
-:root.light .text-indigo-200 { color: rgb(30 27 75); }
-:root .text-blue-200,
-:root.light .text-blue-200 { color: rgb(30 58 138); }
+ * stay readable against the light-tinted banners. Same hotfix
+ * scope as the slate remaps above — :root:not(.dark) so the
+ * rule never fires when the html is explicitly dark. */
+:root:not(.dark) .text-amber-100,
+:root:not(.dark) .text-amber-200 { color: rgb(120 53 15); }
+:root:not(.dark) .text-red-100,
+:root:not(.dark) .text-red-200 { color: rgb(127 29 29); }
+:root:not(.dark) .text-emerald-100,
+:root:not(.dark) .text-emerald-200 { color: rgb(6 78 59); }
+:root:not(.dark) .text-violet-200 { color: rgb(76 29 149); }
+:root:not(.dark) .text-indigo-200 { color: rgb(30 27 75); }
+:root:not(.dark) .text-blue-200 { color: rgb(30 58 138); }
 
 body {
   color: rgb(var(--color-foreground));

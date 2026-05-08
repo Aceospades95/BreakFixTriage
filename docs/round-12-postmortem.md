@@ -183,3 +183,94 @@ visual outcome.
 - Click Match system → `emulateMedia({ colorScheme: 'dark|light' })`
   flips the class without navigation
 - Anonymous /signin → respects OS preference
+
+### data-theme-resolved="pending" leak
+
+Caught on the deployed `81f47d9` commit. Two distinct bugs in the
+§1G implementation, both surfacing as "every page is now low-
+contrast / nearly-invisible text on the sidebar + header chrome".
+
+#### Bug A — server shipped `data-theme-resolved="pending"`
+
+The root layout (R12 §1G commit) had:
+
+```tsx
+<html
+  data-theme={theme}
+  data-theme-resolved={themeClass ?? "pending"}  // <-- bug
+>
+```
+
+For system-mode users the server-render emitted
+`data-theme-resolved="pending"`. The intent was for the inline
+anti-flash script to overwrite that with `light` / `dark` before
+paint. Two problems with the original shape:
+
+1. The inline script was only writing the `class` attribute, not
+   `data-theme-resolved`. So the attribute stayed on `pending`
+   forever after first paint.
+2. Even if the script DID overwrite it, any CSS rule keyed on
+   `[data-theme-resolved="pending"]` would have a brief
+   first-paint window where it matched. Better to never ship the
+   sentinel at all.
+
+**Fix**: emit the attribute only when the server has a real
+value. For system mode, the attribute is omitted (`undefined` in
+JSX). The inline anti-flash script ALWAYS sets the attribute as
+its first action, with the resolved `light` / `dark` value.
+
+#### Bug B — globals.css bare `:root` selectors leaked into dark mode
+
+This was the actual cause of the low-contrast symptom. The §1G.2
+rewrite added rules of the form:
+
+```css
+:root .text-slate-300,
+:root.light .text-slate-300 { color: rgb(51 65 85); }
+```
+
+`:root` matches `<html>` regardless of class. So on a dark-mode
+page (`<html class="dark">`), `:root .text-slate-300` STILL
+matches — `:root.dark` is just `:root` with an extra class. The
+remap fired in dark mode and turned slate-300 muted text into
+slate-700, which is nearly invisible against the slate-800 dark
+sidebar background.
+
+**Fix**: change every bare `:root` selector to `:root:not(.dark)`.
+This scopes the remap to "anything that isn't explicitly dark"
+— covers explicit `.light` AND the brief no-class window before
+the anti-flash script runs.
+
+The brief's diagnosis pointed at `data-theme-resolved="pending"`
+as the cascade gate, but `grep -rn "data-theme-resolved" src/`
+returned only the layout's own emitter — no CSS rule keyed on
+it. The actual cascade leak was the bare `:root` selector. Both
+bugs are fixed in the same hotfix commit because the brief
+specifically requested both gates (drop the `pending` sentinel
+AND audit any cascade keyed on it).
+
+#### Gates added
+
+- `tests/round-12/theme-hotfix.test.ts` — 10 cases:
+  - layout never ships `"pending"` as a JSX value
+  - inline script writes `data-theme-resolved` synchronously
+  - no source file references `[data-theme-resolved="pending"]`
+  - globals.css has no bare `:root .utility` selectors
+  - every slate-* / status-color remap gates on `:not(.dark)`
+- Playwright assertion in `e2e/theme-picker.spec.ts` walks every
+  theme choice + reload and asserts `data-theme-resolved` is
+  never `"pending"` (always `"light"`, `"dark"`, or `null`).
+
+#### Why the original tests didn't catch this
+
+The R12 §1G structural test (`tests/round-12/theme-picker.test.ts`)
+verified that the layout STAMPED the `data-theme-resolved`
+attribute, but didn't verify the value was ever non-`"pending"`.
+The Playwright spec was gated on §1E runtime which CI runs but
+local doesn't, so the visual symptom didn't surface in the
+local triple-gate run.
+
+Lesson: structural assertions on attribute presence aren't
+enough — they must also pin the attribute's allowed value set.
+Same lesson as §1A's "documented manual step is not a reliability
+solution".

@@ -58,6 +58,24 @@ test.describe("§1G theme picker", () => {
     await expect(html).not.toHaveClass(/(^|\s)dark(\s|$)/, { timeout: 200 });
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(html).toHaveClass(/(^|\s)dark(\s|$)/, { timeout: 200 });
+
+    // --- §1G hotfix gate — data-theme-resolved is NEVER "pending" ---
+    // After any theme choice + reload, the attribute is either
+    // missing or has an explicit "light" / "dark" value. The
+    // server emits it for explicit themes; the inline anti-flash
+    // script stamps it before paint for system mode.
+    for (const choice of ["light", "dark", "system"] as const) {
+      await page.locator(`[data-theme-option="${choice}"]`).click();
+      await page.reload();
+      const resolved = await html.getAttribute("data-theme-resolved");
+      expect(
+        resolved,
+        `data-theme-resolved was "${resolved}" after picking ${choice}; never expected "pending"`,
+      ).not.toBe("pending");
+      if (resolved !== null) {
+        expect(["light", "dark"]).toContain(resolved);
+      }
+    }
   });
 
   test("anonymous /signin respects OS preference (no DB row, no cookie)", async ({

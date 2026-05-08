@@ -34,13 +34,18 @@ export const viewport: Viewport = {
 };
 
 /**
- * Round-12 §1G.1 — the inline anti-flash script.
+ * Round-12 §1G.1 + §1G hotfix — the inline anti-flash script.
  *
- * Runs synchronously before any paint. If the layout chose to emit
- * <html> with no theme class (system mode), this script reads the
- * OS preference and adds the matching class. Without this, system-
- * mode users would see a flash of the default (light) before the
- * `<ThemeSystemListener>` client component hydrated.
+ * Runs synchronously before any paint. Two responsibilities:
+ *
+ *   1. If the layout chose to emit <html> with no theme class
+ *      (system mode), read prefers-color-scheme and add the
+ *      matching class.
+ *   2. Stamp data-theme-resolved with the resolved class so any
+ *      CSS rule keyed on it has a real value to match (never
+ *      "pending"). The server-render path already sets the
+ *      attribute when theme is light/dark; this script handles
+ *      the system case.
  *
  * Wrapped in try/catch so a script failure never blanks the page.
  */
@@ -48,10 +53,17 @@ const ANTI_FLASH_SCRIPT = `
 (function(){
   try {
     var html = document.documentElement;
-    if (!html.classList.contains('light') && !html.classList.contains('dark')) {
+    var resolved;
+    if (html.classList.contains('light')) {
+      resolved = 'light';
+    } else if (html.classList.contains('dark')) {
+      resolved = 'dark';
+    } else {
       var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      html.classList.add(dark ? 'dark' : 'light');
+      resolved = dark ? 'dark' : 'light';
+      html.classList.add(resolved);
     }
+    html.setAttribute('data-theme-resolved', resolved);
   } catch (e) { /* paint anyway */ }
 })();
 `;
@@ -92,7 +104,14 @@ export default async function RootLayout({
       lang="en"
       className={themeClass ?? undefined}
       data-theme={theme}
-      data-theme-resolved={themeClass ?? "pending"}
+      // Round-12 §1G hotfix — never ship "pending". When the
+      // server can't know the OS preference (system mode),
+      // omit the attribute entirely; the inline anti-flash
+      // script adds it before paint. CSS rules that key on this
+      // attribute should match either an explicit "light" /
+      // "dark" value or fall back to the .light / .dark class
+      // selector (set both server- and client-side).
+      data-theme-resolved={themeClass ?? undefined}
     >
       <head>
         {/* eslint-disable-next-line react/no-danger */}

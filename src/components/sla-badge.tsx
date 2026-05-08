@@ -63,7 +63,11 @@ export function SlaBadge({
       className={cn(
         // Round-2 §14: sans stack across the board; tight tracking
         // keeps the badge compact without monospace.
-        "inline-flex items-center rounded border px-1.5 font-medium tracking-tight",
+        // Round-12 §2K: whitespace-nowrap pins "0d" / "1d" / "10d"
+        // to a single line. Without it the "0" digit renders ~1px
+        // wider than "1" in the system font and forces a line
+        // break inside the 26px chip width.
+        "inline-flex items-center whitespace-nowrap rounded border px-1.5 font-medium tracking-tight",
         compact ? "py-0 text-[10px]" : "py-0.5 text-[11px]",
         cls,
       )}

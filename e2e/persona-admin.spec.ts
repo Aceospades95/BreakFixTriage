@@ -1,4 +1,5 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signInAs, PERSONA } from "./lib/sign-in-as";
 
 /**
  * Round-11 §2E — Alex Admin daily workflow.
@@ -9,10 +10,8 @@ import { test, expect, Page } from "@playwright/test";
  * live in persona-readonly.spec.ts.
  */
 
-const EMAIL = "alex@example.test";
-
 test("§2E: Alex Admin walks admin overview + sub-pages", async ({ page }) => {
-  await signIn(page, EMAIL);
+  await signInAs(page, PERSONA.ADMIN);
 
   // Overview lands.
   await page.goto("/admin");
@@ -37,11 +36,3 @@ test("§2E: Alex Admin walks admin overview + sub-pages", async ({ page }) => {
   await page.goto("/admin/email-rules");
   await expect(page.getByRole("heading", { name: /email rules/i })).toBeVisible();
 });
-
-async function signIn(page: Page, email: string) {
-  await page.goto("/signin");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', "test-password");
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.startsWith("/signin"));
-}

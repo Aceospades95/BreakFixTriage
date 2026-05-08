@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { signInAs, PERSONA } from "./lib/sign-in-as";
 
 /**
  * Round-12 §2J — chromed not-found regression.
@@ -26,12 +27,8 @@ const NON_EXISTENT_ROUTES = [
 
 test.describe("§2J chromed not-found", () => {
   test.beforeEach(async ({ page }) => {
-    // Sign in as Alex Admin so admin scope is reachable.
-    await page.goto("/signin");
-    await page.fill('input[name="email"]', "alex@example.test");
-    await page.fill('input[name="password"]', "test-password");
-    await page.click('button[type="submit"]');
-    await page.waitForURL((u) => !u.pathname.startsWith("/signin"));
+    // Round-13 hotfix — JWT cookie helper avoids the form path.
+    await signInAs(page, PERSONA.ADMIN);
   });
 
   for (const { path, scope } of NON_EXISTENT_ROUTES) {

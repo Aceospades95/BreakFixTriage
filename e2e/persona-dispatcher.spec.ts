@@ -1,13 +1,13 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signInAs, PERSONA } from "./lib/sign-in-as";
+import { expectBlocked } from "./lib/access";
 
 /**
  * Round-11 §2E — Dana Dispatcher daily workflow.
  */
 
-const EMAIL = "dana@example.test";
-
 test("§2E: Dana walks scheduling + tickets transition", async ({ page }) => {
-  await signIn(page, EMAIL);
+  await signInAs(page, PERSONA.DISPATCHER);
 
   await page.goto("/scheduling/routes");
   await expect(page.getByRole("heading", { name: /routes/i })).toBeVisible();
@@ -20,19 +20,7 @@ test("§2E: Dana walks scheduling + tickets transition", async ({ page }) => {
 });
 
 test("§2E: Dana cannot reach /imports/new (imports:run)", async ({ page }) => {
-  await signIn(page, EMAIL);
+  await signInAs(page, PERSONA.DISPATCHER);
   const resp = await page.goto("/imports/new");
-  const blocked =
-    (resp?.status() ?? 0) === 403 ||
-    page.url().includes("/forbidden") ||
-    page.url().includes("/?error=");
-  expect(blocked, "Dana should not see /imports/new").toBe(true);
+  await expectBlocked(page, resp, "/imports/new", "Dana");
 });
-
-async function signIn(page: Page, email: string) {
-  await page.goto("/signin");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', "test-password");
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.startsWith("/signin"));
-}

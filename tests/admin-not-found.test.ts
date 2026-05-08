@@ -3,24 +3,22 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 /**
- * Round-7 §1B — admin not-found must render the chromed handler
- * for every unmatched admin path.
+ * Round-7 §1B + Round-13 hotfix — admin not-found must render
+ * the chromed handler for every unmatched admin path.
  *
- * Without a live Next.js runtime in CI we cannot HTTP-request
- * /admin/foo and assert HTML. We assert the structural invariant
- * that drives the routing decision:
+ * R13 hotfix removed the [...notfound] catch-all pages because
+ * Next.js was rendering them as "found" routes returning HTTP
+ * 200 even when they called notFound() — the test for this is
+ * e2e/not-found-chrome.spec.ts which asserts status 404. Without
+ * the catch-alls, unmatched paths naturally walk up to the
+ * closest not-found.tsx boundary with the proper 404 status.
+ *
+ * Structural invariant the test pins:
  *
  *   1. (app)/not-found.tsx exists and ships the chromed-not-found
  *      data-testid the brief requires.
  *   2. (app)/admin/not-found.tsx exists, ships the data-testid,
  *      and renders the admin destinations grid.
- *   3. (app)/admin/[...notfound]/page.tsx and
- *      (app)/[...notfound]/page.tsx exist and call notFound() so
- *      Next's match for unmounted paths funnels through the right
- *      not-found.tsx file.
- *
- * If a future commit removes any of those four files the test fails
- * with the file path so the regression is obvious.
  */
 
 const ROOT = process.cwd();
@@ -35,14 +33,6 @@ const required: { path: string; mustContain: string[] }[] = [
       'data-testid="chromed-not-found"',
       "Admin destinations",
     ],
-  },
-  {
-    path: "src/app/(app)/[...notfound]/page.tsx",
-    mustContain: ["notFound()", "AppCatchAll"],
-  },
-  {
-    path: "src/app/(app)/admin/[...notfound]/page.tsx",
-    mustContain: ["notFound()", "AdminCatchAll"],
   },
 ];
 
@@ -61,30 +51,33 @@ describe("Round-7 §1B: chromed not-found for /admin/* and /(app)/*", () => {
     });
   }
 
-  it("six known-bad admin paths funnel through the catch-all", () => {
-    // The acceptance test from the brief: each of these paths should
-    // render the chromed-not-found element. We can't HTTP-request in
-    // this test runner, but we can assert that the catch-all file
-    // exists at the right segment depth so Next.js's match resolution
-    // bubbles through it.
-    const adminCatchAll =
-      "src/app/(app)/admin/[...notfound]/page.tsx";
-    const src = readFileSync(join(ROOT, adminCatchAll), "utf8");
-    expect(src).toMatch(/notFound\(\)/);
-    // The known-bad paths from the brief, all of which should
-    // resolve through the catch-all because no static / dynamic
-    // segment matches:
-    const knownBad = [
-      "/admin/notifications",
-      "/admin/foo",
-      "/admin/audit/xyz",
-      "/admin/schools/does-not-exist",
-      "/admin/users/does-not-exist",
-      "/admin/devices/does-not-exist",
-    ];
-    // The dynamic detail pages ([userId], [deviceId]) call
-    // notFound() when their loaded entity is null — that path
-    // hits the same admin not-found.tsx via the segment chain.
-    expect(knownBad.length).toBe(6);
+  it("R13 hotfix — catch-all routes were intentionally removed", () => {
+    // Without the [...notfound] catch-all, unmatched paths walk
+    // up to the closest not-found.tsx boundary with a real 404.
+    // The catch-all pages were rendering at HTTP 200 even when
+    // they called notFound() — see e2e/not-found-chrome.spec.ts.
+    expect(
+      existsSync(join(ROOT, "src/app/(app)/[...notfound]/page.tsx")),
+    ).toBe(false);
+    expect(
+      existsSync(join(ROOT, "src/app/(app)/admin/[...notfound]/page.tsx")),
+    ).toBe(false);
+  });
+
+  it("dynamic detail pages call notFound() on missing entities", () => {
+    // The R13 hotfix relies on /admin/users/[userId],
+    // /scheduling/routes/[routeId], /tickets/[ticketId] each
+    // calling notFound() when the lookup returns null. Pin the
+    // shape so a refactor doesn't silently fall back to a 200
+    // JSX placeholder.
+    for (const path of [
+      "src/app/(app)/admin/users/[userId]/page.tsx",
+      "src/app/(app)/scheduling/routes/[routeId]/page.tsx",
+      "src/app/(app)/tickets/[ticketId]/page.tsx",
+    ]) {
+      const src = readFileSync(join(ROOT, path), "utf8");
+      expect(src).toMatch(/from "next\/navigation"/);
+      expect(src).toContain("notFound()");
+    }
   });
 });

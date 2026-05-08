@@ -1,4 +1,6 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signInAs, PERSONA } from "./lib/sign-in-as";
+import { expectBlocked } from "./lib/access";
 
 /**
  * Round-11 §2E — Ray ReadOnly daily workflow.
@@ -8,10 +10,8 @@ import { test, expect, Page } from "@playwright/test";
  * read-only walk lands cleanly.
  */
 
-const EMAIL = "ray@example.test";
-
 test("§2E: Ray walks read-only surfaces", async ({ page }) => {
-  await signIn(page, EMAIL);
+  await signInAs(page, PERSONA.READ_ONLY);
 
   for (const path of [
     "/tickets",
@@ -28,22 +28,10 @@ test("§2E: Ray walks read-only surfaces", async ({ page }) => {
 });
 
 test("§2E: Ray cannot reach /admin or /imports/new", async ({ page }) => {
-  await signIn(page, EMAIL);
+  await signInAs(page, PERSONA.READ_ONLY);
 
   for (const path of ["/admin", "/imports/new"] as const) {
     const resp = await page.goto(path);
-    const blocked =
-      (resp?.status() ?? 0) === 403 ||
-      page.url().includes("/forbidden") ||
-      page.url().includes("/?error=");
-    expect(blocked, `Ray should not see ${path}`).toBe(true);
+    await expectBlocked(page, resp, path, "Ray");
   }
 });
-
-async function signIn(page: Page, email: string) {
-  await page.goto("/signin");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', "test-password");
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.startsWith("/signin"));
-}

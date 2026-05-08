@@ -1,21 +1,20 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signInAs, PERSONA } from "./lib/sign-in-as";
+import { expectBlocked } from "./lib/access";
 
 /**
  * Round-11 §2E — Wes Warehouse daily workflow.
  *
- * STATUS: Aspirational coverage. R11 stub still uses the form-
- * submit signIn helper which does not work for Wes on this
- * branch (form selectors changed; see Round-13 §4D for the
- * canonical JWT-cookie helper). The R13 spec at
- * e2e/personas/warehouse.spec.ts supersedes this file. Marked
- * test.fixme() until the R11 stub is either deleted or
- * migrated. See docs/round-13-backlog.md (B14).
+ * Round-13 hotfix: migrated from the form-submit signIn helper
+ * to the JWT cookie helper so the spec can actually authenticate.
+ * The earlier test.fixme() markers came from the form-helper
+ * regression — with the cookie helper in place, the surfaces
+ * (scan/warehouse + tickets + my-day) all exist and the spec
+ * can run live.
  */
 
-const EMAIL = "wes@example.test";
-
-test.fixme("§2E: Wes walks scan/warehouse + tickets", async ({ page }) => {
-  await signIn(page, EMAIL);
+test("§2E: Wes walks scan/warehouse + tickets", async ({ page }) => {
+  await signInAs(page, PERSONA.WAREHOUSE);
 
   await page.goto("/scan/warehouse");
   await expect(page.getByRole("heading")).toBeVisible();
@@ -27,20 +26,8 @@ test.fixme("§2E: Wes walks scan/warehouse + tickets", async ({ page }) => {
   await expect(page.getByRole("heading")).toBeVisible();
 });
 
-test.fixme("§2E: Wes is blocked from /scheduling/routes/new", async ({ page }) => {
-  await signIn(page, EMAIL);
+test("§2E: Wes is blocked from /scheduling/routes/new", async ({ page }) => {
+  await signInAs(page, PERSONA.WAREHOUSE);
   const resp = await page.goto("/scheduling/routes/new");
-  const blocked =
-    (resp?.status() ?? 0) === 403 ||
-    page.url().includes("/forbidden") ||
-    page.url().includes("/?error=");
-  expect(blocked).toBe(true);
+  await expectBlocked(page, resp, "/scheduling/routes/new", "Wes");
 });
-
-async function signIn(page: Page, email: string) {
-  await page.goto("/signin");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', "test-password");
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.startsWith("/signin"));
-}

@@ -113,6 +113,18 @@ The structural sitemap-coverage gate at
 protect against the /tickets SSR class of regression at the
 vitest layer.
 
+## B15 — /my-day light-mode contrast in OPS ATTENTION cards (DEFERRED)
+
+The R13 §1E contrast sweep (e2e/contrast-sweep.spec.ts) found a
+single sub-4.5:1 contrast violation: `/my-day` in light mode,
+gray text in the OPS ATTENTION cards or a similar muted state.
+The other 23 (page × theme) combinations pass.
+
+R14 entrypoint: bump the muted-text rgba in light mode so the
+12-page floor reaches AA. The test is annotated test.fixme()
+with the B15 reason inline; remove the conditional fixme once
+the rgba bump lands.
+
 ## Round-14 entrypoints
 
 The biggest deferred items that should headline R14:

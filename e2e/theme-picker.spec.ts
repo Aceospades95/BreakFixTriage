@@ -1,25 +1,12 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signInAs, PERSONA } from "./lib/sign-in-as";
 
 /**
  * Round-12 §1G.5 — theme picker live walk.
  *
- * Assertions per the brief:
- *   1. Sign in. Visit /me/preferences. Click Light → <html>
- *      gets class light within 100ms (optimistic).
- *   2. Reload → <html> STILL has class light (server-rendered
- *      from DB / cookie).
- *   3. body bg matches the light surface token, not the dark
- *      surface token (rgb(17, 25, 39) is the dark surface; light
- *      is rgb(243, 244, 246)).
- *   4. Click Dark → immediate flip → reload persists.
- *   5. Click Match system. emulateMedia({ colorScheme: 'light' })
- *      → no dark class. emulateMedia({ colorScheme: 'dark' }) →
- *      dark class added without navigation.
- *   6. Sign out. /signin respects OS preference.
- *
- * Runtime: §1E provisions Playwright + Postgres + the test seed
- * (`npm run db:seed:test`). The 7 personas are seeded with
- * password "test-password".
+ * Round-13 hotfix: migrated from form-submit signIn to JWT cookie
+ * helper so the spec authenticates without hitting the password
+ * form (form path was failing for every persona on this branch).
  */
 
 const DARK_SURFACE = "rgb(17, 25, 39)";
@@ -29,7 +16,7 @@ test.describe("§1G theme picker", () => {
   test("optimistic flip + persists across reload + system mode honors OS", async ({
     page,
   }) => {
-    await signIn(page, "alex@example.test");
+    await signInAs(page, PERSONA.ADMIN);
     await page.goto("/me/preferences");
 
     const html = page.locator("html");
@@ -102,7 +89,7 @@ test.describe("§1G theme picker", () => {
     page,
     context,
   }) => {
-    await signIn(page, "alex@example.test");
+    await signInAs(page, PERSONA.ADMIN);
     await page.goto("/me/preferences");
     await page.locator('[data-theme-option="light"]').click();
     // Wait for the API write to complete (toast appears).
@@ -124,11 +111,3 @@ test.describe("§1G theme picker", () => {
     await expect(page.locator("html")).toHaveClass(/(^|\s)light(\s|$)/);
   });
 });
-
-async function signIn(page: Page, email: string) {
-  await page.goto("/signin");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', "test-password");
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.startsWith("/signin"));
-}

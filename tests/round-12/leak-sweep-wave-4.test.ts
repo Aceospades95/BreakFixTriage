@@ -42,8 +42,10 @@ describe("Round-12 §1C — leak sweep wave 4", () => {
     const src = read("src/app/(app)/admin/audit/page.tsx");
     expect(src).toContain("userLabelByCuid");
     expect(src).toMatch(/log\.entityType === "User"/);
-    // userLabel is in the display fallback chain.
-    expect(src).toMatch(/userLabel\s*\?\?\s*log\.entityId/);
+    // userLabel is in the display fallback chain (Round-12 §2C
+    // extended the chain with email/holiday labels — the chain
+    // still ends at log.entityId).
+    expect(src).toMatch(/userLabel\s*\?\?[\s\S]*?log\.entityId/);
   });
 
   it("#5/#7: /admin/audit User entity chip puts cuid in title tooltip", () => {

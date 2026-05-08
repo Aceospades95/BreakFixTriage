@@ -230,6 +230,40 @@ for file in "${FILES[@]}"; do
       if ($text =~ /\bdigest:/i) {
         print "$ARGV:$line: rule(digest-leak) \xc2\xb7 digest:\n";
       }
+      # Round-12 paragraph3C - role enum in JSX text outside humanise().
+      # Catches the leaks documented in §1C #2/#3/#8 if they recur.
+      while ($text =~ /\b(ADMIN|OPS_MANAGER|DISPATCHER|TECHNICIAN|WAREHOUSE|DRIVER|READ_ONLY)\b/g) {
+        my $tok = $1;
+        print "$ARGV:$line: rule(role-enum) \xc2\xb7 $tok\n";
+      }
+    }
+    # Round-12 paragraph3C - bare /tickets/cuid in href attributes.
+    # The canonical URL is /tickets/<incidentNumber>; the page
+    # 308-redirects but the cuid still ends up in browser history.
+    while ($src =~ m{href=\{`/tickets/\$\{[A-Za-z_][A-Za-z0-9_.]*\.id\}`}g) {
+      my $pos  = $-[0];
+      my $line = line_at($src, $pos);
+      print "$ARGV:$line: rule(ticket-cuid-href) \xc2\xb7 ticket.id in href\n";
+    }
+    # Round-12 paragraph3C - ALL_CAPS labels longer than 4 chars in
+    # <label>...{text}...</label> spans. Allowlists 14 known
+    # acronyms (URL / 2FA / SLA / CSV / PO / RMA / SPOC / JSON /
+    # PDF / XLSX / IP / ID / CDT / EST / UTC).
+    my %CAP_ALLOW = map { $_ => 1 } qw(
+      URL 2FA SLA CSV PO RMA SPOC JSON PDF XLSX IP ID CDT EST UTC
+      ISO INC SYN OS DOM SQL SVG PNG JPG TLS HTTP HTTPS API TOTP
+      AT NYC DBN SN HVAC BBQ TBD WIP CDC VPN SSO LDAP DNS DOE NDA
+    );
+    while ($src =~ m{<label[^>]*>([^<]{1,300})</label>}g) {
+      my $text = $1;
+      my $pos  = $-[0];
+      my $line = line_at($src, $pos);
+      while ($text =~ /\b([A-Z][A-Z_]{4,})\b/g) {
+        my $tok = $1;
+        next if $CAP_ALLOW{$tok};
+        next if $tok =~ /_/; # already caught by Rule 2
+        print "$ARGV:$line: rule(all-caps-label) \xc2\xb7 $tok\n";
+      }
     }
   ' "$file" >> "$scan_output" || true
 done

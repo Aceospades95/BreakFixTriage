@@ -114,6 +114,31 @@ export default async function AdminAuditLogPage({
     where.action = { startsWith: activeQuick.actionPrefix };
   }
 
+  // Round-12 §2G — quick-filter count badges. Each chip surfaces
+  // its own count over the current range so operators see at a
+  // glance how many auth failures landed in the last 24h / 7d /
+  // 30d. Hidden when 0 (per brief: "hide the count badge if 0").
+  const quickFilterCounts = new Map<string, number>();
+  await Promise.all(
+    QUICK_FILTERS.map(async (q) => {
+      const c = await prisma.auditLog.count({
+        where: {
+          ...(range.days != null
+            ? {
+                createdAt: {
+                  gte: new Date(
+                    Date.now() - range.days * 24 * 60 * 60 * 1000,
+                  ),
+                },
+              }
+            : {}),
+          action: { startsWith: q.actionPrefix },
+        },
+      });
+      quickFilterCounts.set(q.value, c);
+    }),
+  );
+
   const [logs, total] = await Promise.all([
     prisma.auditLog.findMany({
       where,
@@ -191,6 +216,55 @@ export default async function AdminAuditLogPage({
       scheduleLabelByCuid.set(
         s.id,
         `${humanise(s.kind)} · ${nameById.get(s.userId) ?? "(unknown)"} · ${s.date.toISOString().slice(0, 10)}`,
+      );
+    }
+  }
+
+  // Round-12 §2C — extend the friendly-label resolver to the
+  // remaining entity types whose chips still rendered as raw
+  // cuids: EmailTemplate (key), EmailRule (event + scope), and
+  // Holiday (label + date).
+  const emailTemplateIds = logs
+    .filter((l) => l.entityType === "EmailTemplate")
+    .map((l) => l.entityId);
+  const emailTemplateLabelByCuid = new Map<string, string>();
+  if (emailTemplateIds.length > 0) {
+    const tpls = await prisma.emailTemplate.findMany({
+      where: { id: { in: emailTemplateIds } },
+      select: { id: true, key: true, subject: true },
+    });
+    for (const t of tpls) {
+      emailTemplateLabelByCuid.set(t.id, t.key);
+    }
+  }
+
+  const emailRuleIds = logs
+    .filter((l) => l.entityType === "EmailRule")
+    .map((l) => l.entityId);
+  const emailRuleLabelByCuid = new Map<string, string>();
+  if (emailRuleIds.length > 0) {
+    const rules = await prisma.emailRule.findMany({
+      where: { id: { in: emailRuleIds } },
+      select: { id: true, scope: true, event: true },
+    });
+    for (const r of rules) {
+      emailRuleLabelByCuid.set(r.id, `${humanise(r.scope)} · ${r.event}`);
+    }
+  }
+
+  const holidayIds = logs
+    .filter((l) => l.entityType === "Holiday")
+    .map((l) => l.entityId);
+  const holidayLabelByCuid = new Map<string, string>();
+  if (holidayIds.length > 0) {
+    const holidays = await prisma.holiday.findMany({
+      where: { id: { in: holidayIds } },
+      select: { id: true, label: true, date: true },
+    });
+    for (const h of holidays) {
+      holidayLabelByCuid.set(
+        h.id,
+        `${h.label} (${h.date.toISOString().slice(0, 10)})`,
       );
     }
   }
@@ -364,6 +438,7 @@ export default async function AdminAuditLogPage({
         <span className="text-slate-500">Quick filters:</span>
         {QUICK_FILTERS.map((q) => {
           const active = searchParams?.quick === q.value;
+          const count = quickFilterCounts.get(q.value) ?? 0;
           return (
             <Link
               key={q.value}
@@ -379,6 +454,9 @@ export default async function AdminAuditLogPage({
               }
             >
               {q.label}
+              {count > 0 && (
+                <span className="ml-1 tabular-nums opacity-75">({count})</span>
+              )}
             </Link>
           );
         })}
@@ -496,6 +574,18 @@ export default async function AdminAuditLogPage({
                       log.entityType === "User"
                         ? userLabelByCuid.get(log.entityId)
                         : undefined;
+                    const emailTemplateLabel =
+                      log.entityType === "EmailTemplate"
+                        ? emailTemplateLabelByCuid.get(log.entityId)
+                        : undefined;
+                    const emailRuleLabel =
+                      log.entityType === "EmailRule"
+                        ? emailRuleLabelByCuid.get(log.entityId)
+                        : undefined;
+                    const holidayLabel =
+                      log.entityType === "Holiday"
+                        ? holidayLabelByCuid.get(log.entityId)
+                        : undefined;
                     const ctx = {
                       incidentNumber: incident,
                       routeId:
@@ -514,6 +604,9 @@ export default async function AdminAuditLogPage({
                       scheduleLabel ??
                       portalToken?.label ??
                       userLabel ??
+                      emailTemplateLabel ??
+                      emailRuleLabel ??
+                      holidayLabel ??
                       log.entityId;
                     return (
                       <IdChipWithCopy

@@ -195,6 +195,25 @@ export default async function AdminAuditLogPage({
     }
   }
 
+  // Round-12 §1C #5/#7 — User entity rows previously fell through
+  // to the raw cuid (e.g. "Auth login on User cmnt..."). Resolve
+  // the display name + email-prefix fallback so the chip shows
+  // human text with the cuid moved to a hover tooltip.
+  const userIds = logs
+    .filter((l) => l.entityType === "User")
+    .map((l) => l.entityId);
+  const userLabelByCuid = new Map<string, string>();
+  if (userIds.length > 0) {
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    });
+    for (const u of users) {
+      const fallback = u.email ? `${u.email.split("@")[0]}@…` : u.id;
+      userLabelByCuid.set(u.id, u.name ?? fallback);
+    }
+  }
+
   const portalTokenIds = logs
     .filter((l) => l.entityType === "PortalToken")
     .map((l) => l.entityId);
@@ -389,7 +408,7 @@ export default async function AdminAuditLogPage({
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[10px] tracking-wide text-slate-400">
-            Entity id (cuid)
+            Entity ID
           </span>
           <input
             type="text"
@@ -473,6 +492,10 @@ export default async function AdminAuditLogPage({
                       log.entityType === "PortalToken"
                         ? portalTokenLabelByCuid.get(log.entityId)
                         : undefined;
+                    const userLabel =
+                      log.entityType === "User"
+                        ? userLabelByCuid.get(log.entityId)
+                        : undefined;
                     const ctx = {
                       incidentNumber: incident,
                       routeId:
@@ -490,11 +513,21 @@ export default async function AdminAuditLogPage({
                       stopLabel ??
                       scheduleLabel ??
                       portalToken?.label ??
+                      userLabel ??
                       log.entityId;
                     return (
                       <IdChipWithCopy
                         value={display}
                         copyValue={log.entityId}
+                        // Round-12 §1C #5/#7 — surface the cuid via
+                        // hover tooltip so audit operators can
+                        // grab it without it cluttering the chip
+                        // text.
+                        title={
+                          display === log.entityId
+                            ? log.entityId
+                            : `${log.entityId} (${display})`
+                        }
                         href={hrefForEntity(log.entityType, log.entityId, ctx)}
                       />
                     );

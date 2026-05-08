@@ -128,7 +128,7 @@ export default async function DuplicatesPage({
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
-                    href={`/tickets/${t.id}`}
+                    href={`/tickets/${t.incidentNumber}`}
                     className="font-medium text-accent hover:underline"
                   >
                     {t.incidentNumber}
@@ -308,7 +308,7 @@ function ConflictSide({
 }) {
   return (
     <Link
-      href={`/tickets/${ticket.id}`}
+      href={`/tickets/${ticket.incidentNumber}`}
       className="block rounded border border-surface-border bg-surface p-3 transition hover:border-accent"
     >
       <div className="flex items-center justify-between">

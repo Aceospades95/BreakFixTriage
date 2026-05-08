@@ -329,7 +329,7 @@ function JobCandidateColumn({
                 {g.tickets.map((t) => (
                   <li key={t.id} className="flex gap-2">
                     <Link
-                      href={`/tickets/${t.id}`}
+                      href={`/tickets/${t.incidentNumber}`}
                       className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {t.incidentNumber}

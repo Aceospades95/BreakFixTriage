@@ -244,7 +244,7 @@ export default async function RouteDetailPage({
                           className="flex items-center gap-2"
                         >
                           <Link
-                            href={`/tickets/${tl.ticket.id}`}
+                            href={`/tickets/${tl.ticket.incidentNumber}`}
                             className="font-medium tracking-tight text-accent hover:underline"
                           >
                             {tl.ticket.incidentNumber}
@@ -330,7 +330,7 @@ export default async function RouteDetailPage({
                             {sd.ticket && (
                               <>
                                 <Link
-                                  href={`/tickets/${sd.ticket.id}`}
+                                  href={`/tickets/${sd.ticket.incidentNumber}`}
                                   className="whitespace-nowrap text-accent hover:underline"
                                 >
                                   {sd.ticket.incidentNumber}

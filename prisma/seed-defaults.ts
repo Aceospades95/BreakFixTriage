@@ -1,43 +1,92 @@
 /**
- * Round-11 §1E — first-run defaults seeder + production backfill.
+ * Round-11 §1E + Round-12 §1A — first-run defaults seeder.
  *
  * Three rows-must-exist guarantees for a usable BreakFix Triage
  * install:
  *
- *   1. EmailTemplate — the canonical 8 templates from
- *      prisma/seed-email-templates.ts (ticket_created,
- *      ticket_resolved, etc.)
- *   2. EmailRule — at least one Global rule (disabled) so /admin/
- *      email-rules has a starter row.
- *   3. Holiday — the eleven US federal holidays for the current
- *      year.
+ *   1. EmailTemplate — 8 canonical templates (R11)
+ *   2. EmailRule — one Global rule (disabled)
+ *   3. Holiday — current year + next two years (33 rows)
  *
- * The function is idempotent: every step does findFirst+create or
- * upsert. Running twice produces zero new rows.
+ * Two execution paths converge here:
  *
- * Invoke from `npm run db:seed:defaults` after a fresh
- * `prisma migrate deploy` on production. This is the one-time
- * backfill the R11 brief asks for. Re-running is safe.
+ *   a. SQL migration — prisma/migrations/<ts>_seed_defaults runs
+ *      on `prisma migrate deploy` and inserts the same row set
+ *      directly. R12 §1A added that path so any environment using
+ *      migrate deploy gets the seed for free.
+ *
+ *   b. Bootstrap — prisma/bootstrap.ts calls seedDefaults() on
+ *      every container start. The Docker runner uses `db push`
+ *      not `migrate deploy`, so bootstrap is the production hook.
+ *
+ * Both paths are idempotent. Both write audit rows tagged
+ * action='system_seed' so a future audit walk can tell seeded
+ * from operator-added rows.
  */
 
 import { PrismaClient } from "@prisma/client";
 import { seedEmailTemplates } from "./seed-email-templates";
-import { buildFederalHolidaysForYear } from "../src/lib/holidays/federal";
+// Round-12 §1A — bootstrap.ts (which calls seedDefaults) is
+// Docker-self-contained: the runner image copies prisma/ but
+// not src/. Federal holiday helpers live in prisma/lib/ so the
+// import path stays inside prisma/.
+import { buildFederalHolidaysForYear } from "./lib/federal-holidays";
 
 export interface SeedDefaultsResult {
   templatesUpserted: number;
   ruleCreated: boolean;
   holidaysCreated: number;
   year: number;
+  auditsWritten: number;
+}
+
+const SEED_AUDIT_ACTION = "system_seed";
+
+async function writeSeedAudit(
+  prisma: PrismaClient,
+  entityType: string,
+  entityId: string,
+  payload: Record<string, unknown>,
+): Promise<boolean> {
+  const existing = await prisma.auditLog.findFirst({
+    where: { entityType, entityId, action: SEED_AUDIT_ACTION },
+    select: { id: true },
+  });
+  if (existing) return false;
+  await prisma.auditLog.create({
+    data: {
+      actorUserId: null,
+      entityType,
+      entityId,
+      action: SEED_AUDIT_ACTION,
+      after: {
+        source: "bootstrap",
+        seededAt: new Date().toISOString(),
+        ...payload,
+      } as unknown as object,
+    },
+  });
+  return true;
 }
 
 export async function seedDefaults(
   prisma: PrismaClient,
 ): Promise<SeedDefaultsResult> {
-  const templatesUpserted = await seedEmailTemplates(prisma);
+  let auditsWritten = 0;
 
-  // Round-2 §8 example rule on `ticket_created`. Disabled by
-  // default — admins flip it on once they've reviewed recipients.
+  // ----- EmailTemplate -----
+  const templatesUpserted = await seedEmailTemplates(prisma);
+  const allTemplates = await prisma.emailTemplate.findMany({
+    select: { id: true, key: true },
+  });
+  for (const t of allTemplates) {
+    const wrote = await writeSeedAudit(prisma, "EmailTemplate", t.id, {
+      key: t.key,
+    });
+    if (wrote) auditsWritten++;
+  }
+
+  // ----- EmailRule -----
   let ruleCreated = false;
   const ticketCreated = await prisma.emailTemplate.findUnique({
     where: { key: "ticket_created" },
@@ -51,7 +100,7 @@ export async function seedDefaults(
       },
     });
     if (!existingRule) {
-      await prisma.emailRule.create({
+      const created = await prisma.emailRule.create({
         data: {
           scope: "GLOBAL",
           scopeId: null,
@@ -66,28 +115,46 @@ export async function seedDefaults(
         },
       });
       ruleCreated = true;
-    }
-  }
-
-  // Federal holidays — current year. The eleven-row list lives in
-  // src/lib/holidays/federal.ts and is shared with the
-  // /admin/holidays "Auto-seed" kebab action.
-  const year = new Date().getUTCFullYear();
-  const holidays = buildFederalHolidaysForYear(year);
-  let holidaysCreated = 0;
-  for (const h of holidays) {
-    const existing = await prisma.holiday.findFirst({
-      where: { date: h.date, scope: "GLOBAL", scopeId: null },
-    });
-    if (!existing) {
-      await prisma.holiday.create({
-        data: { date: h.date, label: h.name, scope: "GLOBAL" },
+      const wrote = await writeSeedAudit(prisma, "EmailRule", created.id, {
+        event: "ticket_created",
+        scope: "GLOBAL",
       });
-      holidaysCreated++;
+      if (wrote) auditsWritten++;
     }
   }
 
-  return { templatesUpserted, ruleCreated, holidaysCreated, year };
+  // ----- Holiday — current year + next two years -----
+  const baseYear = new Date().getUTCFullYear();
+  const years = [baseYear, baseYear + 1, baseYear + 2];
+  let holidaysCreated = 0;
+  for (const y of years) {
+    const holidays = buildFederalHolidaysForYear(y);
+    for (const h of holidays) {
+      const existing = await prisma.holiday.findFirst({
+        where: { date: h.date, scope: "GLOBAL", scopeId: null },
+      });
+      if (!existing) {
+        const created = await prisma.holiday.create({
+          data: { date: h.date, label: h.name, scope: "GLOBAL" },
+        });
+        holidaysCreated++;
+        const wrote = await writeSeedAudit(prisma, "Holiday", created.id, {
+          date: h.date.toISOString().slice(0, 10),
+          label: h.name,
+          year: y,
+        });
+        if (wrote) auditsWritten++;
+      }
+    }
+  }
+
+  return {
+    templatesUpserted,
+    ruleCreated,
+    holidaysCreated,
+    year: baseYear,
+    auditsWritten,
+  };
 }
 
 async function main() {
@@ -95,7 +162,7 @@ async function main() {
   try {
     const r = await seedDefaults(prisma);
     console.log(
-      `[seed-defaults] templates=${r.templatesUpserted} ruleCreated=${r.ruleCreated} holidaysCreated=${r.holidaysCreated} year=${r.year}`,
+      `[seed-defaults] templates=${r.templatesUpserted} ruleCreated=${r.ruleCreated} holidaysCreated=${r.holidaysCreated} years=${r.year}-${r.year + 2} audits=${r.auditsWritten}`,
     );
   } finally {
     await prisma.$disconnect();

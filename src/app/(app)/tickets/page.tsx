@@ -538,7 +538,7 @@ function TicketTable({
             )}
             <td className="px-3 py-2">
               <Link
-                href={`/tickets/${t.id}`}
+                href={`/tickets/${t.incidentNumber}`}
                 className="font-medium tracking-tight text-accent hover:underline"
               >
                 {t.incidentNumber}

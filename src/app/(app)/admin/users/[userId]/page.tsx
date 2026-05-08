@@ -174,12 +174,15 @@ export default async function EditUserPage({
           Two-factor authentication
         </h2>
         {user.totpEnabledAt ? (
-          <div className="space-y-3 text-sm">
-            <p>
+          <div
+            className="space-y-3 text-sm"
+            data-testid="two-factor-enrolled-panel"
+          >
+            <p data-testid="two-factor-enrolled-line">
               <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase text-emerald-200">
-                enabled
+                Enrolled
               </span>{" "}
-              on {user.totpEnabledAt.toISOString().slice(0, 10)}
+              · {user.totpEnabledAt.toISOString()}
             </p>
             <p className="text-xs text-slate-400">
               Use the button below only as an emergency reset — e.g. the
@@ -237,30 +240,62 @@ async function RecentSessionsPanel({ userId }: { userId: string }) {
       {sessions.length === 0 ? (
         <p className="text-sm text-slate-400">No sessions recorded yet.</p>
       ) : (
-        <ul className="divide-y divide-surface-border text-xs">
-          {sessions.map((s) => (
-            <li key={s.id} className="flex items-center gap-3 py-2">
-              <span className="tabular-nums text-slate-300">
-                {s.lastSeenAt.toISOString().replace("T", " ").slice(0, 16)}
-              </span>
-              <span className="text-slate-500">
-                {s.ipHash ?? "—"}
-              </span>
-              <span className="flex-1 truncate text-slate-500">
-                {s.uaFingerprint ?? "(no UA recorded)"}
-              </span>
-              {s.revokedAt == null ? (
-                <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-200">
-                  active
-                </span>
-              ) : (
-                <span className="text-[10px] text-slate-500">
-                  revoked {s.revokedAt.toISOString().slice(0, 10)}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
+        <div>
+          {/*
+            Round-12 §1C #6 — privacy-by-design label set.
+            Documented in docs/round-12-assumptions.md. The
+            on-disk values still carry an `ip:` / `ua:` prefix so
+            the storage shape is forensically traceable; the
+            display strips the prefix and shows truncated session
+            id + device fingerprint.
+          */}
+          <div className="mb-1 grid grid-cols-[12rem_10rem_1fr_5rem] gap-3 text-[10px] tracking-wide text-slate-500">
+            <span>Last seen</span>
+            <span>Session id</span>
+            <span>Device fingerprint</span>
+            <span>Status</span>
+          </div>
+          <ul className="divide-y divide-surface-border text-xs">
+            {sessions.map((s) => {
+              const stripPrefix = (v: string | null) =>
+                v == null ? null : v.replace(/^[a-z]+:/i, "");
+              const sessionId = stripPrefix(s.ipHash) ?? "—";
+              const fingerprint =
+                stripPrefix(s.uaFingerprint) ?? "(no fingerprint recorded)";
+              return (
+                <li
+                  key={s.id}
+                  className="grid grid-cols-[12rem_10rem_1fr_5rem] items-center gap-3 py-2"
+                >
+                  <span className="tabular-nums text-slate-300">
+                    {s.lastSeenAt.toISOString().replace("T", " ").slice(0, 16)}
+                  </span>
+                  <span
+                    className="truncate text-slate-400"
+                    title={s.ipHash ?? undefined}
+                  >
+                    {sessionId}
+                  </span>
+                  <span
+                    className="truncate text-slate-500"
+                    title={s.uaFingerprint ?? undefined}
+                  >
+                    {fingerprint}
+                  </span>
+                  {s.revokedAt == null ? (
+                    <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-center text-[10px] text-emerald-200">
+                      active
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-500">
+                      revoked {s.revokedAt.toISOString().slice(0, 10)}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </section>
   );

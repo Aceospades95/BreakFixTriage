@@ -6,6 +6,7 @@ import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { formatRole } from "@/lib/format";
 import {
   daysInState,
   slaHealth,
@@ -194,7 +195,7 @@ export default async function BenchPage({
                   <div>
                     <div className="text-sm font-semibold">{u.name}</div>
                     <div className="text-[10px] tracking-wide text-slate-500">
-                      {u.role}
+                      {formatRole(u.role)}
                       {u.id === session.userId && " · you"}
                     </div>
                   </div>
@@ -317,7 +318,7 @@ function TicketList({
         >
           <div className="flex items-center gap-3">
             <Link
-              href={`/tickets/${t.id}`}
+              href={`/tickets/${t.incidentNumber}`}
               className="font-medium tracking-tight text-sm text-accent hover:underline"
             >
               {t.incidentNumber}
@@ -379,7 +380,7 @@ function CompactTicketList({
           className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${ageCls}`}
         >
           <Link
-            href={`/tickets/${t.id}`}
+            href={`/tickets/${t.incidentNumber}`}
             className="whitespace-nowrap font-medium tracking-tight text-accent hover:underline"
           >
             {t.incidentNumber}

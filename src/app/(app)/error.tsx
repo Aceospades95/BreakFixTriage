@@ -29,7 +29,10 @@ export default function AppError({
   const isAuthError = /AuthorizationError/.test(error.message);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 rounded-lg border border-red-500/40 bg-red-500/10 p-6">
+    <div
+      data-testid="global-error-boundary"
+      className="mx-auto max-w-2xl space-y-4 rounded-lg border border-red-500/40 bg-red-500/10 p-6"
+    >
       <h1 className="text-xl font-semibold text-red-100">
         {isAuthError ? "Access denied" : "Something broke on this page"}
       </h1>

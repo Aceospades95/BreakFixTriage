@@ -175,7 +175,7 @@ export default async function QuotesPage({
                 >
                   <td className="px-3 py-2">
                     <Link
-                      href={`/tickets/${q.ticketId}`}
+                      href={`/tickets/${q.ticket.incidentNumber}`}
                       className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {q.ticket.incidentNumber}

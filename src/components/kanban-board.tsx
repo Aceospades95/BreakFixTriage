@@ -312,7 +312,7 @@ export function KanbanBoard({
                     {colTickets.slice(0, showCount).map((t) => (
                       <li key={t.id}>
                         <Link
-                          href={`/tickets/${t.id}`}
+                          href={`/tickets/${t.incidentNumber}`}
                           draggable
                           onDragStart={(e) => handleDragStart(e, t.id)}
                           onDragEnd={handleDragEnd}
@@ -420,7 +420,7 @@ export function KanbanBoard({
                   {colTickets.slice(0, 40).map((t) => (
                     <li key={t.id}>
                       <Link
-                        href={`/tickets/${t.id}`}
+                        href={`/tickets/${t.incidentNumber}`}
                         draggable
                         onDragStart={(e) => handleDragStart(e, t.id)}
                         onDragEnd={handleDragEnd}

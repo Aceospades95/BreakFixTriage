@@ -161,7 +161,7 @@ function TicketRow({
   return (
     <li className="flex items-center gap-3 rounded border border-surface-border bg-surface-muted/40 px-3 py-1.5">
       <Link
-        href={`/tickets/${ticket.id}`}
+        href={`/tickets/${ticket.incidentNumber}`}
         className="font-medium tracking-tight text-accent hover:underline"
       >
         {ticket.incidentNumber}

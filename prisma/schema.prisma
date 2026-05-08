@@ -402,6 +402,7 @@ model Ticket {
   /// Synthetic PENDING_PICKUP_UNLINKED tickets always have at
   /// least one row here (the stop that birthed them).
   stopDevices      StopDevice[]
+  emailLogs        EmailLog[]         @relation("EmailLogToTicket")
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -1265,6 +1266,9 @@ model EmailLog {
 
   rule              EmailRule?     @relation(fields: [ruleId], references: [id])
   template          EmailTemplate  @relation(fields: [templateId], references: [id])
+  // Round-12 §1B — relation needed so /admin/email-log links can
+  // canonicalise to /tickets/<incidentNumber>.
+  ticket            Ticket?        @relation("EmailLogToTicket", fields: [ticketId], references: [id])
 
   @@index([ticketId])
   @@index([routeId])

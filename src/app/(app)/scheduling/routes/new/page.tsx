@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { formatRole } from "@/lib/format";
 import { buildRouteAction } from "@/server/actions/scheduling";
 
 export const dynamic = "force-dynamic";
@@ -101,7 +102,7 @@ export default async function NewRoutePage({
                 <option value="">Choose a driver…</option>
                 {driverCandidates.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.name} ({u.role})
+                    {u.name} ({formatRole(u.role)})
                   </option>
                 ))}
               </select>

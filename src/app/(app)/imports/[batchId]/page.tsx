@@ -106,7 +106,7 @@ export default async function ImportBatchPage({
                   <td className="px-3 py-2">
                     {r.resultingTicket ? (
                       <Link
-                        href={`/tickets/${r.resultingTicket.id}`}
+                        href={`/tickets/${r.resultingTicket.incidentNumber}`}
                         className="font-medium tracking-tight text-accent hover:underline"
                       >
                         {r.resultingTicket.incidentNumber}

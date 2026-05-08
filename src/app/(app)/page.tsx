@@ -253,7 +253,7 @@ export default async function HomePage() {
           <span className="text-amber-100">
             Timer running on{" "}
             <Link
-              href={`/tickets/${openTimer.ticket.id}`}
+              href={`/tickets/${openTimer.ticket.incidentNumber}`}
               className="font-medium tracking-tight text-amber-200 underline"
             >
               {openTimer.ticket.incidentNumber}
@@ -262,7 +262,7 @@ export default async function HomePage() {
             {openTimer.startedAt.toISOString().replace("T", " ").slice(11, 16)}.
           </span>
           <Link
-            href={`/tickets/${openTimer.ticket.id}`}
+            href={`/tickets/${openTimer.ticket.incidentNumber}`}
             className="rounded bg-amber-500/30 px-3 py-1 text-xs font-semibold text-amber-100 hover:bg-amber-500/50"
           >
             Stop / review
@@ -384,7 +384,7 @@ export default async function HomePage() {
                                   className="flex items-center gap-2"
                                 >
                                   <Link
-                                    href={`/tickets/${tl.ticket.id}`}
+                                    href={`/tickets/${tl.ticket.incidentNumber}`}
                                     className="font-medium tracking-tight text-accent hover:underline"
                                   >
                                     {tl.ticket.incidentNumber}
@@ -517,7 +517,7 @@ export default async function HomePage() {
                   >
                     <div className="flex flex-wrap items-center gap-3">
                       <Link
-                        href={`/tickets/${t.id}`}
+                        href={`/tickets/${t.incidentNumber}`}
                         className="font-medium tracking-tight text-sm text-accent hover:underline"
                       >
                         {t.incidentNumber}
@@ -734,7 +734,7 @@ export default async function HomePage() {
                       className="flex flex-wrap items-center gap-3 rounded px-2 py-1 hover:bg-red-500/5"
                     >
                       <Link
-                        href={`/tickets/${t.id}`}
+                        href={`/tickets/${t.incidentNumber}`}
                         className="font-medium tracking-tight text-red-200 hover:underline"
                       >
                         {t.incidentNumber}

@@ -78,7 +78,7 @@ export default async function InvoicesPage({
                   <div>
                     <div className="text-sm">
                       <Link
-                        href={`/tickets/${t.id}`}
+                        href={`/tickets/${t.incidentNumber}`}
                         className="font-medium tracking-tight text-accent hover:underline"
                       >
                         {t.incidentNumber}

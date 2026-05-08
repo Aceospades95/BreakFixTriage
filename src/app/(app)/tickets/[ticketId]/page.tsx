@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { QuoteStatus, TicketPriority, TicketState as TicketStateEnum } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
@@ -53,31 +53,43 @@ export default async function TicketDetailPage({
   const canWriteQuotes = can(session.role, PERMISSIONS.QUOTES_WRITE);
   const canForceTransition = can(session.role, PERMISSIONS.USERS_MANAGE);
 
-  // Round-5 §2.11: if the URL segment is an incident-number-shaped
-  // string (INC* or SYN-*) instead of a cuid, resolve it server-
-  // side and redirect to the canonical /tickets/<cuid>. This kills
-  // the "/tickets/INC2200069 → 404" footgun without changing every
-  // call site that builds these URLs (e.g. the SNOW import emails,
-  // the audit IdChip's hrefForEntity).
-  if (
-    /^(INC|LOCAL|SYN-|LOCAL-RP)/i.test(params.ticketId) &&
-    !/^[a-z0-9]{20,}$/i.test(params.ticketId)
-  ) {
-    const found = await prisma.ticket.findUnique({
-      where: { incidentNumber: params.ticketId.toUpperCase() },
-      select: { id: true },
+  // Round-12 §1B — canonical URL is /tickets/<incidentNumber>, not
+  // /tickets/<cuid>. R5 §2.11 originally went the other direction;
+  // R12 reverses it because the cuid leaked into browser history,
+  // copy-link sharing, and referrer headers. The lookup accepts
+  // both forms, but a cuid hit responds with HTTP 308 to the
+  // canonical incidentNumber URL.
+  const isCuidParam =
+    /^[a-z0-9]{20,}$/i.test(params.ticketId) &&
+    !/^(INC|LOCAL|SYN-|LOCAL-RP)/i.test(params.ticketId);
+  const isHumanReadableParam = /^(INC|LOCAL|SYN-|LOCAL-RP)/i.test(
+    params.ticketId,
+  );
+
+  if (isCuidParam) {
+    const byId = await prisma.ticket.findUnique({
+      where: { id: params.ticketId },
+      select: { incidentNumber: true },
     });
-    if (found) {
-      redirect(`/tickets/${found.id}`);
+    if (!byId) notFound();
+    if (byId.incidentNumber) {
+      permanentRedirect(`/tickets/${byId.incidentNumber}`);
     }
-    // Fall through to notFound below if the incident number is
-    // unrecognised — the user gets a 404 with did-you-mean from
-    // the (app)/not-found.tsx scope (Round-3 §G).
+    // Fall through with the cuid in place if the row has no
+    // incident number (legacy data).
   }
+
+  // Round-12 §1B — accept either incidentNumber or cuid. By the
+  // time we reach here, a cuid param has already been redirected
+  // away (above), but the cuid path is still hit when a ticket
+  // has no incidentNumber yet.
+  const ticketWhere = isHumanReadableParam
+    ? { incidentNumber: params.ticketId.toUpperCase() }
+    : { id: params.ticketId };
 
   const [ticket, assignableUsers, siblingTickets] = await Promise.all([
     prisma.ticket.findUnique({
-      where: { id: params.ticketId },
+      where: ticketWhere,
       include: {
         school: {
           include: {
@@ -147,13 +159,7 @@ export default async function TicketDetailPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true },
     }),
-    prisma.ticket.findMany({
-      where: {
-        NOT: { id: params.ticketId },
-        OR: [{ schoolId: { in: [] } }],
-      },
-      take: 0,
-    }),
+    Promise.resolve([] as never[]),
   ]);
   if (!ticket) notFound();
 
@@ -168,10 +174,10 @@ export default async function TicketDetailPage({
     searchParams?.error == null &&
     searchParams?.view !== "source"
   ) {
-    const url = new URL(
-      `/tickets/${ticket.mergedIntoTicketId}`,
-      "http://local",
-    );
+    // Round-12 §1B — canonical URL uses incidentNumber, not cuid.
+    const targetSlug =
+      ticket.mergedInto.incidentNumber ?? ticket.mergedIntoTicketId;
+    const url = new URL(`/tickets/${targetSlug}`, "http://local");
     url.searchParams.set(
       "ok",
       `Merged — showing target ${ticket.mergedInto.incidentNumber}`,
@@ -379,7 +385,7 @@ export default async function TicketDetailPage({
                       <option value="">— unassigned —</option>
                       {assignableUsers.map((u) => (
                         <option key={u.id} value={u.id}>
-                          {u.name} ({u.role})
+                          {u.name} ({humanise(u.role)})
                         </option>
                       ))}
                     </select>
@@ -432,7 +438,7 @@ export default async function TicketDetailPage({
                   <span className="text-slate-500">—</span>
                 )}
               </Dd>
-              <Dt>ServiceNow sys_id</Dt>
+              <Dt>ServiceNow ID</Dt>
               <Dd className="font-medium tracking-tight text-xs text-slate-400">
                 {ticket.serviceNowSysId ?? "—"}
               </Dd>
@@ -1120,7 +1126,7 @@ export default async function TicketDetailPage({
                     {deviceTickets.map((t) => (
                       <li key={t.id} className="truncate text-xs">
                         <Link
-                          href={`/tickets/${t.id}`}
+                          href={`/tickets/${t.incidentNumber}`}
                           className="font-medium tracking-tight text-accent hover:underline"
                         >
                           {t.incidentNumber}
@@ -1140,7 +1146,7 @@ export default async function TicketDetailPage({
                     {schoolOpenTickets.map((t) => (
                       <li key={t.id} className="truncate text-xs">
                         <Link
-                          href={`/tickets/${t.id}`}
+                          href={`/tickets/${t.incidentNumber}`}
                           className="font-medium tracking-tight text-accent hover:underline"
                         >
                           {t.incidentNumber}

@@ -56,7 +56,10 @@ export default async function EmailLogPage({
       orderBy: { createdAt: "desc" },
       take: PAGE_SIZE,
       skip: (page - 1) * PAGE_SIZE,
-      include: { template: { select: { key: true } } },
+      include: {
+        template: { select: { key: true } },
+        ticket: { select: { incidentNumber: true } },
+      },
     }),
     prisma.emailLog.count({ where }),
   ]);
@@ -155,7 +158,7 @@ export default async function EmailLogPage({
                   <span className="text-slate-300">{r.template.key}</span>
                   {r.ticketId && (
                     <Link
-                      href={`/tickets/${r.ticketId}`}
+                      href={`/tickets/${r.ticket?.incidentNumber ?? r.ticketId}`}
                       className="text-accent hover:underline"
                     >
                       ticket

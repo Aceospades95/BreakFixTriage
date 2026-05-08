@@ -139,7 +139,7 @@ export default async function PartDetailPage({
                         <>
                           {" "}
                           <Link
-                            href={`/tickets/${m.ticket.id}`}
+                            href={`/tickets/${m.ticket.incidentNumber}`}
                             className="ml-2 font-medium tracking-tight text-xs text-accent hover:underline"
                           >
                             {m.ticket.incidentNumber}

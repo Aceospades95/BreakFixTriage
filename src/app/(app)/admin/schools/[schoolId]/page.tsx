@@ -274,7 +274,7 @@ export default async function SchoolProfilePage({
                 className="flex items-center justify-between rounded border border-surface-border bg-surface-muted/40 px-3 py-1.5"
               >
                 <Link
-                  href={`/tickets/${t.id}`}
+                  href={`/tickets/${t.incidentNumber}`}
                   className="font-medium tracking-tight text-accent hover:underline"
                 >
                   {t.incidentNumber}

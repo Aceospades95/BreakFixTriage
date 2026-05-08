@@ -95,7 +95,10 @@ for (const route of ROUTES) {
       await signIn(page, route.lowestRole);
     }
     const resp = await page.goto(route.path);
-    expect(resp?.status(), `${route.path} returned non-2xx`).toBeLessThan(400);
+    // Round-12 §1E — exact 200 (not 3xx, 4xx, 5xx). The brief
+    // accepts the documented intentional redirects but every
+    // route in this list is a destination URL.
+    expect(resp?.status(), `${route.path} returned non-200`).toBe(200);
 
     const html = await page.content();
     for (const marker of ERROR_MARKERS) {
@@ -104,6 +107,16 @@ for (const route of ROUTES) {
         `${route.path} rendered an error boundary marker: "${marker}"`,
       ).toBe(false);
     }
+
+    // Round-12 §1E — explicit testid checks (per brief).
+    await expect(
+      page.getByTestId("global-error-boundary"),
+      `${route.path} rendered the global error boundary`,
+    ).toHaveCount(0);
+    await expect(
+      page.getByTestId("chromed-not-found"),
+      `${route.path} unexpectedly rendered the chromed-not-found page`,
+    ).toHaveCount(0);
   });
 }
 

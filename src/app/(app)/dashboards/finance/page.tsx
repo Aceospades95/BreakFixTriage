@@ -210,7 +210,7 @@ export default async function FinanceDashboardPage() {
               >
                 <span className="font-medium tracking-tight text-accent">{po.poNumber}</span>
                 <Link
-                  href={`/tickets/${po.quote.ticket.id}`}
+                  href={`/tickets/${po.quote.ticket.incidentNumber}`}
                   className="font-medium tracking-tight text-xs text-slate-400 hover:text-white"
                 >
                   {po.quote.ticket.incidentNumber}

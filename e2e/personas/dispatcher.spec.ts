@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { signInAs, PERSONA } from "../lib/sign-in-as";
+import { expectBlocked } from "../lib/access";
 
 /**
  * Round-13 §2C — Dana Dispatcher persona walk.
@@ -43,17 +44,15 @@ test.describe("§2C dispatcher persona", () => {
     ).toBeVisible();
   });
 
-  test("Dana is blocked from /admin/email-rules", async ({ page }) => {
+  test("Dana is blocked from /admin/email-rules (no EMAIL_WRITE)", async ({
+    page,
+  }) => {
+    // Dana lacks EMAIL_WRITE (only OPS_MANAGER + ADMIN have it),
+    // so the Round-13 hotfix that opened /admin/email-rules to
+    // ops-manager still blocks her here.
     await signInAs(page, PERSONA.DISPATCHER);
     const resp = await page.goto("/admin/email-rules");
-    const blocked =
-      (resp?.status() ?? 0) >= 400 ||
-      page.url().includes("/forbidden") ||
-      page.url().includes("?error=") ||
-      page.url() === "/" ||
-      page.url().endsWith("/?error=") ||
-      !page.url().includes("/admin/email-rules");
-    expect(blocked, "Dispatcher should not see /admin/email-rules").toBe(true);
+    await expectBlocked(page, resp, "/admin/email-rules", "Dispatcher");
   });
 
   test("Dana cannot delete users on /admin/users", async ({ page }) => {

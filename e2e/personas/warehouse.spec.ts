@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { signInAs, PERSONA } from "../lib/sign-in-as";
+import { expectBlocked } from "../lib/access";
 
 /**
  * Round-13 §2E — Wes Warehouse persona walk.
@@ -41,22 +42,12 @@ test.describe("§2E warehouse persona", () => {
   test("Wes is blocked from /scheduling/routes/new", async ({ page }) => {
     await signInAs(page, PERSONA.WAREHOUSE);
     const resp = await page.goto("/scheduling/routes/new");
-    const blocked =
-      (resp?.status() ?? 0) >= 400 ||
-      page.url().includes("/forbidden") ||
-      page.url().includes("?error=") ||
-      !page.url().includes("/scheduling/routes/new");
-    expect(blocked).toBe(true);
+    await expectBlocked(page, resp, "/scheduling/routes/new", "Warehouse");
   });
 
   test("Wes is blocked from /admin overview", async ({ page }) => {
     await signInAs(page, PERSONA.WAREHOUSE);
     const resp = await page.goto("/admin");
-    const blocked =
-      (resp?.status() ?? 0) >= 400 ||
-      page.url().includes("/forbidden") ||
-      page.url().includes("?error=") ||
-      !page.url().includes("/admin");
-    expect(blocked).toBe(true);
+    await expectBlocked(page, resp, "/admin", "Warehouse");
   });
 });

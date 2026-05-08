@@ -2,24 +2,28 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
-import { PERMISSIONS } from "@/lib/auth/rbac";
+import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
 import { seedExampleRuleAction } from "@/server/actions/email-admin";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Round-3 §A1 — email rules list.
+ * Round-3 §A1 + Round-13 hotfix — email rules list.
  *
- * Read-only first cut: lists every EmailRule with its scope, event,
- * recipients summary, template, and last-fired-at. Edit / create /
- * delete actions are filed for the next branch (see
- * docs/round-3-qa-checklist.md item 1) — this page exists today so
- * the link from /admin doesn't 404 and so ops can verify rules
- * before wiring the trigger sites in §B.
+ * Read-allowed for OPS_MANAGER + ADMIN (per the §2D persona
+ * brief: "Olivia can read every page she should but cannot
+ * write to /admin/email-rules"). Server actions for
+ * create / update / delete / seed remain gated on
+ * EMAIL_RULES_MANAGE — only ADMIN can mutate. The Seed example
+ * rule button is also disabled for non-admin viewers.
  */
 export default async function EmailRulesPage() {
-  await requireRole(PERMISSIONS.EMAIL_RULES_MANAGE);
+  // Read gate: EMAIL_WRITE is held by OPS_MANAGER and ADMIN.
+  // Write gate (canManage below) is the strict EMAIL_RULES_MANAGE
+  // which only ADMIN holds by default.
+  const session = await requireRole(PERMISSIONS.EMAIL_WRITE);
+  const canManage = can(session.role, PERMISSIONS.EMAIL_RULES_MANAGE);
 
   const rules = await prisma.emailRule.findMany({
     orderBy: [{ enabled: "desc" }, { event: "asc" }],
@@ -56,12 +60,19 @@ export default async function EmailRulesPage() {
           // already exists. A re-click would create a duplicate
           // example rule, which is exactly the kind of quiet
           // foot-gun the gate guards against.
+          // Round-13 hotfix — disable the Seed example button when
+          // the viewer lacks EMAIL_RULES_MANAGE. OPS_MANAGER can
+          // read this page but cannot mutate; the matching server
+          // action is also gated on EMAIL_RULES_MANAGE so a
+          // hand-rolled POST also returns 403.
           <form action={seedExampleRuleAction}>
             <button
               type="submit"
-              disabled={rules.length > 0}
+              disabled={rules.length > 0 || !canManage}
               title={
-                rules.length > 0
+                !canManage
+                  ? "Read-only — admin role required to seed."
+                  : rules.length > 0
                   ? "Already seeded — use the row controls below to edit existing rules."
                   : "Insert one disabled-by-default example rule"
               }
@@ -95,10 +106,21 @@ export default async function EmailRulesPage() {
               .
             </p>
           </div>
+          {/*
+            Round-13 hotfix — empty-state Seed CTA is also gated on
+            canManage. Read-only viewers see the banner explaining
+            the empty state but the seed button itself is disabled.
+          */}
           <form action={seedExampleRuleAction}>
             <button
               type="submit"
-              className="rounded bg-accent px-4 py-2 text-sm font-semibold transition hover:bg-accent-strong"
+              disabled={!canManage}
+              title={
+                canManage
+                  ? "Insert one disabled-by-default example rule"
+                  : "Read-only — admin role required to seed."
+              }
+              className="rounded bg-accent px-4 py-2 text-sm font-semibold transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-accent"
             >
               Seed example rule
             </button>

@@ -89,8 +89,12 @@ describe("Round-13 §3E — admin kebab hit area expanded", () => {
 describe("Round-13 §3F — Seed example button disabled when rule exists", () => {
   const src = read("src/app/(app)/admin/email-rules/page.tsx");
 
-  it("disabled prop reads rules.length > 0", () => {
-    expect(src).toMatch(/disabled=\{rules\.length > 0\}/);
+  it("disabled prop reads rules.length > 0 || !canManage", () => {
+    // Round-13 hotfix opened /admin/email-rules to OPS_MANAGER
+    // for read-only browsing. The seed button is now disabled
+    // either because the seed already ran OR because the viewer
+    // lacks EMAIL_RULES_MANAGE.
+    expect(src).toMatch(/disabled=\{rules\.length > 0 \|\| !canManage\}/);
   });
 
   it("title attribute explains the disabled state", () => {

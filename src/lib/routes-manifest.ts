@@ -109,7 +109,11 @@ export const ROUTES_MANIFEST: ReadonlyArray<RouteEntry> = [
   { path: "/admin/devices/[deviceId]", allow: ["ADMIN"] },
   { path: "/admin/districts", allow: ["ADMIN"] },
   { path: "/admin/email-log", allow: ["ADMIN", "OPS_MANAGER"] },
-  { path: "/admin/email-rules", allow: ["ADMIN"] },
+  // Round-13 hotfix — OPS_MANAGER can READ /admin/email-rules
+  // but the server actions for create/update/delete are gated
+  // on EMAIL_RULES_MANAGE (ADMIN-only), and the page disables
+  // every write affordance for non-admin viewers.
+  { path: "/admin/email-rules", allow: ["ADMIN", "OPS_MANAGER"] },
   { path: "/admin/email-templates", allow: ["ADMIN", "OPS_MANAGER"] },
   { path: "/admin/email-templates/[id]", allow: ["ADMIN", "OPS_MANAGER"] },
   { path: "/admin/holidays", allow: ["ADMIN"] },

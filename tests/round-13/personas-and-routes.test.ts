@@ -61,10 +61,17 @@ describe("Round-13 §4D — sign-in-as helper", () => {
     }
   });
 
-  it("uses the credentials endpoint, not the sign-in form", () => {
+  it("uses JWT cookie injection — does NOT hit the credentials form endpoint", () => {
+    // Round-13 hotfix flipped this from POST credentials to
+    // direct JWT cookie injection. Pin the new path + the
+    // explicit absence of the old one so a regression to the
+    // form-POST shape fails the gate.
     const src = readFileSync(path, "utf8");
-    expect(src).toContain("/api/auth/csrf");
-    expect(src).toContain("/api/auth/callback/credentials");
+    expect(src).toContain('from "next-auth/jwt"');
+    expect(src).toContain("encode({");
+    expect(src).toContain("addCookies");
+    expect(src).not.toContain("/api/auth/csrf");
+    expect(src).not.toContain("/api/auth/callback/credentials");
   });
 });
 

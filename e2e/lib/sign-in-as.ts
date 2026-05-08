@@ -1,30 +1,76 @@
 import type { BrowserContext, Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import { encode } from "next-auth/jwt";
 
 /**
- * Round-13 §4D — credential-injection sign-in for Playwright.
+ * Round-13 §4D + hotfix — credential-injection sign-in for
+ * Playwright via JWT cookie injection.
  *
- * The 7 persona specs (driver / tech / dispatcher / ops-manager /
- * warehouse / read-only / admin) all need to land authenticated
- * without going through the password form. We sign in by calling
- * the credentials provider directly and forwarding the resulting
- * NextAuth session cookie into the Playwright context.
+ * Why JWT, not the credentials POST endpoint?
+ *   - The R13 brief §4D explicitly bans the password form path.
+ *   - Faster: zero network round-trips beyond the cookie set.
+ *   - Less flaky: no risk of a CSRF / form-encoding regression
+ *     breaking every persona spec at once.
  *
- * Why not use the form?
- *   - Faster: one round-trip vs. visit + fill + submit
- *   - Less flaky: no risk of the test typing into a "Pick theme"
- *     button that accidentally has focus
- *   - Doesn't bake the test password into spec source — every
- *     spec that needs to sign in goes through this helper, and
- *     the helper reads the canonical persona credentials from
- *     prisma/seed-test.ts via env vars or the test DB.
+ * NextAuth runs in `strategy: "jwt"` (see src/lib/auth/auth.ts),
+ * so there is no Session table to insert into. The session IS
+ * the JWT. We forge one signed with the same NEXTAUTH_SECRET
+ * the app uses, populated with the same shape the auth callbacks
+ * produce, and drop it into the Playwright BrowserContext as the
+ * `next-auth.session-token` cookie.
  *
- * The persona seed creates each user with password
- * "test-password" by default. Tests that need a different
- * password override via the second argument.
+ * The token shape MUST match what `authOptions.callbacks.jwt`
+ * produces on real sign-in. Looking at src/lib/auth/auth.ts:
+ *
+ *   jwt({ token, user }) {
+ *     if (user) {
+ *       token.id = user.id;
+ *       token.role = user.role;
+ *       token.districtIds = user.districtIds;
+ *     }
+ *     return token;
+ *   }
+ *
+ * So the injected JWT needs id + role + districtIds (plus the
+ * standard sub/email/name fields).
  */
 
-const TEST_PASSWORD = "test-password";
+export const SESSION_TTL_SECONDS = 12 * 60 * 60;
+
+/**
+ * Build the JWT payload that mirrors what the live
+ * authOptions.callbacks.jwt produces on real sign-in. Pure
+ * function so vitest can verify the shape without a real Page.
+ */
+export function buildSessionTokenPayload(input: {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  districtIds: string[];
+  nowSeconds?: number;
+}): {
+  sub: string;
+  email: string;
+  name: string;
+  iat: number;
+  exp: number;
+  id: string;
+  role: string;
+  districtIds: string[];
+} {
+  const now = input.nowSeconds ?? Math.floor(Date.now() / 1000);
+  return {
+    sub: input.userId,
+    email: input.email,
+    name: input.name,
+    iat: now,
+    exp: now + SESSION_TTL_SECONDS,
+    id: input.userId,
+    role: input.role,
+    districtIds: input.districtIds,
+  };
+}
 
 let _prisma: PrismaClient | null = null;
 function prisma(): PrismaClient {
@@ -34,32 +80,50 @@ function prisma(): PrismaClient {
 
 export interface PersonaCredentials {
   email: string;
-  password?: string;
+}
+
+export function cookieNameFor(baseUrl: string): string {
+  // NextAuth's default: __Secure-next-auth.session-token over
+  // HTTPS, plain next-auth.session-token over HTTP.
+  return baseUrl.startsWith("https://")
+    ? "__Secure-next-auth.session-token"
+    : "next-auth.session-token";
+}
+
+export function hostnameOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname;
+  } catch {
+    return "127.0.0.1";
+  }
 }
 
 /**
- * Sign in `page` as the given persona. Calls the NextAuth
- * credentials endpoint directly and seeds the resulting
- * session cookie into the browser context. Subsequent page
- * navigations are authenticated.
+ * Sign in `page` as the given persona. Looks up the seeded user
+ * by email, encodes a NextAuth JWT, attaches it as a session
+ * cookie on the BrowserContext. Subsequent page navigations are
+ * authenticated.
  *
- * @param page Playwright page
- * @param creds either a string email or a {email, password} pair
+ * Throws if the persona does not exist or NEXTAUTH_SECRET is
+ * unset — both are deploy-time prerequisites.
  */
 export async function signInAs(
   page: Page,
   creds: string | PersonaCredentials,
 ): Promise<void> {
   const email = typeof creds === "string" ? creds : creds.email;
-  const password =
-    typeof creds === "string" ? TEST_PASSWORD : (creds.password ?? TEST_PASSWORD);
 
-  // Sanity check: the persona must exist before we try to sign
-  // them in. Without this the credentials POST returns 401 and
-  // the test fails with an opaque "redirect to /signin" symptom.
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (!secret) {
+    throw new Error(
+      "signInAs: NEXTAUTH_SECRET is not set. The Playwright env must " +
+        "use the same secret the app encodes JWTs with.",
+    );
+  }
+
   const user = await prisma().user.findUnique({
     where: { email },
-    select: { id: true, active: true },
+    include: { districts: { select: { districtId: true } } },
   });
   if (!user) {
     throw new Error(
@@ -70,32 +134,36 @@ export async function signInAs(
     throw new Error(`signInAs: persona ${email} is inactive.`);
   }
 
-  // Hit the NextAuth credentials endpoint directly. The CSRF
-  // token is required.
-  const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
+  const baseURL =
+    process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
 
-  const csrfRes = await page.request.get(`${baseURL}/api/auth/csrf`);
-  const { csrfToken } = (await csrfRes.json()) as { csrfToken: string };
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const payload = buildSessionTokenPayload({
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    districtIds: user.districts.map((d) => d.districtId),
+    nowSeconds,
+  });
+  const token = await encode({
+    secret,
+    token: payload,
+    maxAge: SESSION_TTL_SECONDS,
+  });
 
-  const signInRes = await page.request.post(
-    `${baseURL}/api/auth/callback/credentials`,
+  await page.context().addCookies([
     {
-      form: {
-        csrfToken,
-        email,
-        password,
-        json: "true",
-      },
-      maxRedirects: 0,
-      failOnStatusCode: false,
+      name: cookieNameFor(baseURL),
+      value: token,
+      domain: hostnameOf(baseURL),
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: baseURL.startsWith("https://"),
+      expires: nowSeconds + SESSION_TTL_SECONDS,
     },
-  );
-
-  if (signInRes.status() !== 200 && signInRes.status() !== 302) {
-    throw new Error(
-      `signInAs(${email}) returned ${signInRes.status()}: ${await signInRes.text()}`,
-    );
-  }
+  ]);
 }
 
 /**

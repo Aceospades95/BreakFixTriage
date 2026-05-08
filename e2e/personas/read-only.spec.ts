@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { signInAs, PERSONA } from "../lib/sign-in-as";
+import { expectBlocked } from "../lib/access";
 
 /**
  * Round-13 §2F — Reed (Ray) Read-only persona walk.
@@ -55,7 +56,9 @@ test.describe("§2F read-only persona", () => {
     }
   });
 
-  test("forbidden pages 403 / redirect, not crash", async ({ page }) => {
+  test("forbidden pages 403 / redirect / error-boundary, never crash", async ({
+    page,
+  }) => {
     await signInAs(page, PERSONA.READ_ONLY);
     for (const path of [
       "/admin",
@@ -65,12 +68,7 @@ test.describe("§2F read-only persona", () => {
       "/scheduling/routes/new",
     ] as const) {
       const resp = await page.goto(path);
-      const blocked =
-        (resp?.status() ?? 0) >= 400 ||
-        page.url().includes("/forbidden") ||
-        page.url().includes("?error=") ||
-        !page.url().includes(path);
-      expect(blocked, `Ray should not reach ${path}`).toBe(true);
+      await expectBlocked(page, resp, path, "Read-only");
     }
   });
 });

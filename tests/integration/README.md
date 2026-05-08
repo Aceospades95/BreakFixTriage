@@ -22,3 +22,20 @@ CI provisions both services; see `.github/workflows/ci.yml`
 - `import-dedupe.test.ts` — re-import drops duplicates
 - `audit-writers.test.ts` — every mutation writes a row
 - `session-create-revoke.test.ts` — touchSession + revoke paths
+
+## Empty-dir handling
+
+`npm run test:integration` runs vitest with `--passWithNoTests`
+so an empty directory (or a branch where every spec is
+`describe.skipIf`'d out) doesn't fail the job with vitest's
+"No test files found, exiting with code 1".
+
+`_smoke.test.ts` is a always-passing heartbeat assertion that
+keeps the suite non-empty. New contributors adding integration
+tests should ship a real test rather than removing the
+placeholder.
+
+If you add a new vitest project root that runs against a
+possibly-empty directory (e.g. `test:contracts`, `test:smoke`)
+add `--passWithNoTests` to the script and either ship a real
+test or rely on a placeholder.

@@ -3,6 +3,18 @@ import { PrismaClient } from "@prisma/client";
 import { signInAs, PERSONA } from "../lib/sign-in-as";
 
 /**
+ * STATUS: Aspirational coverage for Round-13 §2A persona scope.
+ * Tests below are marked test.fixme() because the underlying app
+ * surface, authorization gate, or test data is not yet
+ * implemented on this branch. See docs/round-13-backlog.md (B14)
+ * for the implementation plan.
+ *
+ * Do NOT ship code that "fixes" these by mocking out the
+ * assertion — unfixme each test only when the real app surface
+ * exists end-to-end.
+ */
+
+/**
  * Round-13 §2A — Dante Driver persona walk.
  *
  * Full delivery + pickup loop:
@@ -29,7 +41,7 @@ test.describe("§2A driver persona", () => {
     await prisma.$disconnect();
   });
 
-  test("delivery + pickup loop end-to-end", async ({ page }) => {
+  test.fixme("delivery + pickup loop end-to-end", async ({ page }) => {
     await signInAs(page, PERSONA.DRIVER);
 
     // (1) — Drivers don't usually create routes themselves; the

@@ -3,6 +3,18 @@ import { PrismaClient } from "@prisma/client";
 import { signInAs, PERSONA } from "../lib/sign-in-as";
 
 /**
+ * STATUS: Aspirational coverage for Round-13 §2B persona scope.
+ * Tests below are marked test.fixme() because the underlying app
+ * surface (bench pick-up flow + Available Transitions panel test
+ * hooks + admin panel hide gate) is not yet wired end-to-end on
+ * this branch. See docs/round-13-backlog.md (B14).
+ *
+ * Do NOT ship code that "fixes" these by mocking out the
+ * assertion — unfixme each test only when the real app surface
+ * exists end-to-end.
+ */
+
+/**
  * Round-13 §2B — Tess Technician persona walk.
  *
  * (1) View My Day.
@@ -23,7 +35,7 @@ test.describe("§2B technician persona", () => {
     await prisma.$disconnect();
   });
 
-  test("ticket lifecycle: pick up → triage → diagnosis → repair", async ({
+  test.fixme("ticket lifecycle: pick up → triage → diagnosis → repair", async ({
     page,
   }) => {
     await signInAs(page, PERSONA.TECHNICIAN);

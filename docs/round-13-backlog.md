@@ -62,6 +62,57 @@ Filed during R13 — to ship in R14 or later.
   R14 sweep + migration that rewrites historical rows to the
   `<entity>.<verb>` convention.
 
+## B8 — Read-only role 403 enforcement (DEFERRED)
+
+Round-11 §2C / Round-13 §2F asked the read-only role to be
+blocked from every mutation surface with a clear redirect to
+`/forbidden`. Three pieces are not yet shipped:
+
+1. `/forbidden` route — `src/app/(app)/forbidden/page.tsx` does
+   not exist; `find src/app -name "forbidden*"` returns empty.
+2. `src/middleware.ts` does not redirect unauthorized users to
+   `/forbidden`. It currently handles only the `READ_ONLY_MODE`
+   env-var kill switch + the auth-gate matcher.
+3. The read-only role's permission matrix denies access at the
+   page level via `requireRole`, which throws `AuthorizationError`
+   caught by `(app)/error.tsx` returning HTTP 200 — the spec
+   expects 401/403.
+
+Spec lives at `e2e/readonly-role-403.spec.ts` behind
+`test.fixme()`. Unfixme each test only when the matching surface
+ships.
+
+## B14 — Persona spec aspirational coverage (DEFERRED)
+
+The Round-13 §2A-§2G persona walks assume app surfaces and test
+hooks (`data-testid="people-row"`, `data-testid="route-stop"`,
+`data-testid="bulk-actions"`, `data-testid="available-transitions"`)
+that are not yet wired on this branch. Specs are marked
+`test.fixme()` so the coverage commitment stays visible. Each
+test reactivates by removing the `.fixme` suffix once the
+underlying surface lands.
+
+Affected spec files:
+- `e2e/personas/driver.spec.ts` — delivery + pickup loop
+- `e2e/personas/technician.spec.ts` — pick-up + transition flow
+- `e2e/personas/dispatcher.spec.ts` — bulk + route + permission
+- `e2e/personas/ops-manager.spec.ts` — dashboards + read/write
+  matrix per route
+- `e2e/personas/warehouse.spec.ts` — bench + scan + scheduling
+- `e2e/personas/read-only.spec.ts` — read everything, mutate
+  nothing (depends on B8)
+- `e2e/personas/admin-destructive.spec.ts` — destructive walk
+  (one smoke test stays active: Alex reaches /admin/users/[id])
+- `e2e/persona-warehouse.spec.ts` — R11 stub superseded by the
+  R13 personas/ counterpart
+- `e2e/route-smoke.spec.ts` — R13 §1E theme/route smoke matrix
+- `e2e/block-create.spec.ts` — depends on people-row data-testid
+
+The structural sitemap-coverage gate at
+`tests/round-11/route-smoke-coverage.test.ts` continues to
+protect against the /tickets SSR class of regression at the
+vitest layer.
+
 ## Round-14 entrypoints
 
 The biggest deferred items that should headline R14:

@@ -41,6 +41,11 @@ export const SESSION_TTL_SECONDS = 12 * 60 * 60;
  * Build the JWT payload that mirrors what the live
  * authOptions.callbacks.jwt produces on real sign-in. Pure
  * function so vitest can verify the shape without a real Page.
+ *
+ * Note: we deliberately do NOT include iat/exp here. NextAuth's
+ * encode() computes them from the maxAge argument so the token's
+ * expiry mirrors the runtime session TTL. Setting iat/exp twice
+ * has caused inconsistent decode behavior in past versions.
  */
 export function buildSessionTokenPayload(input: {
   userId: string;
@@ -48,24 +53,18 @@ export function buildSessionTokenPayload(input: {
   name: string;
   role: string;
   districtIds: string[];
-  nowSeconds?: number;
 }): {
   sub: string;
   email: string;
   name: string;
-  iat: number;
-  exp: number;
   id: string;
   role: string;
   districtIds: string[];
 } {
-  const now = input.nowSeconds ?? Math.floor(Date.now() / 1000);
   return {
     sub: input.userId,
     email: input.email,
     name: input.name,
-    iat: now,
-    exp: now + SESSION_TTL_SECONDS,
     id: input.userId,
     role: input.role,
     districtIds: input.districtIds,
@@ -144,7 +143,6 @@ export async function signInAs(
     name: user.name,
     role: user.role,
     districtIds: user.districts.map((d) => d.districtId),
-    nowSeconds,
   });
   const token = await encode({
     secret,

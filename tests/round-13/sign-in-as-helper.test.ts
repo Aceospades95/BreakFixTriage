@@ -28,20 +28,20 @@ describe("Round-13 §4D — sign-in-as helper", () => {
   const SECRET = "test-secret-do-not-use-in-prod-32chars";
 
   describe("buildSessionTokenPayload", () => {
-    it("produces sub + email + name + iat + exp", () => {
+    it("produces sub + email + name + id + role + districtIds", () => {
       const p = buildSessionTokenPayload({
         userId: "u_abc",
         email: "alex@example.test",
         name: "Alex Admin",
         role: "ADMIN",
         districtIds: ["d_bx"],
-        nowSeconds: 100,
       });
       expect(p.sub).toBe("u_abc");
       expect(p.email).toBe("alex@example.test");
       expect(p.name).toBe("Alex Admin");
-      expect(p.iat).toBe(100);
-      expect(p.exp).toBe(100 + SESSION_TTL_SECONDS);
+      expect(p.id).toBe("u_abc");
+      expect(p.role).toBe("ADMIN");
+      expect(p.districtIds).toEqual(["d_bx"]);
     });
 
     it("mirrors authOptions.callbacks.jwt — copies id + role + districtIds", () => {
@@ -51,25 +51,22 @@ describe("Round-13 §4D — sign-in-as helper", () => {
         name: "Alex Admin",
         role: "ADMIN",
         districtIds: ["d_bx", "d_qns"],
-        nowSeconds: 100,
       });
       expect(p.id).toBe("u_abc");
       expect(p.role).toBe("ADMIN");
       expect(p.districtIds).toEqual(["d_bx", "d_qns"]);
     });
 
-    it("defaults nowSeconds to current time when omitted", () => {
-      const before = Math.floor(Date.now() / 1000);
+    it("does NOT include iat/exp — encode() computes from maxAge", () => {
       const p = buildSessionTokenPayload({
-        userId: "u_abc",
+        userId: "u",
         email: "x@y.test",
         name: "x",
         role: "READ_ONLY",
         districtIds: [],
       });
-      const after = Math.floor(Date.now() / 1000);
-      expect(p.iat).toBeGreaterThanOrEqual(before);
-      expect(p.iat).toBeLessThanOrEqual(after);
+      expect(p).not.toHaveProperty("iat");
+      expect(p).not.toHaveProperty("exp");
     });
   });
 

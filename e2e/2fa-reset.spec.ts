@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import { signInAs, PERSONA } from "./lib/sign-in-as";
 
 /**
  * Round-12 §1D — Reset 2FA admin button gating + audit row.
@@ -77,7 +78,7 @@ test.describe("§1D Reset 2FA gating", () => {
   test("enrolled panel renders + Reset 2FA writes audit + reverts state", async ({
     page,
   }) => {
-    await signIn(page, "alex@example.test");
+    await signInAs(page, PERSONA.ADMIN);
 
     await page.goto(`/admin/users/${tessId}`);
 
@@ -122,13 +123,3 @@ test.describe("§1D Reset 2FA gating", () => {
   });
 });
 
-async function signIn(
-  page: import("@playwright/test").Page,
-  email: string,
-) {
-  await page.goto("/signin");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', "test-password");
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.startsWith("/signin"));
-}

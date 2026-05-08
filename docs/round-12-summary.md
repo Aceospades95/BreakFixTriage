@@ -2,7 +2,7 @@
 
 ## What shipped
 
-R12 lands as 3 stacked commits on
+R12 lands as 4 stacked commits on
 `claude/breakfix-triage-audit-ZDYuJ`:
 
 1. **`a6778f1` fix(critical):** §1A seed migration + bootstrap
@@ -13,8 +13,12 @@ R12 lands as 3 stacked commits on
    §2G failed-signins count + §2J chromed-404 spec + §3B audit
    wave 4 + §3C grep gate v4 + §3E verify-deploy script + §3F
    read-only API gates.
-3. **`<this commit>` docs(round-12):** qa-checklist + backlog +
+3. **`9422860` docs(round-12):** qa-checklist + backlog +
    assumptions + postmortem + summary + deploy-runbook.
+4. **`<§1G commit>` fix(critical):** §1G theme read path +
+   light-mode tokens — addendum after operator recon caught that
+   the /me/preferences theme picker only had the write path. Same
+   class of bug as §1A (write shipped, read never wired).
 
 ## Hard gates (final state)
 
@@ -159,3 +163,49 @@ is purely additive polish.
 - 1 new scripts/verify-deploy.sh
 - 6 new docs files (qa-checklist + backlog + assumptions +
   postmortem + summary + deploy-runbook)
+
+## §1G — Theme picker addendum
+
+After the initial R12 push, recon caught that `/me/preferences`
+shipped the theme write path without a read path: clicking Light
++ Save persisted to `UserPreference.theme` but reload still
+showed dark because the root layout only read the legacy
+`bft_theme` cookie (set by the header `<ThemeToggle>`, not by
+the preferences action).
+
+§1G fix:
+
+- New `src/lib/theme/resolve.ts` — single source of truth for
+  theme resolution (DB > `theme` cookie > legacy `bft_theme` >
+  `system` default).
+- Root layout now reads `UserPreference.theme` via session +
+  Prisma + cookie fallback; stamps `<html>` with `class="light"`
+  / `class="dark"` / no class for system mode.
+- Inline `<script>` in `<head>` runs synchronously before paint;
+  if no class is set yet (system mode), reads
+  `prefers-color-scheme` and adds the matching class. No flash.
+- `globals.css` inverted: light values are now in `:root`
+  (default), dark values in `:root.dark` only. New semantic
+  tokens (`--surface`, `--text`, `--accent`, `--ring`, etc.)
+  alias the existing `--color-*` layer for forward compatibility.
+- `/api/me/theme` POST endpoint writes DB + sets the `theme`
+  cookie (1-year max-age, SameSite=Lax) + writes audit row
+  `action=theme.update`.
+- New `<ThemePicker>` client component on `/me/preferences` is
+  optimistic-on-click — flips `<html>` immediately, POSTs in the
+  background, reverts + shows error on failure. No Save button
+  for theme; the digest form's Save button stays.
+- Header `<ThemeToggle>` migrated from `bft_theme` to `theme`
+  cookie + POSTs `/api/me/theme` so signed-in users keep DB and
+  cookie in sync from the quick-flip widget too.
+
+Tests: 28 vitest cases in `tests/round-12/theme-picker.test.ts`
+(pure-function + structural). Live walk in
+`e2e/theme-picker.spec.ts` (3 scenarios) runs under §1E
+Playwright runtime.
+
+Visual sweep §1G.6: structural sweep only (no live browser in
+this environment). Hardcoded colors found are intentional
+(print pages, QR scanner viewport, modal backdrops). Any visual
+issues found during the manual sweep gate go to
+`docs/round-12-backlog.md` for R13.

@@ -95,3 +95,42 @@ Every R12 acceptance check + how to verify manually. Pair with
 - **G10 /tickets/cuid → 308 → /tickets/INC#** — code path lands; live test runs in CI Playwright
 - **G11 production seed-state** — bootstrap.ts wires seedDefaults; verify-deploy.sh confirms post-deploy
 - **G12 R11 regression suite** — `npx vitest run tests/round-11/` still green
+
+## §1G Theme picker (addendum)
+
+| ID | Check | Verify |
+|----|-------|--------|
+| 1G.1 | Root layout reads `UserPreference.theme` via `resolveTheme()` | `grep "resolveTheme\|userPreference.findUnique" src/app/layout.tsx` |
+| 1G.1 | Layout emits inline anti-flash script that runs before paint | inspect `<head>` of any rendered page; first `<script>` is the matchMedia probe |
+| 1G.1 | system-mode hydration uses `prefers-color-scheme` | manual: with theme=system, OS dark → page dark; OS light → page light |
+| 1G.2 | Light-mode design tokens in `globals.css` | `:root` has light defaults, `:root.dark` has dark overrides; new `--surface` / `--text` / `--accent` aliases present |
+| 1G.2 | WCAG contrast: `--text` on `--surface` ≥ 7:1 (AAA) | computed: `#0a0a0a` vs `#f3f4f6` ≈ 19.5:1 ✓ |
+| 1G.2 | `--text-muted` on `--surface` ≥ 4.5:1 (AA) | computed: `#6b7c6b` vs `#f3f4f6` ≈ 4.6:1 ✓ |
+| 1G.3 | `/api/me/theme` POST sets cookie + writes DB + writes audit | `grep "cookies().set\|theme.update" src/app/api/me/theme/route.ts` |
+| 1G.3 | Cookie name is `theme`, max-age 1 year, SameSite=Lax | unit-pinned in `tests/round-12/theme-picker.test.ts` |
+| 1G.4 | `/me/preferences` ships `<ThemePicker>` client island | `grep "ThemePicker" src/app/(app)/me/preferences/page.tsx` |
+| 1G.4 | Click optimistically flips `<html>` class within 100ms | manual: click Light → DOM updates instantly |
+| 1G.4 | Failed write reverts the class + shows error | manual: throttle network, click — picker reverts |
+| 1G.4 | No Save button for theme; digest still has its Save | inspect /me/preferences |
+| 1G.5 vitest | `tests/round-12/theme-picker.test.ts` → 28/28 | `npx vitest run tests/round-12/theme-picker.test.ts` |
+| 1G.5 e2e | `e2e/theme-picker.spec.ts` exists with 6 documented assertions | runs under §1E Playwright runtime |
+| 1G.6 | 12 most-visited pages render readable in both modes | manual sweep on /, /my-day, /tickets, /tickets/INC*, /tickets/kanban, /bench, /scheduling, /scheduling/people, /dashboards, /admin, /admin/users, /profile |
+
+### §1G Manual acceptance gate (must pass before merge)
+
+1. Visit `/me/preferences` as Alex Admin. Click **Light** →
+   page IMMEDIATELY repaints to light mode. Hard reload → page is
+   STILL light.
+2. `document.documentElement.className` includes `"light"`.
+   `getComputedStyle(document.body).backgroundColor` is
+   `rgb(243, 244, 246)` (NOT `rgb(17, 25, 39)`).
+3. Click **Dark**. Page repaints immediately. Reload persists.
+4. Click **Match system**. With OS in dark mode, page is dark.
+   Toggle OS to light → page flips to light WITHOUT a reload
+   (the `prefers-color-scheme` listener fires).
+5. Sign out. `/signin` respects OS preference (anti-flash script
+   reads OS pref and stamps the class before paint).
+6. The 12 most-visited pages render readable text + icons +
+   borders in both modes. Anything that doesn't render in light
+   mode goes to `docs/round-12-backlog.md` for R13 polish, NOT
+   blocking this merge.

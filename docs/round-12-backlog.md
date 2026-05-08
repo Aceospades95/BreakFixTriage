@@ -103,6 +103,33 @@ These are the (a) vs (b) decisions called out in the brief:
   layer. If the security policy ever flips to (b) "store + render
   real values", retire the hash fields and ship a privacy review.
 
+## §1G visual-sweep deferrals
+
+The theme read-path fix (§1G) inverted globals.css so light is
+the default and dark is the override. The CSS-tokens approach
+means most components get correct light styling for free.
+Anything found during the manual `/me/preferences` → 12-page
+walk that doesn't render correctly in light mode gets filed
+here for R13:
+
+- *(none discovered yet — to be filled in by the manual gate)*
+
+The structural sweep checked for hardcoded color anti-patterns
+(`bg-black`, `bg-slate-900`, `text-white` without override). The
+spots that hardcode dark colors are intentional:
+
+- `src/app/(app)/scheduling/routes/[routeId]/print/page.tsx`,
+  `src/app/(app)/tickets/[ticketId]/print/page.tsx` — print
+  routes use `bg-white` + `text-slate-900` for paper legibility.
+- `src/app/(app)/profile/2fa/page.tsx` — `bg-white p-2` wraps
+  the QR code so the camera scanner reads the contrast.
+- `src/components/qr-scanner.tsx` — viewport `bg-black` is the
+  camera preview frame.
+- Modal backdrops (`bg-black/60` / `bg-black/50`) on
+  `onboarding-tour`, `sidebar` overlay, `keyboard-shortcuts`,
+  `command-palette`, `help-menu`, `EmailSpocButton`. Semi-
+  transparent dim works in both modes.
+
 ## Round-13 entrypoints
 
 The biggest deferred items that should headline R13:

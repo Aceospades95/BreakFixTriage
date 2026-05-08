@@ -94,3 +94,92 @@ duplication is intentional: the prisma/ copy stays self-contained
 for the Docker runner image (which only copies `prisma/`, not
 `src/`); the src/ copy is used by the `/admin/holidays` "Auto-seed"
 kebab action which runs in the Next.js runtime.
+
+## §1G — Theme picker half-implementation
+
+Same class of bug as the auto-seed gap, different surface:
+**the write path shipped, the read path was never wired**.
+
+### Symptom
+
+1. Sign in as Alex Admin. Visit `/me/preferences`.
+2. Click Light → click Save preferences → toast: "Preferences saved".
+3. Hard reload.
+4. Page is still dark. `document.documentElement.className` is
+   still `"dark"`. No `data-theme` attribute. No `theme` cookie.
+   `localStorage.getItem('theme')` is null.
+5. `getComputedStyle(document.body).backgroundColor` is still
+   `rgb(17, 25, 39)` — the dark-surface token.
+
+The write path persisted to `UserPreference.theme`. Reload still
+showed dark because:
+
+- The root layout (`src/app/layout.tsx`) hardcoded
+  `cookies().get("bft_theme")?.value === "light" ? "light" : "dark"`
+  with the dark fallback. It never read `UserPreference.theme`.
+- The `/me/preferences` server action (`updatePreferencesAction`)
+  wrote to the DB but never set the cookie that the layout
+  actually consulted.
+- There was no `ThemeProvider` client component to hydrate the
+  preference from the DB.
+
+Match-system happened to look correct only because the test
+machine's OS was in dark mode. Light-OS users would have seen
+the same root cause masked.
+
+### Root cause
+
+The "write path was added without an end-to-end test asserting
+the DOM actually changed." A vitest gate that POSTs the
+preferences form and inspects the rendered HTML would have caught
+it; the existing test suite covered the DB write but not the
+visual outcome.
+
+### Fix (§1G)
+
+1. **`resolveTheme()` helper** at `src/lib/theme/resolve.ts` —
+   single source of truth. Priority: DB → `theme` cookie →
+   legacy `bft_theme` cookie → `system` default.
+2. **Root layout reads via resolveTheme()** — stamps `<html>`
+   with `class="light"` / `class="dark"` / no class for system.
+3. **Anti-flash inline `<script>` in `<head>`** — runs
+   synchronously before paint; reads `prefers-color-scheme`; if
+   no theme class is set yet (system mode), adds the matching
+   class so there's no flash of wrong theme.
+4. **`/api/me/theme` POST endpoint** — writes DB + sets the
+   `theme` cookie + writes audit row `action=theme.update`.
+   Returns `{ ok: true, theme }`. Anonymous → 401.
+5. **Optimistic `<ThemePicker>` client component** — replaces
+   the form-submit radio group on `/me/preferences`. Click
+   immediately flips `<html>` class; POSTs in the background;
+   reverts + shows error on failure. No Save button required;
+   the digest form's Save button stays for digest fields.
+6. **`globals.css` inverted** — light values are now in `:root`
+   (default), dark values in `:root.dark` only. New semantic
+   tokens (`--surface`, `--text`, `--text-muted`, `--accent`,
+   `--ring`, etc.) point at the existing `--color-*` layer for
+   lockstep without code churn.
+7. **Header `<ThemeToggle>`** updated to write the new `theme`
+   cookie (was `bft_theme`) and POST to `/api/me/theme` so
+   signed-in users keep DB and cookie in sync from the quick-flip
+   widget too.
+
+### Gate added
+
+`tests/round-12/theme-picker.test.ts` — 28 cases:
+
+- Pure-function tests for `resolveTheme()` with every priority
+  permutation
+- Structural assertions on the layout / API route / picker
+  client component / globals.css inversion
+- Pins the cookie name `theme` + 1-year max-age + audit
+  action `theme.update`
+
+`e2e/theme-picker.spec.ts` is the live walk:
+- Click Light → optimistic class flip within 100ms
+- Reload → class persists from server-rendered DB read
+- `getComputedStyle(body).backgroundColor` matches the light
+  surface token
+- Click Match system → `emulateMedia({ colorScheme: 'dark|light' })`
+  flips the class without navigation
+- Anonymous /signin → respects OS preference

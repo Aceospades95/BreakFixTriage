@@ -3,26 +3,36 @@
 import { useEffect, useState } from "react";
 
 /**
- * Theme toggle.
+ * Header theme toggle — fast 2-state flip (light ↔ dark) on the
+ * top bar.
  *
- * Stores the choice in a cookie so it survives reloads and is
- * readable from the server (via the root layout's theme class
- * initializer). On first render we mirror the cookie to the
- * `<html>` class so Tailwind's class-based dark mode picks it up.
+ * Round-12 §1G: switched the cookie name to `theme` so the root
+ * layout's resolveTheme() reads the same source as
+ * /api/me/theme. Posts to /api/me/theme best-effort so signed-in
+ * users' DB stays in sync; anonymous users get a 401 which we
+ * silently swallow (their cookie is the canonical store).
  *
- * We intentionally don't use prefers-color-scheme automatically —
- * warehouse staff asked for a manual switch so they can choose
- * "dark for the warehouse, light for the van." Respect the user.
+ * The /me/preferences page hosts the full 3-state picker (system
+ * / light / dark). This widget is the quick-flip; click cycles
+ * between light and dark only.
  */
 type Theme = "dark" | "light";
 
-const COOKIE = "bft_theme";
+const COOKIE = "theme";
+const LEGACY_COOKIE = "bft_theme";
 
 function readTheme(): Theme {
   if (typeof document === "undefined") return "dark";
-  const match = document.cookie.match(/bft_theme=(dark|light)/);
-  if (match && (match[1] === "dark" || match[1] === "light")) {
-    return match[1];
+  const m = document.cookie.match(/(?:^|;\s*)theme=(dark|light|system)/);
+  if (m && (m[1] === "dark" || m[1] === "light")) return m[1];
+  // Fall back to the resolved class on <html> (root layout sets
+  // it via resolveTheme() and the anti-flash script).
+  if (document.documentElement.classList.contains("light")) return "light";
+  if (document.documentElement.classList.contains("dark")) return "dark";
+  // Legacy bft_theme fallback.
+  const legacy = document.cookie.match(/(?:^|;\s*)bft_theme=(dark|light)/);
+  if (legacy && (legacy[1] === "dark" || legacy[1] === "light")) {
+    return legacy[1];
   }
   return "dark";
 }
@@ -31,8 +41,14 @@ function applyTheme(theme: Theme) {
   const root = document.documentElement;
   root.classList.remove("dark", "light");
   root.classList.add(theme);
-  // 180-day cookie so the choice persists roughly a semester.
-  document.cookie = `${COOKIE}=${theme}; path=/; max-age=${60 * 60 * 24 * 180}; samesite=lax`;
+  root.dataset.theme = theme;
+  root.dataset.themeResolved = theme;
+  // 1-year cookie per the §1G.3 spec. Same shape as
+  // /api/me/theme writes server-side.
+  document.cookie = `${COOKIE}=${theme}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+  // Clear the legacy cookie if present so the read path doesn't
+  // race two stores.
+  document.cookie = `${LEGACY_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 export function ThemeToggle() {
@@ -42,7 +58,6 @@ export function ThemeToggle() {
   useEffect(() => {
     const current = readTheme();
     setTheme(current);
-    applyTheme(current);
     setMounted(true);
   }, []);
 
@@ -50,10 +65,19 @@ export function ThemeToggle() {
     const next: Theme = theme === "dark" ? "light" : "dark";
     setTheme(next);
     applyTheme(next);
+    // Best-effort DB sync for signed-in users. Anonymous users
+    // get a 401; we ignore — the cookie is the canonical store
+    // for them anyway.
+    void fetch("/api/me/theme", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ theme: next }),
+      credentials: "same-origin",
+    }).catch(() => {
+      /* best-effort; ignore */
+    });
   }
 
-  // Render a visually-hidden placeholder until the cookie is read so
-  // the toggle doesn't flash the wrong icon on first paint.
   if (!mounted) {
     return (
       <button

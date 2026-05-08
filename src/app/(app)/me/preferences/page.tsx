@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
+import { ThemePicker } from "@/components/theme-picker";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { updatePreferencesAction } from "@/server/actions/preferences";
@@ -7,13 +8,17 @@ import { updatePreferencesAction } from "@/server/actions/preferences";
 export const dynamic = "force-dynamic";
 
 /**
- * Round-3 §A3 — /me/preferences.
+ * Round-3 §A3 + Round-12 §1G — /me/preferences.
  *
- * Theme picker (system / light / dark), digest opt-in + hour.
- * The brief's per-event channel matrix (in-app vs. email per
- * EmailEvent) is a JSON blob that needs a richer UI; filed for
- * the §A follow-up branch (see docs/round-3-qa-checklist.md
- * item 3).
+ * Theme picker is a dedicated client island (`<ThemePicker>`)
+ * with optimistic-on-click semantics: clicking an option flips
+ * the visual theme immediately, then POSTs /api/me/theme in the
+ * background. No Save button required for theme. The Save button
+ * on the digest fieldset stays for the digest fields.
+ *
+ * The pref's theme value is the server's current truth; the
+ * picker re-renders from `initial` on first paint and owns its
+ * state from then on.
  */
 export default async function PreferencesPage({
   searchParams,
@@ -52,45 +57,17 @@ export default async function PreferencesPage({
         </div>
       )}
 
+      <fieldset className="mb-6 max-w-2xl rounded-lg border border-surface-border bg-surface-muted/40 p-4">
+        <legend className="px-2 text-sm font-semibold tracking-wide text-slate-300">
+          Theme
+        </legend>
+        <ThemePicker initial={pref?.theme ?? "system"} />
+      </fieldset>
+
       <form
         action={updatePreferencesAction}
         className="grid max-w-2xl gap-6"
       >
-        <fieldset className="rounded-lg border border-surface-border bg-surface-muted/40 p-4">
-          <legend className="px-2 text-sm font-semibold tracking-wide text-slate-300">
-            Theme
-          </legend>
-          <div className="mt-2 flex flex-wrap gap-3 text-sm">
-            {[
-              { value: "system", label: "Match system" },
-              { value: "light", label: "Light" },
-              { value: "dark", label: "Dark" },
-            ].map((opt) => {
-              const active = (pref?.theme ?? "system") === opt.value;
-              return (
-                <label
-                  key={opt.value}
-                  className={
-                    "flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs transition " +
-                    (active
-                      ? "border-accent bg-accent/10 text-white"
-                      : "border-surface-border text-slate-300 hover:border-accent")
-                  }
-                >
-                  <input
-                    type="radio"
-                    name="theme"
-                    value={opt.value}
-                    defaultChecked={active}
-                    className="hidden"
-                  />
-                  {opt.label}
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
-
         <fieldset className="rounded-lg border border-surface-border bg-surface-muted/40 p-4">
           <legend className="px-2 text-sm font-semibold tracking-wide text-slate-300">
             Daily digest

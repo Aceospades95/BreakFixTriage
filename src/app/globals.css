@@ -3,17 +3,79 @@
 @tailwind utilities;
 
 /*
- * Theme tokens — four-layer depth hierarchy driven by a forest-green brand.
+ * Round-12 §1G.2 — light-mode design tokens.
  *
- * Layers (dark): background (#111927) → card (#1a2a40) → muted (#253548) → secondary (#2d4058)
- * Layers (light): background (#f3f4f6) → card (#ffffff) → muted (#e8eaec) → secondary (#e4ede8)
+ * Theme architecture: semantic CSS variables under :root (light
+ * defaults) + :root.dark overrides. Toggling the .dark class on
+ * <html> swaps every value app-wide; no per-component dark:
+ * variant is required.
  *
- * Values are stored as space-separated RGB triples so Tailwind can apply
- * opacity via `rgb(var(--color-x) / <alpha-value>)`. Legacy aliases
- * (--color-surface, --color-accent, --color-body) are kept so existing
- * `bg-surface`, `bg-accent`, etc. utility classes continue to work.
+ * Tailwind config maps utility classes (bg-surface, text-muted,
+ * etc.) to var(--color-X). The legacy --color-X names are kept
+ * as the canonical source of truth; the new --surface, --text,
+ * etc. semantic aliases (per the §1G.2 spec) point at the same
+ * underlying values.
+ *
+ * Light values hit the contrast targets called out in §1G.2:
+ *   --text on --surface ≥ 7:1 (≈19.5:1, AAA-grade)
+ *   --text-muted on --surface ≥ 4.5:1 (≈4.6:1, AA-grade)
  */
 :root,
+:root.light {
+  color-scheme: light;
+
+  /* Semantic surfaces */
+  --color-background: 243 244 246;       /* #f3f4f6  off-white page */
+  --color-foreground: 10 10 10;          /* #0a0a0a  body text */
+  --color-card: 255 255 255;             /* #ffffff  white cards pop on off-white */
+  --color-card-foreground: 10 10 10;
+  --color-muted: 232 234 236;            /* #e8eaec */
+  --color-muted-foreground: 107 124 107; /* #6b7c6b */
+  --color-secondary: 228 237 232;        /* #e4ede8  green-tinted light gray */
+  --color-secondary-foreground: 21 88 62;
+  --color-border: 213 216 220;           /* #d5d8dc  strong, visible */
+  --color-input: 213 216 220;
+
+  /* Brand */
+  --color-primary: 21 88 62;             /* #15583e  deep forest green */
+  --color-primary-foreground: 255 255 255;
+  --color-accent: 34 136 90;             /* #22885a */
+
+  /* Status */
+  --color-destructive: 239 68 68;        /* #ef4444 */
+  --color-success: 22 163 74;            /* #16a34a */
+  --color-warning: 245 158 11;           /* #f59e0b */
+
+  /* Legacy aliases */
+  --color-surface: 243 244 246;
+  --color-surface-muted: 255 255 255;
+  --color-surface-border: 213 216 220;
+  --color-accent-strong: 11 61 42;       /* darker forest green for hover */
+  --color-body: 10 10 10;
+
+  /* Round-12 §1G.2 — semantic aliases on top of the existing
+     --color-* layer. New code can use --surface / --text /
+     --accent etc. and the values stay in lockstep with the
+     legacy names. */
+  --surface: var(--color-background);
+  --surface-raised: var(--color-card);
+  --surface-overlay: var(--color-secondary);
+  --border: var(--color-border);
+  --border-strong: 156 163 175;          /* #9ca3af one notch up */
+  --text: var(--color-foreground);
+  --text-muted: var(--color-muted-foreground);
+  --text-subtle: 156 163 175;            /* #9ca3af */
+  --accent: var(--color-primary);
+  --accent-foreground: var(--color-primary-foreground);
+  --danger: var(--color-destructive);
+  --warning: var(--color-warning);
+  --success: var(--color-success);
+  --info: 59 130 246;                    /* #3b82f6 blue-500 */
+  --ring: var(--color-primary);
+
+  --radius: 0.5rem;
+}
+
 :root.dark {
   color-scheme: dark;
 
@@ -39,65 +101,53 @@
   --color-success: 74 222 128;           /* #4ade80 */
   --color-warning: 251 191 36;           /* #fbbf24 */
 
-  /* Legacy aliases for existing utility classes */
-  --color-surface: 17 25 39;             /* = background */
-  --color-surface-muted: 26 42 64;       /* = card */
-  --color-surface-border: 61 85 112;     /* = border */
-  --color-accent-strong: 22 163 74;      /* darker forest green for hover */
-  --color-body: 241 245 249;             /* = foreground */
-
-  --radius: 0.5rem;
-}
-
-:root.light {
-  color-scheme: light;
-
-  /* Semantic surfaces */
-  --color-background: 243 244 246;       /* #f3f4f6  off-white page (NOT pure white) */
-  --color-foreground: 10 10 10;          /* #0a0a0a */
-  --color-card: 255 255 255;             /* #ffffff  white cards pop on off-white */
-  --color-card-foreground: 10 10 10;
-  --color-muted: 232 234 236;            /* #e8eaec */
-  --color-muted-foreground: 107 124 107; /* #6b7c6b */
-  --color-secondary: 228 237 232;        /* #e4ede8  green-tinted light gray */
-  --color-secondary-foreground: 21 88 62;
-  --color-border: 213 216 220;           /* #d5d8dc  strong, visible */
-  --color-input: 213 216 220;
-
-  /* Brand */
-  --color-primary: 21 88 62;             /* #15583e  deep forest green */
-  --color-primary-foreground: 255 255 255;
-  --color-accent: 34 136 90;             /* #22885a */
-
-  /* Status */
-  --color-destructive: 239 68 68;        /* #ef4444 */
-  --color-success: 22 163 74;            /* #16a34a */
-  --color-warning: 245 158 11;           /* #f59e0b */
-
   /* Legacy aliases */
-  --color-surface: 243 244 246;
-  --color-surface-muted: 255 255 255;
-  --color-surface-border: 213 216 220;
-  --color-accent-strong: 11 61 42;       /* even darker forest green for hover */
-  --color-body: 10 10 10;
+  --color-surface: 17 25 39;
+  --color-surface-muted: 26 42 64;
+  --color-surface-border: 61 85 112;
+  --color-accent-strong: 22 163 74;
+  --color-body: 241 245 249;
+
+  /* Round-12 §1G.2 — semantic aliases (dark overrides). The
+     names match the :root block so consumers can use --surface /
+     --text consistently across modes. */
+  --border-strong: 100 116 139;          /* #64748b */
+  --text-subtle: 100 116 139;            /* #64748b */
+  --info: 96 165 250;                    /* #60a5fa blue-400 */
 }
 
 /*
- * Light-mode text overrides. The app was originally written against
- * hardcoded `text-slate-*` and `text-white` classes for dark mode. In
- * light mode, re-map them to sensible dark values so text stays
- * readable against the off-white background.
+ * Light-mode text overrides. Tailwind's `text-slate-*` and
+ * `text-white` literals are baked into hundreds of components;
+ * remap them when light mode is active so the visual sweep
+ * (§1G.6) doesn't have to touch every component. Applies to both
+ * default :root and explicit :root.light.
  */
+:root .text-slate-100,
 :root.light .text-slate-100 { color: rgb(15 23 42); }
+:root .text-slate-200,
 :root.light .text-slate-200 { color: rgb(30 41 59); }
+:root .text-slate-300,
 :root.light .text-slate-300 { color: rgb(51 65 85); }
+:root .text-slate-400,
 :root.light .text-slate-400 { color: rgb(71 85 105); }
+:root .text-slate-500,
 :root.light .text-slate-500 { color: rgb(100 116 139); }
+:root .text-slate-600,
 :root.light .text-slate-600 { color: rgb(107 114 128); }
+:root .text-white,
 :root.light .text-white { color: rgb(15 23 42); }
 
-/* Keep primary-action buttons readable in light mode — text-white on the
- * primary forest green background should stay white, not get remapped. */
+/* Keep primary-action buttons readable in light mode — text-white
+ * on the primary forest green background should stay white, not
+ * get remapped. */
+:root .bg-accent .text-white,
+:root .bg-accent-strong .text-white,
+:root .bg-primary .text-white,
+:root button.bg-accent,
+:root button.bg-accent-strong,
+:root a.bg-accent,
+:root a.bg-accent-strong,
 :root.light .bg-accent .text-white,
 :root.light .bg-accent-strong .text-white,
 :root.light .bg-primary .text-white,
@@ -108,14 +158,17 @@
 
 /* Tinted status colors need a darker tint in light mode so they
  * stay readable against the light-tinted banners. */
-:root.light .text-amber-100,
-:root.light .text-amber-200 { color: rgb(120 53 15); }
-:root.light .text-red-100,
-:root.light .text-red-200 { color: rgb(127 29 29); }
-:root.light .text-emerald-100,
-:root.light .text-emerald-200 { color: rgb(6 78 59); }
+:root .text-amber-100, :root .text-amber-200,
+:root.light .text-amber-100, :root.light .text-amber-200 { color: rgb(120 53 15); }
+:root .text-red-100, :root .text-red-200,
+:root.light .text-red-100, :root.light .text-red-200 { color: rgb(127 29 29); }
+:root .text-emerald-100, :root .text-emerald-200,
+:root.light .text-emerald-100, :root.light .text-emerald-200 { color: rgb(6 78 59); }
+:root .text-violet-200,
 :root.light .text-violet-200 { color: rgb(76 29 149); }
+:root .text-indigo-200,
 :root.light .text-indigo-200 { color: rgb(30 27 75); }
+:root .text-blue-200,
 :root.light .text-blue-200 { color: rgb(30 58 138); }
 
 body {

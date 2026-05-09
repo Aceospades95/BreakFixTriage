@@ -11,6 +11,7 @@ const createSchema = z.object({
   schoolId: z.string().min(1),
   label: z.string().trim().max(100).optional(),
   expiresInDays: z.coerce.number().int().min(0).max(3650).optional(),
+  dataScope: z.enum(["STANDARD", "MINIMAL"]).optional(),
 });
 
 export async function createPortalTokenAction(formData: FormData) {
@@ -20,6 +21,7 @@ export async function createPortalTokenAction(formData: FormData) {
     schoolId: formData.get("schoolId"),
     label: formData.get("label")?.toString() || undefined,
     expiresInDays: formData.get("expiresInDays") || undefined,
+    dataScope: formData.get("dataScope")?.toString() || undefined,
   });
   if (!parsed.success) {
     const sid = formData.get("schoolId")?.toString() ?? "";
@@ -35,22 +37,29 @@ export async function createPortalTokenAction(formData: FormData) {
     : null;
 
   try {
-    await createPortalToken({
+    // Round-13 §1I — plaintext is returned ONCE; pass it back to
+    // the page via a one-shot query string so the admin can copy it
+    // before navigating away. The DB only stores the SHA-256 hash.
+    const result = await createPortalToken({
       schoolId: parsed.data.schoolId,
       label: parsed.data.label ?? null,
       expiresAt,
+      dataScope: parsed.data.dataScope,
       actorUserId: session.userId,
     });
+    revalidatePath(`/admin/schools/${parsed.data.schoolId}`);
+    redirect(
+      `/admin/schools/${parsed.data.schoolId}?ok=${encodeURIComponent("Portal link created")}&newToken=${encodeURIComponent(result.plaintext)}`,
+    );
   } catch (err) {
+    // redirect() throws — let it propagate.
+    if (err && typeof err === "object" && "digest" in err) {
+      throw err;
+    }
     redirect(
       `/admin/schools/${parsed.data.schoolId}?error=${encodeURIComponent(err instanceof Error ? err.message : "Create failed")}`,
     );
   }
-
-  revalidatePath(`/admin/schools/${parsed.data.schoolId}`);
-  redirect(
-    `/admin/schools/${parsed.data.schoolId}?ok=${encodeURIComponent("Portal link created")}`,
-  );
 }
 
 const revokeSchema = z.object({

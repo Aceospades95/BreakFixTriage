@@ -4,6 +4,7 @@ import {
   deleteCommentAction,
 } from "@/server/actions/comments";
 import { LocalTime } from "@/components/local-time";
+import { CommentDeleteButton } from "@/components/comment-delete-button";
 
 type CommentWithAuthor = Comment & {
   author: { id: string; name: string } | null;
@@ -61,12 +62,7 @@ export function CommentThread({
                         value={c.id}
                       />
                       <input type="hidden" name="ticketId" value={ticketId} />
-                      <button
-                        type="submit"
-                        className="text-[10px] text-slate-500 hover:text-red-200"
-                      >
-                        delete
-                      </button>
+                      <CommentDeleteButton />
                     </form>
                   )}
                 </div>

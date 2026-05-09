@@ -133,7 +133,7 @@ export default async function SchoolProfilePage({
                 defaultValue={school.address?.latitude?.toString() ?? ""}
                 placeholder="Latitude"
                 inputMode="decimal"
-                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono focus:border-accent focus:outline-none"
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight focus:border-accent focus:outline-none"
               />
               <input
                 type="text"
@@ -141,7 +141,7 @@ export default async function SchoolProfilePage({
                 defaultValue={school.address?.longitude?.toString() ?? ""}
                 placeholder="Longitude"
                 inputMode="decimal"
-                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono focus:border-accent focus:outline-none"
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight focus:border-accent focus:outline-none"
               />
             </div>
             <button
@@ -260,7 +260,7 @@ export default async function SchoolProfilePage({
       <section className="mt-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
           Recent tickets{" "}
-          <span className="font-mono text-xs text-slate-500">
+          <span className="font-medium tracking-tight text-xs text-slate-500">
             {school._count.tickets} total
           </span>
         </h2>
@@ -274,8 +274,8 @@ export default async function SchoolProfilePage({
                 className="flex items-center justify-between rounded border border-surface-border bg-surface-muted/40 px-3 py-1.5"
               >
                 <Link
-                  href={`/tickets/${t.id}`}
-                  className="font-mono text-accent hover:underline"
+                  href={`/tickets/${t.incidentNumber}`}
+                  className="font-medium tracking-tight text-accent hover:underline"
                 >
                   {t.incidentNumber}
                 </Link>
@@ -295,7 +295,7 @@ export default async function SchoolProfilePage({
       <section className="mt-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
           Devices{" "}
-          <span className="font-mono text-xs text-slate-500">
+          <span className="font-medium tracking-tight text-xs text-slate-500">
             {school._count.devices} total
           </span>
         </h2>
@@ -310,12 +310,12 @@ export default async function SchoolProfilePage({
               >
                 <Link
                   href={`/admin/devices/${d.id}`}
-                  className="font-mono text-accent hover:underline"
+                  className="font-medium tracking-tight text-accent hover:underline"
                 >
                   {d.serialNumber}
                 </Link>
                 {d.assetTag && (
-                  <span className="ml-2 font-mono text-xs text-slate-500">
+                  <span className="ml-2 font-medium tracking-tight text-xs text-slate-500">
                     {d.assetTag}
                   </span>
                 )}
@@ -404,7 +404,7 @@ export default async function SchoolProfilePage({
                     </div>
                   </div>
                   {active && (
-                    <div className="mt-2 overflow-auto rounded bg-surface-muted px-2 py-1 font-mono text-[10px] text-slate-300">
+                    <div className="mt-2 overflow-auto rounded bg-surface-muted px-2 py-1 font-medium tracking-tight text-[10px] text-slate-300">
                       /portal/{t.token}
                     </div>
                   )}
@@ -426,7 +426,7 @@ export default async function SchoolProfilePage({
             <input
               type="text"
               name="label"
-              placeholder="Jane Doe · IT lead"
+              placeholder="e.g. Jane Doe · IT lead"
               className="w-64 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </label>

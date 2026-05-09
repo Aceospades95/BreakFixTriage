@@ -125,12 +125,12 @@ export default async function PartDetailPage({
                   >
                     <div>
                       <span
-                        className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase ${kindColor(m.kind)}`}
+                        className={`rounded px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase ${kindColor(m.kind)}`}
                       >
                         {m.kind}
                       </span>
                       <span
-                        className={`ml-2 font-mono ${m.quantity >= 0 ? "text-emerald-300" : "text-red-300"}`}
+                        className={`ml-2 font-medium tracking-tight ${m.quantity >= 0 ? "text-emerald-300" : "text-red-300"}`}
                       >
                         {m.quantity >= 0 ? "+" : ""}
                         {m.quantity}
@@ -139,8 +139,8 @@ export default async function PartDetailPage({
                         <>
                           {" "}
                           <Link
-                            href={`/tickets/${m.ticket.id}`}
-                            className="ml-2 font-mono text-xs text-accent hover:underline"
+                            href={`/tickets/${m.ticket.incidentNumber}`}
+                            className="ml-2 font-medium tracking-tight text-xs text-accent hover:underline"
                           >
                             {m.ticket.incidentNumber}
                           </Link>
@@ -252,7 +252,7 @@ function Metric({
         {label}
       </div>
       <div
-        className={`mt-0.5 font-mono text-xl ${alert ? "text-amber-300" : "text-slate-100"}`}
+        className={`mt-0.5 font-medium tracking-tight text-xl ${alert ? "text-amber-300" : "text-slate-100"}`}
       >
         {value}
       </div>

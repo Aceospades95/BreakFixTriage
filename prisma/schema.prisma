@@ -64,8 +64,47 @@ model User {
   inAppNotifications InAppNotification[] @relation("InAppNotificationRecipient")
   partMovements     PartMovement[]     @relation("PartMovementUser")
   timeEntries       TimeEntry[]        @relation("UserTimeEntries")
+  /// Round-10 §1F — sign-in sessions tracked for the
+  /// /admin/users/[id] Recent sessions panel + Sign out all
+  /// sessions affordance.
+  sessions          UserSession[]      @relation("UserSessionsOwner")
 
   @@index([role])
+}
+
+// Round-10 §1F — UserSession.
+//
+// One row per authenticated browser. Created on sign-in by the
+// NextAuth events hook in lib/auth/auth.ts; lastSeenAt bumps on
+// each authenticated request via middleware. Admins revoke every
+// active row for a user with the "Sign out all sessions" button on
+// /admin/users/[id]; the corresponding audit row is
+// action=user.sessions_revoked.
+//
+// IP + userAgent fingerprints capture enough to spot anomalies
+// (different city, fresh device) without storing raw cookies.
+// revokedAt is set when the admin button fires OR when the user
+// signs out; null = active.
+model UserSession {
+  id            String    @id @default(cuid())
+  userId        String
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  // Round-11 §1C — store hashed forensics, never raw IP / UA. The
+  // hash is salted with AUTH_SESSION_SALT so an offline attacker
+  // who steals a copy of the table can't reverse the IP space.
+  ipHash        String?
+  uaFingerprint String?
+  // Round-11 §1C — explicit expiry mirrors the NextAuth maxAge
+  // (12h) so the panel can label rows past their expiry as
+  // "expired" without comparing against the JWT.
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+
+  user          User      @relation("UserSessionsOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([lastSeenAt])
 }
 
 model District {
@@ -74,6 +113,10 @@ model District {
   code     String         @unique
   region   String?
   active   Boolean        @default(true)
+  /// Round-3 §H22: soft-disable timestamp. Preferred over delete
+  /// when schools are attached. The list page shows disabled
+  /// districts greyed-out with a "Re-enable" action.
+  disabledAt DateTime?
   schools  School[]
   users    DistrictUser[]
   createdAt DateTime      @default(now())
@@ -112,6 +155,11 @@ model School {
   mainContactId String?   @unique
   notes         String?
   active        Boolean   @default(true)
+  /// Round-2 §7/§9: flagged true when the school's address looks
+  /// placeholder-ish (legacy "11X101 Address Line" or null lat/lng).
+  /// Set by scripts/fix-school-addresses.ts and toggled to false on a
+  /// successful geocode.
+  needsAddress  Boolean   @default(false)
 
   district      District  @relation(fields: [districtId], references: [id])
   address       Address?  @relation(fields: [addressId], references: [id])
@@ -136,6 +184,16 @@ model Contact {
   email     String?
   phone     String?
   isPrimary Boolean  @default(false)
+  /// Round-2 §2/§7: per-contact email opt-ins. SPOC = School
+  /// Point Of Contact. Each flag gates whether this contact is
+  /// included by `kind: 'spoc'` recipient resolution for the
+  /// matching event family. Default false to keep existing
+  /// contacts opted-out until ops explicitly enables them.
+  receivesTicketEmails     Boolean @default(false)
+  receivesQuoteEmails      Boolean @default(false)
+  receivesDeliveryReceipts Boolean @default(false)
+  ccOnAllTickets           Boolean @default(false)
+  preferredLanguage        String  @default("en")
   school    School   @relation("SchoolContacts", fields: [schoolId], references: [id], onDelete: Cascade)
   mainOf    School?  @relation("SchoolMainContact")
   createdAt DateTime @default(now())
@@ -181,13 +239,28 @@ model Device {
   purchaseDate     DateTime?
   warrantyExpires  DateTime?
   notes            String?
+  /// Round-3 §H20: optional MAC address for network-side diagnosis.
+  macAddress       String?
+  /// Round-3 §H20: free-form specs blob (RAM, OS version, screen size).
+  specs            Json?
+  /// Round-3 §H20: fallback for the Age column when purchaseDate is
+  /// null. Set to `now()` on first import or first ticket.
+  firstSeenAt      DateTime?
+  /// Round-3 §H22: soft-retire timestamp. The list page hides
+  /// retired devices behind a "Show retired" toggle.
+  retiredAt        DateTime?
+  retiredReason    String?
   model            DeviceModel? @relation(fields: [modelId], references: [id])
   school           School?      @relation(fields: [ownerSchoolId], references: [id])
   tickets          Ticket[]
+  /// Round-4 §N1: every time this device appears on a route stop.
+  stopDevices      StopDevice[]
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
   @@index([ownerSchoolId])
+  @@index([macAddress])
+  @@index([retiredAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +294,32 @@ enum TicketState {
   CLOSED
   REOPENED
   ON_HOLD
+  /// Round-4 §N1: a synthetic ticket created when a tech adds a
+  /// device to a route stop on the road — there's no SNOW
+  /// counterpart yet. The ticket sits here until either:
+  ///   - an SNOW import lands a matching `(serial, schoolId)`,
+  ///     in which case `lib/snow-merge.ts` proposes a merge
+  ///     in /duplicates (operator accepts → §D merge runs); OR
+  ///   - the operator manually moves it to TRIAGE / IN_WAREHOUSE
+  ///     / OUT_OF_SCOPE / CLOSED.
+  /// Allowed transitions out: TRIAGE | IN_WAREHOUSE | OUT_OF_SCOPE
+  /// | CLOSED. See `src/lib/workflow/states.ts`.
+  PENDING_PICKUP_UNLINKED
+}
+
+/// Round-4 §N1: provenance tag for new tickets. `meta.source`
+/// (free-form) was the carry-over from Round-2; this enum
+/// makes it queryable + filterable. `IMPORTED` covers both
+/// the legacy CSV path and the `SNOW` API pull (the route is
+/// what differentiates them; `meta.importBatchId` carries
+/// that). `MANUAL` is the inline create-from-template path.
+/// `PORTAL` is a school-portal-initiated ticket. `ROUTE_PICKUP`
+/// is the §N1 synthetic path.
+enum TicketSource {
+  IMPORTED
+  MANUAL
+  PORTAL
+  ROUTE_PICKUP
 }
 
 enum TicketPriority {
@@ -248,10 +347,37 @@ model Ticket {
   invoiceRequired  Boolean        @default(false)
   closedAt         DateTime?
   stateEnteredAt   DateTime       @default(now())
+  /// Round-4 §N1: provenance tag. Defaults to IMPORTED so
+  /// existing tickets keep working; the import pipeline + the
+  /// PORTAL flow + the §N1 add-device path all set this
+  /// explicitly going forward.
+  source           TicketSource   @default(IMPORTED)
+  /// Round-3 §B / §I: SLA pause state. When `slaPausedAt` is non-null
+  /// the SLA helpers treat the interval [slaPausedAt, now] as
+  /// excluded from age. Resume sets slaPausedAt back to null and
+  /// pushes the paused-duration back into stateEnteredAt so the
+  /// badge shows the correct age. `slaPausedReason` is required
+  /// at the action site; the column is nullable for legacy rows.
+  slaPausedAt      DateTime?
+  slaPausedReason  String?
+  slaPausedByUserId String?
+  /// Round-3 §B5: SLA warning + breach idempotency stamps. The
+  /// cron checks these before firing so a ticket only generates
+  /// `sla_breach_warning` once per warning threshold and
+  /// `sla_breached` once per breach threshold.
+  slaWarningFiredAt DateTime?
+  slaBreachFiredAt  DateTime?
   /// Phase 10: soft ticket merge. When set, the UI shows a "merged
   /// into X" banner and redirects writers to the target, but history
   /// on both rows is preserved.
   mergedIntoTicketId String?
+  /// Round-2 §10: capture timestamp + actor + reason on the merge so
+  /// the source ticket's read-only banner can render
+  /// "merged into X on Y by Z because R" without joining audit rows.
+  /// `mergedAt` also gates the 24h un-merge window.
+  mergedAt         DateTime?
+  mergeReason      String?
+  mergedByUserId   String?
 
   device           Device?  @relation(fields: [deviceId], references: [id])
   school           School   @relation(fields: [schoolId], references: [id])
@@ -272,6 +398,11 @@ model Ticket {
   partMovements    PartMovement[]     @relation("PartMovementTicket")
   manufacturerRmas ManufacturerRma[]
   timeEntries      TimeEntry[]        @relation("TicketTimeEntries")
+  /// Round-4 §N1: every time this ticket was on a route stop.
+  /// Synthetic PENDING_PICKUP_UNLINKED tickets always have at
+  /// least one row here (the stop that birthed them).
+  stopDevices      StopDevice[]
+  emailLogs        EmailLog[]         @relation("EmailLogToTicket")
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -505,12 +636,71 @@ model RouteStop {
   arrivalEstimate  DateTime?
   status           JobStatus @default(SCHEDULED)
 
+  /// Round-4 §C + §N2: live position when the tech taps "Arrived"
+  /// in the field. Used by the §C print sheet snapshot, the §N2
+  /// /scheduling/people live-position pin tooltip, and the
+  /// /admin/audit chip on the route detail page. Nullable so
+  /// historical stops without a captured position keep working.
+  arrivedLat       Float?
+  arrivedLng       Float?
+  arrivedAt        DateTime?
+
   route            Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
   job              Job   @relation(fields: [jobId], references: [id])
   attachments      Attachment[]
+  /// Round-4 §N1: device lines on this stop. Each StopDevice
+  /// optionally references a Ticket — a placeholder add (kind
+  /// "placeholder") creates the synthetic ticket in
+  /// PENDING_PICKUP_UNLINKED; an existing-device add either
+  /// links to its open ticket at the same school, or creates
+  /// a synthetic if no such ticket exists.
+  stopDevices      StopDevice[]
 
   @@index([routeId])
   @@index([jobId])
+  @@index([arrivedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Round-4 §N1: route stop ↔ device join
+// ---------------------------------------------------------------------------
+//
+// Captures every device picked up or dropped off at a stop, with a
+// lifecycle of its own (added when the tech taps "+ Add device" on
+// the stop card; removed when "× Remove" is tapped — the device row
+// stays for audit, with `removedAt` set).
+//
+// `ticketId` is nullable for the rare race where a placeholder
+// device is added but the synthetic-ticket creation fails; the row
+// is reachable via `addedBy` + `addedAt` so the operator can resolve
+// the orphan from the duplicate queue.
+
+model StopDevice {
+  id            String   @id @default(cuid())
+  stopId        String
+  deviceId      String
+  /// Open ticket attached to the (device, stop). Set on creation.
+  /// Null is valid only for transient orphans (resolve via
+  /// /duplicates).
+  ticketId      String?
+  addedAt       DateTime @default(now())
+  addedByUserId String
+  /// Set when the operator taps "× Remove". The device row stays
+  /// for audit; the ticket itself stays open (the brief is
+  /// explicit: removing a device from a stop does NOT close its
+  /// ticket).
+  removedAt     DateTime?
+  removedByUserId String?
+  removedReason String?
+
+  stop          RouteStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  device        Device    @relation(fields: [deviceId], references: [id])
+  ticket        Ticket?   @relation(fields: [ticketId], references: [id])
+
+  @@index([stopId])
+  @@index([deviceId])
+  @@index([ticketId])
+  @@index([removedAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -716,6 +906,13 @@ model InAppNotification {
   title           String
   body            String?
   linkHref        String?
+  /// Round-3 §A4 / §15: optional entity links so the bell popover
+  /// can deep-link to the right ticket/route/quote without
+  /// reverse-parsing linkHref. Nullable so existing rows still
+  /// work — the bell falls back to linkHref when these are unset.
+  ticketId        String?
+  routeId         String?
+  quoteId         String?
   readAt          DateTime?
   createdAt       DateTime @default(now())
 
@@ -723,6 +920,7 @@ model InAppNotification {
 
   @@index([recipientUserId, readAt])
   @@index([createdAt])
+  @@index([ticketId])
 }
 
 // ---------------------------------------------------------------------------
@@ -921,6 +1119,10 @@ model TimeEntry {
   endedAt   DateTime?
   minutes   Int?
   notes     String?
+  /// Round-3 §I24: tags an entry created via the manual-time form
+  /// (vs. the start/stop timer). Lets the productivity dashboard
+  /// distinguish lived-time from back-filled time.
+  manualEntry Boolean @default(false)
   createdAt DateTime @default(now())
 
   ticket    Ticket @relation("TicketTimeEntries", fields: [ticketId], references: [id], onDelete: Cascade)
@@ -929,4 +1131,299 @@ model TimeEntry {
   @@index([ticketId])
   @@index([userId, endedAt])
   @@index([startedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Round-2: Email / notification rules domain
+// ---------------------------------------------------------------------------
+//
+// New domain in pass 3 (round-2/email-rules-and-qa-pass). Replaces ad-hoc
+// `Notification` writes (single-recipient, no html, no template trail) with
+// a rules-engine: an EmailRule names recipients, links a template, and
+// fires on a domain event. EmailLog records every send with full headers
+// + status. EmailJob is the DB-backed queue; the worker (scripts/email-
+// worker.ts) claims rows via SELECT FOR UPDATE SKIP LOCKED.
+//
+// The legacy `Notification` model stays for the lifecycle code paths that
+// still write through it; the new entrypoint `dispatchEmailEvent` writes
+// EmailLog instead. Migration plan in docs/adr/0007-email-rules-and-templates.md.
+
+enum EmailRuleScope {
+  GLOBAL
+  DISTRICT
+  SCHOOL
+  TICKET
+}
+
+/// Domain events that an EmailRule can fire on. Matches the keys
+/// pre-seeded into EmailTemplate. Adding a new event = (a) extend
+/// this enum, (b) add a matching template seed, (c) wire a
+/// dispatchEmailEvent call at the trigger site.
+enum EmailEvent {
+  ticket_created
+  ticket_assigned
+  ticket_status_changed
+  quote_sent
+  quote_approved_internal
+  delivery_scheduled
+  delivery_completed_with_receipt
+  sla_breach_warning
+  sla_breached
+  daily_digest
+  // Round-6 §3A — four highest-impact status-change events with
+  // dedicated rules so admins can recipient-design per state. The
+  // generic `ticket_status_changed` stays for catch-all rules.
+  status_in_repair
+  status_parts_ordered
+  ticket_closed
+  // Round-6 §3B — manual operator-to-SPOC ticket update.
+  ticket_update_to_spoc
+  // Round-7 §3B — quote approve (school user) + pickup complete.
+  // `quote_sent` and `delivery_scheduled` already exist above.
+  // `quote_approved_internal` stays for the existing internal-only
+  // notify when an operator approves on the school's behalf.
+  quote_approved
+  pickup_completed
+}
+
+enum EmailLogStatus {
+  queued
+  sent
+  failed
+  bounced
+}
+
+enum EmailJobStatus {
+  pending
+  running
+  done
+  failed
+}
+
+model EmailTemplate {
+  id            String   @id @default(cuid())
+  /// Stable lookup key. Matches the EmailEvent enum value for
+  /// event-triggered templates; ad-hoc templates use freeform keys
+  /// (e.g. "noreply.test_send").
+  key           String   @unique
+  subject       String
+  bodyHtml      String
+  bodyText      String
+  /// Loose JSONSchema describing the variables the template
+  /// expects. Read by lib/email/render.ts to validate payloads
+  /// before render.
+  variables     Json
+  updatedByUserId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  rules         EmailRule[]
+  logs          EmailLog[]
+
+  @@index([key])
+}
+
+model EmailRule {
+  id          String           @id @default(cuid())
+  scope       EmailRuleScope
+  /// Cuid of the District / School / Ticket the rule binds to.
+  /// Null when scope = GLOBAL.
+  scopeId     String?
+  event       EmailEvent
+  /// { to: Recipient[], cc: Recipient[], bcc: Recipient[] }
+  /// where Recipient = { kind: 'spoc'|'ticket_reporter'|'wynndalco_team'|'literal', value?: string }
+  recipients  Json
+  templateId  String
+  enabled     Boolean          @default(true)
+  createdByUserId String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  template    EmailTemplate    @relation(fields: [templateId], references: [id])
+  logs        EmailLog[]
+
+  @@index([scope, scopeId, event, enabled])
+  @@index([event, enabled])
+}
+
+model EmailLog {
+  id                String         @id @default(cuid())
+  ruleId            String?
+  templateId        String
+  ticketId          String?
+  routeId           String?
+  quoteId           String?
+  to                String[]
+  cc                String[]       @default([])
+  bcc               String[]       @default([])
+  subject           String
+  bodyHtml          String
+  status            EmailLogStatus @default(queued)
+  providerMessageId String?
+  error             String?
+  sentAt            DateTime?
+  createdAt         DateTime       @default(now())
+
+  rule              EmailRule?     @relation(fields: [ruleId], references: [id])
+  template          EmailTemplate  @relation(fields: [templateId], references: [id])
+  // Round-12 §1B — relation needed so /admin/email-log links can
+  // canonicalise to /tickets/<incidentNumber>.
+  ticket            Ticket?        @relation("EmailLogToTicket", fields: [ticketId], references: [id])
+
+  @@index([ticketId])
+  @@index([routeId])
+  @@index([quoteId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model EmailJob {
+  id          String         @id @default(cuid())
+  templateKey String
+  payload     Json
+  attempts    Int            @default(0)
+  nextRunAt   DateTime       @default(now())
+  lockedAt    DateTime?
+  lockedBy    String?
+  status      EmailJobStatus @default(pending)
+  lastError   String?
+  /// Optional pointer to the EmailLog row created up-front by
+  /// dispatchEmailEvent — when the worker sends, it updates that
+  /// row's status + providerMessageId rather than creating a new
+  /// log entry. Idempotent retries land on the same log row.
+  emailLogId  String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([lockedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Round-2: Holidays + business-hours SLA
+// ---------------------------------------------------------------------------
+
+enum HolidayScope {
+  GLOBAL
+  DISTRICT
+}
+
+/// A non-business day. SLA math (lib/reports/sla.ts) excludes
+/// holidays in the relevant scope when business-hours mode is on.
+model Holiday {
+  id        String       @id @default(cuid())
+  date      DateTime     @db.Date
+  label     String
+  scope     HolidayScope @default(GLOBAL)
+  scopeId   String?
+  createdAt DateTime     @default(now())
+
+  @@index([date, scope, scopeId])
+}
+
+// ---------------------------------------------------------------------------
+// Round-2: User preferences
+// ---------------------------------------------------------------------------
+
+model UserPreference {
+  userId               String   @id
+  theme                String   @default("system")
+  inAppNotifications   Boolean  @default(true)
+  emailNotifications   Boolean  @default(true)
+  digestOptIn          Boolean  @default(false)
+  /// 0..23 hour-of-day in the user's timezone for the daily digest.
+  /// Null = use the system default (currently 07:00).
+  digestHour           Int?
+  updatedAt            DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Round-3 §C: school-portal request log
+// ---------------------------------------------------------------------------
+//
+// Captures every "Request update" or "Report new issue" action from
+// the public portal. Each row already has a matching audit row
+// (actor labelled `portal:<token-suffix>`); this is a domain-side
+// log so the school-portal admin view can render "your last 5
+// requests" without a join through audit.
+
+enum PortalRequestKind {
+  UPDATE_REQUEST
+  NEW_ISSUE
+}
+
+model PortalRequest {
+  id            String            @id @default(cuid())
+  /// Set when kind=UPDATE_REQUEST and the request lands on an
+  /// existing ticket. Null for NEW_ISSUE kinds (the resulting
+  /// ticket is captured via PortalRequest.createdTicketId).
+  ticketId      String?
+  /// Set when kind=NEW_ISSUE and the action created a new ticket.
+  createdTicketId String?
+  schoolId      String
+  kind          PortalRequestKind
+  body          String
+  contactEmail  String?
+  /// The PortalToken row that was used. Lets ops trace a request
+  /// back to whichever bookmark the school clicked from.
+  portalTokenId String?
+  createdAt     DateTime          @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([ticketId])
+  @@index([createdTicketId])
+}
+
+// ---------------------------------------------------------------------------
+// Round-4 §N2: people scheduling
+// ---------------------------------------------------------------------------
+//
+// One row per scheduled block per user per day. ON_ROUTE blocks are
+// **derived** at read-time from `Route` rows whose `assigneeUserId`
+// matches and whose `date` matches; they are NEVER persisted here
+// (the brief is explicit about this). That means deriveOnRouteBlocks()
+// is the single source-of-truth bridge.
+//
+// `routeId` is non-null only when `kind = ON_ROUTE`, and that case
+// is reserved for downstream consumers that want to materialise a
+// computed block — the actions below never write `kind = ON_ROUTE`
+// rows.
+//
+// RBAC:
+//   - ADMIN / OPS_MANAGER / DISPATCHER can write any user's schedule.
+//   - A user can write only their own PTO / OOO / TRAINING via
+//     /me/schedule.
+//   - WAREHOUSE / MEETING blocks are Ops-only.
+
+enum StaffScheduleKind {
+  WAREHOUSE
+  ON_ROUTE
+  PTO
+  TRAINING
+  OUT_OF_OFFICE
+  MEETING
+}
+
+model StaffSchedule {
+  id           String            @id @default(cuid())
+  userId       String
+  date         DateTime          @db.Date
+  /// Minutes since 00:00 in the user's timezone.
+  /// Range checks: 0 <= startMinute < endMinute <= 24*60.
+  startMinute  Int
+  endMinute    Int
+  kind         StaffScheduleKind
+  note         String?
+  /// Set only when `kind = ON_ROUTE` AND a downstream actor
+  /// chose to materialise the block (rare). The default is to
+  /// leave ON_ROUTE blocks unpersisted and derived.
+  routeId      String?
+  createdByUserId String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([userId, date, startMinute])
+  @@index([date])
+  @@index([userId, date])
+  @@index([kind])
 }

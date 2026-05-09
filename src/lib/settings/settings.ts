@@ -24,8 +24,13 @@ import { DEFAULT_SLA_DAYS } from "@/lib/reports/sla";
 /**
  * Hold-window days for newly sent quotes. Overridable per-send via
  * the SendQuote form.
+ *
+ * Minimum is 1 (one full day), not 0. A 0-day window means
+ * `holdUntil = sentAt`, i.e. the quote auto-expires the moment it is
+ * sent — which is never the desired behavior and was the cause of bug
+ * 4d in the audit. See `docs/adr/0003-hold-window-min-1.md`.
  */
-const holdWindowSchema = z.coerce.number().int().min(0).max(90);
+const holdWindowSchema = z.coerce.number().int().min(1).max(90);
 
 /**
  * Severity multiplier applied to SLA thresholds before the escalation
@@ -48,6 +53,16 @@ export const SETTINGS_KEYS = {
   ESCALATION_MULTIPLIER: "sla.escalationMultiplier",
   SLA_THRESHOLDS: "sla.thresholds",
   DIGEST_RECIPIENTS: "digest.recipients",
+  // Round-2 §2 / §3
+  EMAIL_PROVIDER: "email.provider",
+  EMAIL_FROM_ADDRESS: "email.fromAddress",
+  EMAIL_REPLY_TO: "email.replyTo",
+  WYNNDALCO_TEAM_EMAILS: "email.wynndalcoTeamEmails",
+  // Round-2 §12 — business-hours SLA mode
+  BUSINESS_HOURS_ENABLED: "sla.businessHours.enabled",
+  BUSINESS_DAY_START: "sla.businessHours.dayStart",
+  BUSINESS_DAY_END: "sla.businessHours.dayEnd",
+  BUSINESS_TIMEZONE: "sla.businessHours.timezone",
 } as const;
 
 export type SettingsKey = (typeof SETTINGS_KEYS)[keyof typeof SETTINGS_KEYS];
@@ -113,6 +128,79 @@ export async function getDigestRecipients(
   const raw = await getRawSetting(SETTINGS_KEYS.DIGEST_RECIPIENTS, db);
   if (!Array.isArray(raw)) return [];
   return raw.filter((v): v is string => typeof v === "string" && v.includes("@"));
+}
+
+// ---------------------------------------------------------------------------
+// Round-2 §2/§3: email + business-hours accessors
+// ---------------------------------------------------------------------------
+
+const emailProviderSchema = z.enum(["resend", "smtp", "stdout"]);
+
+export async function getEmailProvider(
+  db: PrismaClient = defaultPrisma,
+): Promise<"resend" | "smtp" | "stdout"> {
+  const raw = await getRawSetting(SETTINGS_KEYS.EMAIL_PROVIDER, db);
+  const parsed = emailProviderSchema.safeParse(raw);
+  // Default to stdout when unset — matches the existing
+  // NOTIFICATION_TRANSPORT default in .env.example.
+  return parsed.success ? parsed.data : "stdout";
+}
+
+export async function getEmailFromAddress(
+  db: PrismaClient = defaultPrisma,
+): Promise<string | null> {
+  const raw = await getRawSetting(SETTINGS_KEYS.EMAIL_FROM_ADDRESS, db);
+  return typeof raw === "string" && raw.includes("@") ? raw : null;
+}
+
+export async function getEmailReplyTo(
+  db: PrismaClient = defaultPrisma,
+): Promise<string | null> {
+  const raw = await getRawSetting(SETTINGS_KEYS.EMAIL_REPLY_TO, db);
+  return typeof raw === "string" && raw.includes("@") ? raw : null;
+}
+
+export async function getWynndalcoTeamEmails(
+  db: PrismaClient = defaultPrisma,
+): Promise<string[]> {
+  const raw = await getRawSetting(SETTINGS_KEYS.WYNNDALCO_TEAM_EMAILS, db);
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (v): v is string => typeof v === "string" && v.includes("@"),
+  );
+}
+
+export interface BusinessHours {
+  enabled: boolean;
+  dayStart: number; // 0..23
+  dayEnd: number; // 1..24, exclusive
+  timezone: string;
+}
+
+export async function getBusinessHours(
+  db: PrismaClient = defaultPrisma,
+): Promise<BusinessHours> {
+  const [enabled, start, end, tz] = await Promise.all([
+    getRawSetting(SETTINGS_KEYS.BUSINESS_HOURS_ENABLED, db),
+    getRawSetting(SETTINGS_KEYS.BUSINESS_DAY_START, db),
+    getRawSetting(SETTINGS_KEYS.BUSINESS_DAY_END, db),
+    getRawSetting(SETTINGS_KEYS.BUSINESS_TIMEZONE, db),
+  ]);
+  const dayStart =
+    typeof start === "number" && start >= 0 && start <= 23
+      ? Math.floor(start)
+      : 9;
+  const dayEnd =
+    typeof end === "number" && end > 0 && end <= 24 && end > dayStart
+      ? Math.floor(end)
+      : 17;
+  return {
+    enabled: enabled === true,
+    dayStart,
+    dayEnd,
+    timezone:
+      typeof tz === "string" && tz.length > 0 ? tz : "America/New_York",
+  };
 }
 
 // ---------------------------------------------------------------------------

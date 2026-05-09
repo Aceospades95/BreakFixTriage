@@ -105,6 +105,21 @@ export const ALLOWED_TRANSITIONS: Record<TicketState, readonly TicketState[]> = 
     "PENDING_DELIVERY",
     "DELIVERY_SCHEDULED",
   ],
+  // Round-4 §N1: synthetic state for on-route pickups that haven't
+  // been reconciled with an SNOW ticket yet. The SNOW reconciler
+  // proposes a merge in /duplicates rather than transitioning out
+  // here directly. Manual exits are limited to lanes that make
+  // sense for an unmatched device:
+  //   - TRIAGE: operator decides this is an in-house ticket.
+  //   - IN_WAREHOUSE: device went straight to the bench.
+  //   - OUT_OF_SCOPE: device shouldn't have been picked up.
+  //   - CLOSED: false-alarm pickup; close out without further work.
+  PENDING_PICKUP_UNLINKED: [
+    "TRIAGE",
+    "IN_WAREHOUSE",
+    "OUT_OF_SCOPE",
+    "CLOSED",
+  ],
 };
 
 export const TERMINAL_STATES: readonly TicketState[] = ["CLOSED"];

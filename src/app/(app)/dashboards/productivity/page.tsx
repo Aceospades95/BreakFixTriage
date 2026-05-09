@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { productivityReport } from "@/lib/reports/productivity";
+import { humanise } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -42,12 +43,6 @@ export default async function ProductivityPage({
                 {d}d
               </Link>
             ))}
-            <Link
-              href="/dashboards"
-              className="ml-2 text-xs text-slate-400 hover:text-white"
-            >
-              ← Overview
-            </Link>
           </div>
         }
       />
@@ -91,17 +86,19 @@ export default async function ProductivityPage({
                 className="transition hover:bg-surface-muted/40"
               >
                 <td className="px-3 py-2">{r.name}</td>
-                <td className="px-3 py-2 font-mono text-xs text-slate-400">
-                  {r.role}
+                <td className="px-3 py-2 text-xs text-slate-400">
+                  {/* Round-3 §J27 + §G29: friendly role label, no
+                      ALL_CAPS_UNDERSCORE. */}
+                  {humanise(r.role)}
                 </td>
-                <td className="px-3 py-2 font-mono">{r.closedInWindow}</td>
-                <td className="px-3 py-2 font-mono text-xs">
+                <td className="px-3 py-2 font-medium tracking-tight">{r.closedInWindow}</td>
+                <td className="px-3 py-2 font-medium tracking-tight text-xs">
                   {r.avgTurnaroundDays != null
                     ? `${r.avgTurnaroundDays}d`
                     : "—"}
                 </td>
-                <td className="px-3 py-2 font-mono">{r.openAssigned}</td>
-                <td className="px-3 py-2 font-mono text-xs">
+                <td className="px-3 py-2 font-medium tracking-tight">{r.openAssigned}</td>
+                <td className="px-3 py-2 font-medium tracking-tight text-xs">
                   {(r.totalMinutesLogged / 60).toFixed(1)}h
                 </td>
               </tr>
@@ -122,10 +119,10 @@ export default async function ProductivityPage({
 
       <p className="mt-4 text-xs text-slate-500">
         Closed count is measured at ticket closure time. Turnaround is
-        reportedAt → closedAt. Time logged is the sum of every{" "}
-        <span className="font-mono">TimeEntry</span> that finished in the
-        window. Readers who haven't logged any time yet show 0h — this is
-        expected for roles that don't track time (drivers, dispatch).
+        the elapsed time from when a ticket was reported to when it was
+        closed. Time logged sums every time entry that finished in the
+        window. Roles that don't track time (drivers, dispatch) show 0h
+        — that's expected.
       </p>
     </>
   );
@@ -142,10 +139,8 @@ function Kpi({
 }) {
   return (
     <div className="rounded-lg border border-surface-border bg-surface-muted p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className="mt-1 font-mono text-2xl">{value}</div>
+      <div className="text-xs font-medium text-slate-400">{label}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
       {hint && <div className="mt-0.5 text-[10px] text-slate-500">{hint}</div>}
     </div>
   );

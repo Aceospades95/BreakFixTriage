@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { dispatchEmailEvent } from "@/lib/email";
 import {
   attachPurchaseOrder,
   cancelQuote,
@@ -186,6 +187,25 @@ export async function sendQuoteAction(formData: FormData) {
       holdDays: parsed.data.holdDays,
       actorUserId: session.userId,
     });
+    // Round-7 §3B — fire quote_sent dispatch after the sendQuote
+    // transaction commits (sendQuote already audited + activity-
+    // logged inside the tx; this is the operator-facing email).
+    try {
+      await dispatchEmailEvent("quote_sent", {
+        quoteId: parsed.data.quoteId,
+        ticketId: parsed.data.ticketId,
+        actorUserId: session.userId,
+        variables: {
+          quoteId: parsed.data.quoteId,
+          ticketId: parsed.data.ticketId,
+        },
+      });
+    } catch (dispatchErr) {
+      console.error(
+        `[sendQuoteAction] quote_sent dispatch failed for ${parsed.data.quoteId}:`,
+        dispatchErr,
+      );
+    }
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : "Send failed";
   }
@@ -231,6 +251,29 @@ export async function respondQuoteAction(formData: FormData) {
       reason: parsed.data.reason,
       actorUserId: session.userId,
     });
+    // Round-7 §3B — fire quote_approved when the school user (or
+    // operator on their behalf) approves. Decline does not fire
+    // a templated email — operators reach out manually with
+    // "Email SPOC" (Round-6 §3B).
+    if (parsed.data.response === "APPROVED") {
+      try {
+        await dispatchEmailEvent("quote_approved", {
+          quoteId: parsed.data.quoteId,
+          ticketId: parsed.data.ticketId,
+          actorUserId: session.userId,
+          variables: {
+            quoteId: parsed.data.quoteId,
+            ticketId: parsed.data.ticketId,
+            reason: parsed.data.reason ?? null,
+          },
+        });
+      } catch (dispatchErr) {
+        console.error(
+          `[respondQuoteAction] quote_approved dispatch failed for ${parsed.data.quoteId}:`,
+          dispatchErr,
+        );
+      }
+    }
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : "Response failed";
   }

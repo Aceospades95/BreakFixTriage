@@ -7,6 +7,7 @@ import { PERMISSIONS } from "@/lib/auth/rbac";
 import { TicketState } from "@prisma/client";
 import { TERMINAL_STATES } from "@/lib/workflow/states";
 import { type StatusConfig, getEffectiveTransitions } from "@/lib/workflow/status-config";
+import { writeAudit } from "@/lib/audit/audit";
 
 const SETTING_KEY = "status_workflow_config";
 
@@ -146,6 +147,21 @@ export async function saveStatusConfigAction(formData: FormData) {
     },
   });
 
+  // Round-9 §3D — every mutation server action writes an audit row.
+  await writeAudit({
+    actorUserId: session.userId,
+    entityType: "StatusConfig",
+    entityId: SETTING_KEY,
+    action: "update",
+    after: {
+      transitions: Object.keys(config.transitions ?? {}).length,
+      sla: Object.keys(config.sla ?? {}).length,
+      disabled: config.disabled?.length ?? 0,
+      labels: Object.keys(config.labels ?? {}).length,
+    },
+    reason: "Status workflow config saved",
+  });
+
   redirect("/admin/statuses?saved=1");
 }
 
@@ -153,10 +169,20 @@ export async function saveStatusConfigAction(formData: FormData) {
  * Reset status workflow config to defaults.
  */
 export async function resetStatusConfigAction() {
-  await requireRole(PERMISSIONS.USERS_MANAGE);
+  const session = await requireRole(PERMISSIONS.USERS_MANAGE);
 
   await prisma.appSetting.deleteMany({
     where: { key: SETTING_KEY },
+  });
+
+  // Round-9 §3D — audit the reset (admins reset rarely; the row
+  // is the only durable record).
+  await writeAudit({
+    actorUserId: session.userId,
+    entityType: "StatusConfig",
+    entityId: SETTING_KEY,
+    action: "reset",
+    reason: "Status workflow config reset to defaults",
   });
 
   redirect("/admin/statuses?reset=1");

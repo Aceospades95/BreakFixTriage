@@ -111,7 +111,7 @@ export function GlobalSearch() {
               >
                 <span
                   className={cn(
-                    "rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide",
+                    "rounded px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide",
                     kindClass(hit.kind),
                   )}
                 >

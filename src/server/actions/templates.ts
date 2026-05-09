@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
+import { dispatchEmailEvent } from "@/lib/email";
 
 /**
  * Ticket template admin + quick-create.
@@ -209,6 +210,41 @@ export async function createTicketFromTemplateAction(formData: FormData) {
       after: { templateId: template.id, incidentNumber },
     });
     createdId = ticket.id;
+
+    // Round-3 §B: fire ticket_created. Goes through the central
+    // dispatcher; if no enabled rule matches `ticket_created` for
+    // this scope, this is a no-op (no log row, no email). The
+    // forbidden-tokens scan covers the toast surface; the dispatch
+    // failure path writes a `failed` EmailLog and an audit row of
+    // its own (Round-2 ADR 0007) so a missing rule never throws.
+    try {
+      await dispatchEmailEvent(
+        "ticket_created",
+        {
+          ticketId: ticket.id,
+          schoolId: school.id,
+          actorUserId: session.userId,
+          variables: {
+            ticket: {
+              number: incidentNumber,
+              summary: parsed.data.overrideShortDescription ?? template.shortDescription,
+              school: school.name,
+              priority: template.priority,
+            },
+            reporter: { name: session.name, email: session.email },
+            link: `/tickets/${ticket.id}`,
+          },
+        },
+      );
+    } catch (err) {
+      // Don't fail the create on a downstream email problem —
+      // the ticket lives, and the failure is recorded in
+      // EmailLog + audit.
+      console.warn(
+        `[email] dispatch ticket_created failed for ${incidentNumber}:`,
+        err,
+      );
+    }
   } catch (err) {
     flashError(
       "/tickets",

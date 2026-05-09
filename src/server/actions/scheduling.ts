@@ -4,8 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { JobStatus, JobType } from "@prisma/client";
+import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { dispatchEmailEvent } from "@/lib/email";
+import { writeAudit } from "@/lib/audit/audit";
 import { buildRoute, createJob } from "@/lib/scheduling/jobs";
 import { cancelRoute, reorderRoute } from "@/lib/scheduling/routes";
 import { updateStopStatus } from "@/lib/scheduling/stops";
@@ -119,6 +122,44 @@ export async function buildRouteAction(formData: FormData) {
       actorUserId: session.userId,
     });
     newRouteId = route.id;
+
+    // Round-7 §3B — fire delivery_scheduled for every DELIVERY job
+    // on the new route, once per attached ticket. dispatchEmailEvent
+    // is the chokepoint; an admin EmailRule with notifyOnEnter=true
+    // delivers the email.
+    try {
+      const deliveryStops = await prisma.routeStop.findMany({
+        where: { routeId: route.id, job: { type: JobType.DELIVERY } },
+        include: {
+          job: {
+            select: {
+              ticketLinks: { select: { ticketId: true } },
+              schoolId: true,
+            },
+          },
+        },
+      });
+      for (const stop of deliveryStops) {
+        for (const link of stop.job.ticketLinks) {
+          await dispatchEmailEvent("delivery_scheduled", {
+            ticketId: link.ticketId,
+            schoolId: stop.job.schoolId,
+            routeId: route.id,
+            actorUserId: session.userId,
+            variables: {
+              ticketId: link.ticketId,
+              routeId: route.id,
+              date: parsed.data.date,
+            },
+          });
+        }
+      }
+    } catch (dispatchErr) {
+      console.error(
+        `[buildRouteAction] delivery_scheduled dispatch failed for route ${route.id}:`,
+        dispatchErr,
+      );
+    }
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : "Failed to build route";
   }
@@ -239,6 +280,43 @@ export async function updateStopStatusAction(formData: FormData) {
       actorUserId: session.userId,
       reason: parsed.data.reason,
     });
+
+    // Round-7 §3B — fire pickup_completed when a Pickup stop
+    // transitions to COMPLETED. dispatchEmailEvent is the chokepoint.
+    if (parsed.data.status === JobStatus.COMPLETED) {
+      try {
+        const stop = await prisma.routeStop.findUnique({
+          where: { id: parsed.data.stopId },
+          include: {
+            job: {
+              select: {
+                type: true,
+                schoolId: true,
+                ticketLinks: { select: { ticketId: true } },
+              },
+            },
+          },
+        });
+        if (stop?.job.type === JobType.PICKUP) {
+          for (const link of stop.job.ticketLinks) {
+            await dispatchEmailEvent("pickup_completed", {
+              ticketId: link.ticketId,
+              schoolId: stop.job.schoolId,
+              actorUserId: session.userId,
+              variables: {
+                ticketId: link.ticketId,
+                stopId: parsed.data.stopId,
+              },
+            });
+          }
+        }
+      } catch (dispatchErr) {
+        console.error(
+          `[updateStopStatusAction] pickup_completed dispatch failed for ${parsed.data.stopId}:`,
+          dispatchErr,
+        );
+      }
+    }
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : "Stop update failed";
   }
@@ -294,4 +372,66 @@ export async function cancelRouteAction(formData: FormData) {
   revalidatePath("/scheduling");
   revalidatePath(`/scheduling/routes/${parsed.data.routeId}`);
   redirect("/scheduling");
+}
+
+// ---------------------------------------------------------------------------
+// updateRouteVehicleAction (Round-8 §1D)
+// ---------------------------------------------------------------------------
+
+const updateRouteVehicleSchema = z.object({
+  routeId: z.string().min(1),
+  vehicleRef: z.string().trim().max(80).optional(),
+});
+
+/**
+ * Round-8 §1D — driver-side inline editor for the route vehicle ref.
+ * Drivers need to record which van they took without leaving the
+ * route detail page. Writes an audit row so the change is traceable.
+ */
+export async function updateRouteVehicleAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.SCHEDULING_WRITE);
+
+  const parsed = updateRouteVehicleSchema.safeParse({
+    routeId: formData.get("routeId"),
+    vehicleRef: formData.get("vehicleRef")?.toString().trim() || undefined,
+  });
+  if (!parsed.success) {
+    redirect(
+      `/scheduling?error=${encodeURIComponent(
+        parsed.error.issues[0]!.message,
+      )}`,
+    );
+  }
+
+  const existing = await prisma.route.findUnique({
+    where: { id: parsed.data.routeId },
+    select: { id: true, vehicleRef: true },
+  });
+  if (!existing) {
+    redirect(
+      `/scheduling?error=${encodeURIComponent("Route not found")}`,
+    );
+  }
+
+  const next = parsed.data.vehicleRef ?? null;
+  if (existing.vehicleRef !== next) {
+    await prisma.route.update({
+      where: { id: existing.id },
+      data: { vehicleRef: next },
+    });
+    await writeAudit({
+      actorUserId: session.userId,
+      entityType: "Route",
+      entityId: existing.id,
+      action: "vehicle.updated",
+      before: { vehicleRef: existing.vehicleRef },
+      after: { vehicleRef: next },
+      reason: `Vehicle ${existing.vehicleRef ?? "(none)"} → ${next ?? "(none)"}`,
+    });
+  }
+
+  revalidatePath(`/scheduling/routes/${parsed.data.routeId}`);
+  redirect(
+    `/scheduling/routes/${parsed.data.routeId}?ok=${encodeURIComponent("Vehicle updated")}`,
+  );
 }

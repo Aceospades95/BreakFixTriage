@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 const SHORTCUTS: { keys: string; label: string; href?: string; hint?: string }[] = [
   { keys: "/", label: "Focus search" },
   { keys: "?", label: "Toggle this cheat-sheet" },
+  { keys: "Cmd+K", label: "Open command palette", hint: "From any page" },
   { keys: "g t", label: "Tickets", href: "/tickets" },
   { keys: "g q", label: "Quotes", href: "/quotes" },
   { keys: "g s", label: "Scheduling", href: "/scheduling" },
@@ -35,6 +36,10 @@ const SHORTCUTS: { keys: string; label: string; href?: string; hint?: string }[]
   { keys: "g c", label: "Scan", href: "/scan" },
   { keys: "g i", label: "Imports", href: "/imports" },
   { keys: "g d", label: "Dashboards", href: "/dashboards" },
+  // Round-10 §2J — page-local shortcuts on /scheduling/people.
+  { keys: "t", label: "Today", hint: "On /scheduling/people" },
+  { keys: "[", label: "Previous day", hint: "On /scheduling/people" },
+  { keys: "]", label: "Next day", hint: "On /scheduling/people" },
 ];
 
 const ROUTES: Record<string, string> = Object.fromEntries(
@@ -100,7 +105,7 @@ export function KeyboardShortcuts() {
   return (
     <>
       {leader && (
-        <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-accent/60 bg-surface-muted/90 px-4 py-1.5 text-xs font-mono text-slate-200 shadow-lg backdrop-blur">
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-accent/60 bg-surface-muted/90 px-4 py-1.5 text-xs font-medium tracking-tight text-slate-200 shadow-lg backdrop-blur">
           g _
         </div>
       )}
@@ -114,7 +119,7 @@ export function KeyboardShortcuts() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+              <h2 className="text-sm font-semibold tracking-wide text-slate-200">
                 Keyboard shortcuts
               </h2>
               <button
@@ -132,7 +137,7 @@ export function KeyboardShortcuts() {
                   className="flex items-center justify-between rounded px-2 py-1 hover:bg-surface-border/40"
                 >
                   <span className="text-slate-300">{s.label}</span>
-                  <span className="font-mono text-xs text-accent">
+                  <span className="font-medium tracking-tight text-xs text-accent">
                     {s.keys}
                   </span>
                 </li>
@@ -140,7 +145,7 @@ export function KeyboardShortcuts() {
             </ul>
             <p className="mt-3 text-[10px] text-slate-500">
               Shortcuts are disabled while you're typing in a form field.
-              Press <span className="font-mono text-accent">Esc</span> to
+              Press <span className="font-medium tracking-tight text-accent">Esc</span> to
               close any open overlay.
             </p>
           </div>

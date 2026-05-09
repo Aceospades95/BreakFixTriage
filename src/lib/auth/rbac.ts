@@ -20,6 +20,13 @@ export const PERMISSIONS = {
   USERS_MANAGE: "users:manage",
   DISTRICTS_MANAGE: "districts:manage",
   REPORTS_READ: "reports:read",
+  // Round-2 §8 — email-rules engine permissions. EMAIL_READ scopes
+  // to email logs visible against a ticket the actor can already
+  // read; server-side enforcement is the ticket-level read check.
+  EMAIL_READ: "email:read",
+  EMAIL_WRITE: "email:write",
+  EMAIL_SEND_TEST: "email:send_test",
+  EMAIL_RULES_MANAGE: "email:rules_manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -30,6 +37,11 @@ const READ_ONLY_SET: readonly Permission[] = [
   PERMISSIONS.SCHEDULING_READ,
   PERMISSIONS.QUOTES_READ,
   PERMISSIONS.REPORTS_READ,
+  // EMAIL_READ is in the read-only set: every role that can see a
+  // ticket can see the EmailLog rows attached to that ticket.
+  // Cross-ticket browsing on /admin/email-log is gated separately
+  // by EMAIL_WRITE on the route handler.
+  PERMISSIONS.EMAIL_READ,
 ];
 
 /**
@@ -49,6 +61,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     PERMISSIONS.ROUTES_BUILD,
     PERMISSIONS.STOPS_UPDATE,
     PERMISSIONS.QUOTES_WRITE,
+    // Round-2 §8: ops manager can edit templates / inspect logs /
+    // run test sends. Rule manage stays admin-only — adding /
+    // disabling rules can blast the wrong audience if misused.
+    PERMISSIONS.EMAIL_WRITE,
+    PERMISSIONS.EMAIL_SEND_TEST,
   ],
   DISPATCHER: [
     ...READ_ONLY_SET,

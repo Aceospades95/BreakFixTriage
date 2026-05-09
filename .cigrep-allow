@@ -1,0 +1,10 @@
+# Round-6 §3C — Forbidden-tokens allowlist.
+#
+# One regex per line. Lines starting with # are comments. A match
+# on the *literal token* (not the surrounding line) is suppressed.
+# Empty file = zero suppressions.
+#
+# Add an entry only when the matched token is genuinely correct
+# (e.g., a country / state code chip that legitimately renders ALL
+# CAPS, or a documented acronym that humaniseEnum already preserves).
+# Do NOT use this file to silence devnote-style leaks.

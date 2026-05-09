@@ -9,6 +9,7 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { createInAppNotification } from "@/lib/notifications/in-app";
+import { dispatchEmailEvent } from "@/lib/email";
 import {
   GuardFailedError,
   InvalidTransitionError,
@@ -61,6 +62,10 @@ export async function transitionTicketAction(formData: FormData) {
 
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
   revalidatePath("/tickets");
+  // Manual transitions also affect the bench (state filter) and My Day
+  // landing page — invalidate both.
+  revalidatePath("/bench");
+  revalidatePath("/");
   redirect(`/tickets/${parsed.data.ticketId}`);
 }
 
@@ -116,7 +121,15 @@ export async function forceTransitionTicketAction(formData: FormData) {
 
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
   revalidatePath("/tickets");
-  redirect(`/tickets/${parsed.data.ticketId}`);
+  // Force-transitions can move a ticket into a state that changes
+  // bench bucketing or KPI counters on the homepage.
+  revalidatePath("/bench");
+  revalidatePath("/");
+  redirect(
+    `/tickets/${parsed.data.ticketId}?ok=${encodeURIComponent(
+      `Forced state change to ${parsed.data.to}`,
+    )}`,
+  );
 }
 
 function formatTransitionError(err: unknown): string {
@@ -258,6 +271,31 @@ export async function updateTicketAction(formData: FormData) {
             body: existing.shortDescription,
             linkHref: `/tickets/${existing.id}`,
           });
+
+          // Round-6 §3A — fire the ticket_assigned email rule(s).
+          // dispatchEmailEvent is the choke point (G4 invariant).
+          // Skipped when the operator assigns the ticket to themself
+          // because nobody wants an email about their own action.
+          try {
+            await dispatchEmailEvent("ticket_assigned", {
+              ticketId: existing.id,
+              schoolId: existing.schoolId,
+              actorUserId: session.userId,
+              variables: {
+                ticketId: existing.id,
+                incidentNumber: existing.incidentNumber,
+                shortDescription: existing.shortDescription,
+                assigneeUserId: after.assignedUserId,
+                fromAssigneeUserId: existing.assignedUserId,
+              },
+            });
+          } catch (err) {
+            // Audit-only failure — assignment already persisted.
+            console.error(
+              `[updateTicket] ticket_assigned dispatch failed for ${existing.id}:`,
+              err,
+            );
+          }
         }
       }
     }
@@ -273,5 +311,73 @@ export async function updateTicketAction(formData: FormData) {
 
   revalidatePath(`/tickets/${parsed.data.ticketId}`);
   revalidatePath("/tickets");
+  // Field updates may include `assignedUserId`, which moves the
+  // ticket between bench buckets and the My Day "team queues" panel.
+  revalidatePath("/bench");
+  revalidatePath("/");
   redirect(`/tickets/${parsed.data.ticketId}`);
+}
+
+/**
+ * Round-10 §2F — bench "Pick up" affordance. Assigns the ticket
+ * to the current session user. Audited like every other write.
+ *
+ * Distinct from updateTicketAction so:
+ *   - The audit action slug reads "ticket.pick_up" (operator-
+ *     readable as "Ticket pick up" via humanise format).
+ *   - The redirect lands back on /bench (not the ticket detail).
+ *   - Unassigned-only invariant: throws if the ticket already has
+ *     an assignee. Avoids a tech accidentally stealing work from
+ *     a peer.
+ */
+export async function pickUpTicketAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.TICKETS_WRITE);
+  const ticketId = formData.get("ticketId")?.toString();
+  if (!ticketId) {
+    redirect("/bench?error=Missing+ticket+id");
+  }
+
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: { id: true, assignedUserId: true, incidentNumber: true },
+  });
+  if (!ticket) {
+    redirect("/bench?error=Ticket+not+found");
+  }
+  if (ticket.assignedUserId) {
+    redirect(
+      `/bench?error=${encodeURIComponent(
+        `${ticket.incidentNumber} is already assigned`,
+      )}`,
+    );
+  }
+
+  await prisma.ticket.update({
+    where: { id: ticket.id },
+    data: { assignedUserId: session.userId },
+  });
+
+  await writeAudit({
+    actorUserId: session.userId,
+    entityType: "Ticket",
+    entityId: ticket.id,
+    action: "ticket.pick_up",
+    before: { assignedUserId: null },
+    after: { assignedUserId: session.userId },
+    reason: `${session.name} picked up ${ticket.incidentNumber}`,
+  });
+
+  await createInAppNotification({
+    recipientUserId: session.userId,
+    kind: "TICKET_ASSIGNED",
+    title: `Picked up ${ticket.incidentNumber}`,
+    body: "It's on your bench now.",
+    linkHref: `/tickets/${ticket.id}`,
+  });
+
+  revalidatePath("/bench");
+  revalidatePath("/");
+  redirect(
+    `/bench?ok=${encodeURIComponent(`Picked up ${ticket.incidentNumber}`)}`,
+  );
 }

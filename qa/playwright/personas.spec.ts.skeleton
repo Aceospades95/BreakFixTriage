@@ -1,0 +1,96 @@
+/**
+ * Playwright e2e — multi-persona walkthrough.
+ *
+ * Committed as `.skeleton` because Playwright is not currently a dev
+ * dependency and this repo's CI does not yet run an e2e job. To
+ * activate:
+ *
+ *   1. `npm i -D @playwright/test`
+ *   2. `npx playwright install chromium`
+ *   3. `git mv qa/playwright/personas.spec.ts.skeleton qa/playwright/personas.spec.ts`
+ *   4. Add `qa/playwright/playwright.config.ts` (port 3000, traceOnFailure).
+ *   5. `npx playwright test qa/playwright/`
+ *
+ * Why a skeleton and not a no-op test: a pass-by-default empty suite
+ * gives a false-green signal in CI. Keeping it inert until wired up
+ * forces the wiring step to be visible.
+ */
+
+// import { test, expect, type Page } from "@playwright/test";
+
+// const BASE_URL = process.env.E2E_URL ?? "http://localhost:3000";
+//
+// const PERSONAS = [
+//   { role: "ADMIN", email: "admin@breakfix.local", name: "Alex Admin" },
+//   { role: "OPS_MANAGER", email: "ops@breakfix.local", name: "Olivia Ops" },
+//   { role: "DISPATCHER", email: "dispatch@breakfix.local", name: "Dana Dispatcher" },
+//   { role: "WAREHOUSE", email: "warehouse@breakfix.local", name: "Wes Warehouse" },
+//   { role: "TECHNICIAN", email: "tech@breakfix.local", name: "Tess Technician" },
+//   { role: "DRIVER", email: "driver@breakfix.local", name: "Dante Driver" },
+//   { role: "READ_ONLY", email: "readonly@breakfix.local", name: "Ray ReadOnly" },
+// ] as const;
+//
+// async function signIn(page: Page, email: string) {
+//   await page.goto(`${BASE_URL}/signin`);
+//   await page.getByLabel("Email").fill(email);
+//   await page.getByLabel("Password").fill("breakfix-dev");
+//   await page.getByRole("button", { name: /sign in/i }).click();
+//   await page.waitForURL(`${BASE_URL}/`);
+// }
+//
+// for (const persona of PERSONAS) {
+//   test.describe(`Persona: ${persona.role}`, () => {
+//     test("loads landing page without errors", async ({ page }) => {
+//       page.on("pageerror", (err) => { throw err; });
+//       page.on("console", (msg) => {
+//         if (msg.type() === "error") throw new Error(msg.text());
+//       });
+//       await signIn(page, persona.email);
+//       await expect(page).toHaveURL(`${BASE_URL}/`);
+//       // Persona-appropriate header content
+//       await expect(page.getByText(persona.name)).toBeVisible();
+//     });
+//
+//     test("walks every left-nav item", async ({ page }) => {
+//       await signIn(page, persona.email);
+//       const navLinks = await page.locator("aside nav a").all();
+//       for (const link of navLinks) {
+//         const href = await link.getAttribute("href");
+//         if (!href || href.startsWith("http")) continue;
+//         await link.click();
+//         await page.waitForLoadState("domcontentloaded");
+//         // Page should have at minimum the global header
+//         await expect(page.locator("header")).toBeVisible();
+//       }
+//     });
+//   });
+// }
+//
+// test.describe("Concurrency: dispatcher + technician on same ticket", () => {
+//   test("only one transition wins", async ({ browser }) => {
+//     const dispatcher = await browser.newContext();
+//     const technician = await browser.newContext();
+//     const dPage = await dispatcher.newPage();
+//     const tPage = await technician.newPage();
+//
+//     await signIn(dPage, "dispatch@breakfix.local");
+//     await signIn(tPage, "tech@breakfix.local");
+//
+//     // Pick a known-seeded ticket. Both personas open it.
+//     const ticketUrl = `${BASE_URL}/tickets`;
+//     await dPage.goto(ticketUrl);
+//     await tPage.goto(ticketUrl);
+//
+//     // Both attempt a transition. Exactly one should succeed.
+//     const [dResult, tResult] = await Promise.allSettled([
+//       dPage.getByRole("button", { name: /schedule pickup/i }).click(),
+//       tPage.getByRole("button", { name: /receive/i }).click(),
+//     ]);
+//
+//     const successes = [dResult, tResult].filter((r) => r.status === "fulfilled").length;
+//     expect(successes).toBeGreaterThanOrEqual(1);
+//     // The audit log endpoint should show exactly one transition row
+//     // for this ticket from this test window. (Deferred: poll
+//     // /api/exports/audit and assert.)
+//   });
+// });

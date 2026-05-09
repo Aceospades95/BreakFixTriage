@@ -88,7 +88,7 @@ export default async function TwoFactorPage() {
             reset your 2FA if you lose both your authenticator and
             this list.
           </p>
-          <pre className="mt-3 whitespace-pre-wrap rounded border border-emerald-500/40 bg-surface p-3 font-mono text-sm leading-relaxed">
+          <pre className="mt-3 whitespace-pre-wrap rounded border border-emerald-500/40 bg-surface p-3 font-medium tracking-tight text-sm leading-relaxed">
             {recoveryCodes.join("\n")}
           </pre>
         </div>
@@ -99,7 +99,7 @@ export default async function TwoFactorPage() {
           {enabled ? (
             <div className="space-y-4 text-sm">
               <div className="flex items-center gap-2">
-                <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[10px] uppercase text-emerald-200">
+                <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase text-emerald-200">
                   enabled
                 </span>
                 <span>
@@ -133,8 +133,8 @@ export default async function TwoFactorPage() {
                   required
                   inputMode="numeric"
                   pattern="\d{6}"
-                  placeholder="123456"
-                  className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-mono text-sm focus:border-accent focus:outline-none"
+                  placeholder="e.g. 123456"
+                  className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-medium tracking-tight text-sm focus:border-accent focus:outline-none"
                 />
                 <button
                   type="submit"
@@ -163,7 +163,7 @@ export default async function TwoFactorPage() {
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">
                   Or enter this secret manually
                 </div>
-                <code className="mt-1 block rounded bg-surface px-2 py-1 font-mono text-xs">
+                <code className="mt-1 block rounded bg-surface px-2 py-1 font-medium tracking-tight text-xs">
                   {pending}
                 </code>
               </div>
@@ -178,8 +178,8 @@ export default async function TwoFactorPage() {
                   required
                   inputMode="numeric"
                   pattern="\d{6}"
-                  placeholder="123456"
-                  className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-mono text-sm focus:border-accent focus:outline-none"
+                  placeholder="e.g. 123456"
+                  className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-medium tracking-tight text-sm focus:border-accent focus:outline-none"
                 />
                 <button
                   type="submit"
@@ -226,7 +226,8 @@ export default async function TwoFactorPage() {
           </h3>
           <ul className="space-y-2">
             <li>
-              Six-digit TOTP, ±30s clock drift tolerance, RFC 6238 compliant.
+              Six-digit codes from your authenticator app refresh every
+              30 seconds.
             </li>
             <li>
               Ten one-use recovery codes generated at enable time.
@@ -236,7 +237,7 @@ export default async function TwoFactorPage() {
             </li>
             <li>
               Lost both your device and the recovery codes? An admin can
-              reset it from <code>/admin/users</code>.
+              reset it for you.
             </li>
           </ul>
         </aside>

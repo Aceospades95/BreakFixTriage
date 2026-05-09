@@ -10,7 +10,8 @@ import {
   resetUserPasswordAction,
   updateUserAction,
 } from "@/server/actions/admin";
-import { adminResetTotpAction } from "@/server/actions/2fa";
+import { adminResetTotpAction, revokeAllUserSessionsAction } from "@/server/actions/2fa";
+import { humanise } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -90,7 +91,7 @@ export default async function EditUserPage({
               >
                 {Object.values(Role).map((r) => (
                   <option key={r} value={r}>
-                    {r}
+                    {humanise(r)}
                   </option>
                 ))}
               </select>
@@ -117,6 +118,7 @@ export default async function EditUserPage({
                   <label
                     key={d.id}
                     className="flex items-center gap-2 text-sm text-slate-200"
+                    title={`District code: ${d.code}`}
                   >
                     <input
                       type="checkbox"
@@ -125,10 +127,7 @@ export default async function EditUserPage({
                       defaultChecked={userDistrictIds.has(d.id)}
                       className="accent-accent"
                     />
-                    {d.name}{" "}
-                    <span className="font-mono text-xs text-slate-500">
-                      {d.code}
-                    </span>
+                    {d.name}
                   </label>
                 ))}
               </div>
@@ -175,12 +174,15 @@ export default async function EditUserPage({
           Two-factor authentication
         </h2>
         {user.totpEnabledAt ? (
-          <div className="space-y-3 text-sm">
-            <p>
-              <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[10px] uppercase text-emerald-200">
-                enabled
+          <div
+            className="space-y-3 text-sm"
+            data-testid="two-factor-enrolled-panel"
+          >
+            <p data-testid="two-factor-enrolled-line">
+              <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase text-emerald-200">
+                Enrolled
               </span>{" "}
-              on {user.totpEnabledAt.toISOString().slice(0, 10)}
+              · {user.totpEnabledAt.toISOString()}
             </p>
             <p className="text-xs text-slate-400">
               Use the button below only as an emergency reset — e.g. the
@@ -196,11 +198,116 @@ export default async function EditUserPage({
           </div>
         ) : (
           <p className="text-sm text-slate-400">
-            Not enrolled. The user can enroll from their own{" "}
-            <code className="font-mono">/profile/2fa</code> page.
+            Not enrolled. The user can enroll from their own profile
+            page.
           </p>
         )}
       </section>
+
+      <RecentSessionsPanel userId={user.id} />
     </>
+  );
+}
+
+async function RecentSessionsPanel({ userId }: { userId: string }) {
+  // Round-10 §1F + Round-11 §1C — last 10 sessions with timestamp
+  // + ipHash + uaFingerprint + (active) tag if revokedAt is null.
+  // The "Sign out all sessions" button revokes every active row
+  // and writes an audit row (action=user.sessions.revoke_all).
+  const sessions = await prisma.userSession.findMany({
+    where: { userId },
+    orderBy: { lastSeenAt: "desc" },
+    take: 10,
+  });
+  const activeCount = sessions.filter((s) => s.revokedAt == null).length;
+  return (
+    <section className="mt-6 max-w-2xl rounded-lg border border-surface-border bg-surface-muted p-6">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Recent sessions
+        </h2>
+        {activeCount > 0 && (
+          <form action={revokeAllUserSessionsAction}>
+            <input type="hidden" name="userId" value={userId} />
+            <ConfirmButton
+              message={`Sign out all ${activeCount} active session${activeCount === 1 ? "" : "s"} for this user? They'll need to sign in again.`}
+            >
+              Sign out all sessions
+            </ConfirmButton>
+          </form>
+        )}
+      </div>
+      {sessions.length === 0 ? (
+        <p className="text-sm text-slate-400">No sessions recorded yet.</p>
+      ) : (
+        <div>
+          {/*
+            Round-12 §1C #6 — privacy-by-design label set.
+            Documented in docs/round-12-assumptions.md. The
+            on-disk values still carry an `ip:` / `ua:` prefix so
+            the storage shape is forensically traceable; the
+            display strips the prefix and shows truncated session
+            id + device fingerprint.
+          */}
+          <div className="mb-1 grid grid-cols-[12rem_10rem_1fr_5rem] gap-3 text-[10px] tracking-wide text-slate-500">
+            <span>Last seen</span>
+            <span>Session id</span>
+            <span>Device fingerprint</span>
+            <span>Status</span>
+          </div>
+          <ul className="divide-y divide-surface-border text-xs">
+            {sessions.map((s) => {
+              const stripPrefix = (v: string | null) =>
+                v == null ? null : v.replace(/^[a-z]+:/i, "");
+              // Round-13 §3H — when neither hash is present, the
+              // session predates ip/UA capture (e.g. seeded
+              // fixtures, very early sessions). Render "Unknown
+              // device" instead of two ambiguous dashes. The
+              // full IP+ASN+OS+browser parser is filed in
+              // docs/round-13-backlog.md as B8 — the current
+              // hash storage is one-way so a parser would also
+              // need a schema change to keep the raw values
+              // alongside.
+              const ip = stripPrefix(s.ipHash);
+              const ua = stripPrefix(s.uaFingerprint);
+              const isUnknown = ip == null && ua == null;
+              const sessionId = isUnknown ? "Unknown device" : (ip ?? "—");
+              const fingerprint = isUnknown ? "" : (ua ?? "(no fingerprint recorded)");
+              return (
+                <li
+                  key={s.id}
+                  className="grid grid-cols-[12rem_10rem_1fr_5rem] items-center gap-3 py-2"
+                >
+                  <span className="tabular-nums text-slate-300">
+                    {s.lastSeenAt.toISOString().replace("T", " ").slice(0, 16)}
+                  </span>
+                  <span
+                    className="truncate text-slate-400"
+                    title={s.ipHash ?? undefined}
+                  >
+                    {sessionId}
+                  </span>
+                  <span
+                    className="truncate text-slate-500"
+                    title={s.uaFingerprint ?? undefined}
+                  >
+                    {fingerprint}
+                  </span>
+                  {s.revokedAt == null ? (
+                    <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-center text-[10px] text-emerald-200">
+                      active
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-500">
+                      revoked {s.revokedAt.toISOString().slice(0, 10)}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }

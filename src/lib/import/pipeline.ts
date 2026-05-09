@@ -8,9 +8,37 @@ import {
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
 import { detectDuplicates } from "@/lib/duplicates/detect";
+import { reconcileSnowImport } from "@/lib/snow-merge";
 import { parseFile } from "./parse";
 import { mapRawRow, mapRawSchoolRow, mapRawDeviceRow, mapRawUserRow, mapRawPartRow, mapRawDeviceModelRow } from "./mapper";
 import { NormalizedImportRow, NormalizedSchoolRow, NormalizedDeviceRow, NormalizedUserRow, NormalizedPartRow, NormalizedDeviceModelRow } from "./schema";
+import { translateImportError, type TranslateContext } from "./error-translate";
+
+/**
+ * Build the row-level context that `translateImportError` uses to
+ * splice human-readable values into operator-facing messages.
+ * Generic over every NormalizedImportRow / Schools / Devices / etc.
+ * shape — only the fields that exist on the given row land in the
+ * context.
+ */
+function importRowContext(row: {
+  rowNumber?: number;
+  normalized?: Record<string, unknown> | null;
+}): TranslateContext {
+  const n = row.normalized ?? {};
+  const get = (key: string): string | null => {
+    const v = (n as Record<string, unknown>)[key];
+    return typeof v === "string" && v.length > 0 ? v : null;
+  };
+  return {
+    rowNumber: row.rowNumber,
+    assetTag: get("assetTag"),
+    serialNumber: get("serialNumber"),
+    schoolCode: get("schoolCode") ?? get("code"),
+    incidentNumber: get("incidentNumber"),
+    email: get("email") ?? get("requesterEmail"),
+  };
+}
 
 export interface ImportResult {
   batchId: string;
@@ -20,6 +48,12 @@ export interface ImportResult {
   updated: number;
   duplicates: number;
   rejected: number;
+  /** Round-7 §3C — synthetics auto-merged into imported INCs.
+   *  Optional because non-ticket imports (schools / devices /
+   *  users / parts) don't run the reconcile path. */
+  mergedFromSynthetic?: number;
+  /** Round-7 §3C — same-serial / different-school collisions. */
+  crossSchoolCollisions?: number;
 }
 
 export interface IngestInput {
@@ -70,7 +104,7 @@ export async function runImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -158,15 +192,28 @@ export async function runImport(
       if (outcome === "REJECTED") rejected++;
     } catch (err) {
       rejected++;
+      const ctx = importRowContext(row);
       await db.importRow.update({
         where: { id: row.id },
         data: {
           status: ImportRowStatus.REJECTED,
-          errors: [err instanceof Error ? err.message : String(err)],
+          errors: [translateImportError(err, ctx)],
         },
       });
     }
   }
+
+  // Round-7 §3C — auto-merge synthetic on-route pickups against the
+  // SNOW INC tickets just created in this batch. mergeTicket() runs
+  // post-commit-of-the-source-row so the row commit path stays clean
+  // even if a merge fails (the synthetic stays open and gets an
+  // audit row noting the failure). reconcileSnowImport returns
+  // counts that surface in the import stats blob.
+  const reconcile = await reconcileSnowImport(
+    batch.id,
+    input.uploadedByUserId,
+    db,
+  );
 
   const stats: Prisma.JsonObject = {
     parsed: parsed.rows.length,
@@ -175,6 +222,8 @@ export async function runImport(
     updated,
     duplicates,
     rejected,
+    mergedFromSynthetic: reconcile.mergedFromSynthetic,
+    crossSchoolCollisions: reconcile.crossSchoolCollisions,
   };
 
   await db.importBatch.update({
@@ -198,6 +247,8 @@ export async function runImport(
     updated,
     duplicates,
     rejected,
+    mergedFromSynthetic: reconcile.mergedFromSynthetic,
+    crossSchoolCollisions: reconcile.crossSchoolCollisions,
   };
 }
 
@@ -426,7 +477,7 @@ export async function runSchoolImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -522,7 +573,7 @@ export async function runSchoolImport(
       rejected++;
       await db.importRow.update({
         where: { id: row.id },
-        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+        data: { status: ImportRowStatus.REJECTED, errors: [translateImportError(err, importRowContext(row))] },
       });
     }
   }
@@ -562,7 +613,7 @@ export async function runDeviceImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -673,7 +724,7 @@ export async function runDeviceImport(
       rejected++;
       await db.importRow.update({
         where: { id: row.id },
-        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+        data: { status: ImportRowStatus.REJECTED, errors: [translateImportError(err, importRowContext(row))] },
       });
     }
   }
@@ -712,7 +763,7 @@ export async function runUserImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -807,7 +858,7 @@ export async function runUserImport(
       rejected++;
       await db.importRow.update({
         where: { id: row.id },
-        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+        data: { status: ImportRowStatus.REJECTED, errors: [translateImportError(err, importRowContext(row))] },
       });
     }
   }
@@ -846,7 +897,7 @@ export async function runPartImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -954,7 +1005,7 @@ export async function runPartImport(
       rejected++;
       await db.importRow.update({
         where: { id: row.id },
-        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+        data: { status: ImportRowStatus.REJECTED, errors: [translateImportError(err, importRowContext(row))] },
       });
     }
   }
@@ -993,7 +1044,7 @@ export async function runDeviceModelImport(
       where: { id: batch.id },
       data: {
         status: ImportStatus.FAILED,
-        error: err instanceof Error ? err.message : String(err),
+        error: translateImportError(err),
       },
     });
     throw err;
@@ -1090,7 +1141,7 @@ export async function runDeviceModelImport(
       rejected++;
       await db.importRow.update({
         where: { id: row.id },
-        data: { status: ImportRowStatus.REJECTED, errors: [err instanceof Error ? err.message : String(err)] },
+        data: { status: ImportRowStatus.REJECTED, errors: [translateImportError(err, importRowContext(row))] },
       });
     }
   }

@@ -40,25 +40,57 @@ const providers: NextAuthOptions["providers"] = [
       if (!credentials?.email || !credentials?.password) return null;
       const email = credentials.email.trim().toLowerCase();
 
+      // Round-9 §1E — log failed-sign-in attempts so /admin/audit
+      // has data to display under the "Failed sign-ins" filter
+      // chip. Wrapped in a helper closure so every early-return
+      // path that's a failure writes one row, exactly once.
+      const auditFailed = async (reason: string, userId?: string) => {
+        try {
+          await prisma.auditLog.create({
+            data: {
+              actorUserId: userId ?? null,
+              entityType: "User",
+              entityId: userId ?? "anonymous",
+              action: "auth:failed",
+              after: { email, reason },
+            },
+          });
+        } catch {
+          // Audit-write failure must not block the sign-in flow.
+        }
+      };
+
       // Rate limit per email to stop dictionary attacks. We deliberately
       // key on the *attempted* email rather than the requester IP so a
       // bot hitting a hundred inboxes doesn't fly under a per-IP limit.
       const limit = checkRateLimit(`signin:${email}`, SIGNIN_LIMIT);
-      if (!limit.allowed) return null;
+      if (!limit.allowed) {
+        await auditFailed("rate_limited");
+        return null;
+      }
 
       const user = await prisma.user.findUnique({
         where: { email },
         include: { districts: { select: { districtId: true } } },
       });
-      if (!user || !user.active || !user.passwordHash) return null;
+      if (!user || !user.active || !user.passwordHash) {
+        await auditFailed("unknown_user_or_inactive");
+        return null;
+      }
       const ok = await bcrypt.compare(credentials.password, user.passwordHash);
-      if (!ok) return null;
+      if (!ok) {
+        await auditFailed("bad_password", user.id);
+        return null;
+      }
 
       // 2FA gate: if the user has TOTP enabled, they must submit either
       // a valid six-digit code OR a one-use recovery code.
       if (user.totpEnabledAt && user.totpSecret) {
         const submitted = (credentials.totpCode ?? "").trim();
-        if (!submitted) return null;
+        if (!submitted) {
+          await auditFailed("totp_required", user.id);
+          return null;
+        }
 
         const totpOk = verifyTotp(submitted, user.totpSecret);
         if (!totpOk) {
@@ -72,7 +104,10 @@ const providers: NextAuthOptions["providers"] = [
             }
           }
           const updated = consumeRecoveryCode(submitted, codes);
-          if (updated == null) return null;
+          if (updated == null) {
+            await auditFailed("bad_totp", user.id);
+            return null;
+          }
           await prisma.user.update({
             where: { id: user.id },
             data: { backupCodes: JSON.stringify(updated) },
@@ -165,6 +200,65 @@ export const authOptions: NextAuthOptions = {
         session.user.districtIds = token.districtIds;
       }
       return session;
+    },
+  },
+  events: {
+    /**
+     * Round-8 §3A — sign-in audit. Writes an `auth:login` audit
+     * row on every successful sign-in so /admin/users can surface
+     * a "last sign-in" column without a schema migration. The
+     * audit row carries enough context for a future
+     * recent-sessions panel: actorUserId, account.provider, and
+     * the User.email at sign-in time.
+     */
+    async signIn({ user, account, isNewUser }) {
+      if (!user?.id) return;
+      try {
+        await prisma.auditLog.create({
+          data: {
+            actorUserId: user.id,
+            entityType: "User",
+            entityId: user.id,
+            action: "auth:login",
+            after: {
+              provider: account?.provider ?? "credentials",
+              isNewUser: Boolean(isNewUser),
+            },
+          },
+        });
+        // Round-10 §1F + Round-11 §1C — create the UserSession
+        // row on every successful sign-in. ip + UA are unavailable
+        // from the NextAuth callback (no Request object), so the
+        // session-touch in (app)/layout.tsx backfills them on the
+        // first authenticated page render. expiresAt mirrors the
+        // 12h NextAuth maxAge.
+        await prisma.userSession.create({
+          data: {
+            userId: user.id,
+            expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+          },
+        });
+      } catch (err) {
+        console.error("[auth] signIn audit/session failed:", err);
+      }
+    },
+    /**
+     * Round-11 §1C — sign-out closes the active session row. We
+     * only revoke the most-recent active row, not every session
+     * for the user, because the user may still be signed in on a
+     * second device.
+     */
+    async signOut({ token }) {
+      const userId = (token?.id as string | undefined) ?? null;
+      if (!userId) return;
+      try {
+        const { revokeMostRecentSessionForUser } = await import(
+          "@/lib/auth/sessions"
+        );
+        await revokeMostRecentSessionForUser(userId);
+      } catch (err) {
+        console.error("[auth] signOut session-revoke failed:", err);
+      }
     },
   },
 };

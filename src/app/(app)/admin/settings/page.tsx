@@ -2,6 +2,7 @@ import { TicketState } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { humanise } from "@/lib/format";
 import {
   getDigestRecipients,
   getEscalationMultiplier,
@@ -66,13 +67,13 @@ export default async function SettingsPage({
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
               label="Default hold-window (days)"
-              hint="Applied when a quote is sent without an explicit override."
+              hint="Applied when a quote is sent without an explicit override. Minimum 1 day — a 0-day window would make every sent quote auto-expire on the next sweep."
             >
               <input
                 type="number"
                 name="defaultHoldDays"
                 defaultValue={holdDays}
-                min={0}
+                min={1}
                 max={90}
                 className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
               />
@@ -109,7 +110,7 @@ export default async function SettingsPage({
           <p className="mb-4 text-xs text-slate-400">
             Override the default days-in-state threshold for any ticket
             state. Leave blank for the built-in default. Type{" "}
-            <code className="font-mono">none</code> to disable SLA for a
+            <code className="font-medium tracking-tight">none</code> to disable SLA for a
             state.
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -122,8 +123,8 @@ export default async function SettingsPage({
                   key={state}
                   className="flex items-center gap-2 text-xs"
                 >
-                  <span className="w-40 font-mono uppercase text-slate-400">
-                    {state}
+                  <span className="w-40 text-slate-300">
+                    {humanise(state)}
                   </span>
                   <input
                     type="text"
@@ -143,7 +144,7 @@ export default async function SettingsPage({
           </h2>
           <Field
             label="Digest recipients"
-            hint="One email per line. The daily digest script (npm run digest) sends to everyone on this list."
+            hint="One email per line. A scheduled job sends this digest each morning to everyone listed below."
           >
             <textarea
               name="digestRecipients"
@@ -169,9 +170,8 @@ export default async function SettingsPage({
           Bulk close stale tickets
         </h2>
         <p className="mb-4 text-xs text-slate-400">
-          Closes every ticket in the selected state whose
-          <code className="mx-1 font-mono">stateEnteredAt</code>
-          is older than the supplied day threshold. Runs through the
+          Closes every ticket that has sat in the chosen state longer than
+          the threshold. Runs through the
           state machine, so guards still apply. Maximum 500 tickets per
           run.
         </p>
@@ -193,7 +193,7 @@ export default async function SettingsPage({
                 .filter((s) => s !== "CLOSED" && s !== "ON_HOLD")
                 .map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {humanise(s)}
                   </option>
                 ))}
             </select>

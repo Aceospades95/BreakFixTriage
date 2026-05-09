@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { LocalTime } from "@/components/local-time";
+import { humanise } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +14,25 @@ const TYPE_LABELS: Record<string, string> = {
   DEVICES: "Devices",
   USERS: "Users",
   PARTS: "Parts",
-  DEVICE_MODELS: "Device Models",
+  // Round-7 §2B — sentence case per Round-3 humanise convention.
+  DEVICE_MODELS: "Device models",
 };
+
+/**
+ * Round-7 §2B — operator-facing source labels. The Source enum
+ * carries technical wire-format slugs (`SN_CSV`, `MANUAL_CSV`); the
+ * UI shows the friendly name. `ServiceNow CSV` chosen over `SN CSV`
+ * — see docs/round-7-assumptions.md for the abbreviation policy.
+ */
+const SOURCE_LABELS: Record<string, string> = {
+  SN_CSV: "ServiceNow CSV",
+  MANUAL_CSV: "Manual CSV",
+  SNOW_API: "ServiceNow API",
+};
+
+function humaniseImportSource(raw: string): string {
+  return SOURCE_LABELS[raw] ?? raw.replace(/_/g, " ");
+}
 
 const STATUS_COLORS: Record<string, string> = {
   COMMITTED: "text-emerald-300",
@@ -159,10 +177,22 @@ export default async function ImportsPage({
           <tbody className="divide-y divide-surface-border">
             {batches.map((b) => {
               const stats = b.stats ?? {};
-              const outcome =
+              // Round-7 §3C — surface the new "merged-from-synthetic"
+              // bucket when present. Older batches that ran before
+              // R7 don't carry the field; outcome stays the legacy
+              // shape for those.
+              const mergedFromSyn =
+                typeof stats.mergedFromSynthetic === "number"
+                  ? stats.mergedFromSynthetic
+                  : 0;
+              const baseOutcome =
                 stats.created !== undefined
                   ? `${stats.created ?? 0} created · ${stats.updated ?? 0} updated · ${stats.duplicates ?? 0} dupes · ${stats.rejected ?? 0} rejected`
                   : "—";
+              const outcome =
+                mergedFromSyn > 0
+                  ? `${stats.created ?? 0} created · ${mergedFromSyn} merged-from-synthetic · ${stats.updated ?? 0} updated · ${stats.duplicates ?? 0} dupes · ${stats.rejected ?? 0} rejected`
+                  : baseOutcome;
               const ago = formatTimeAgo(b.createdAt);
               return (
                 <tr key={b.id} className="transition hover:bg-surface-muted/40">
@@ -175,18 +205,21 @@ export default async function ImportsPage({
                     </Link>
                   </td>
                   <td className="px-3 py-2">
-                    <span className="rounded bg-surface-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+                    <span className="inline-flex items-center whitespace-nowrap rounded bg-surface-border px-1.5 py-0.5 text-[10px] tracking-wide">
                       {TYPE_LABELS[b.type ?? "TICKETS"] ?? b.type ?? "Tickets"}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-400">
-                    {b.source}
+                    {humaniseImportSource(b.source)}
                   </td>
                   <td className={`px-3 py-2 text-xs ${STATUS_COLORS[b.status] ?? ""}`}>
-                    {b.status}
+                    {humanise(b.status)}
                   </td>
                   <td className="px-3 py-2">{b._count.rows}</td>
-                  <td className="px-3 py-2 text-xs text-slate-400">
+                  <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-slate-400">
+                    {/* Round-10 §2E — single-line outcome with
+                        tabular-nums so column counts align cleanly
+                        across rows. */}
                     {outcome}
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-400">

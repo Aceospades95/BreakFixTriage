@@ -62,7 +62,7 @@ export default async function NotificationsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="rounded bg-surface-border px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                    <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase">
                       {n.kind}
                     </span>
                     <span className="text-sm font-medium text-slate-100">

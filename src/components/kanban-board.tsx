@@ -138,6 +138,7 @@ export function KanbanBoard({
         body: JSON.stringify({
           to: target,
           reason: `Kanban drag from kanban board`,
+          source: "kanban",
         }),
       });
       if (!res.ok) {
@@ -292,7 +293,7 @@ export function KanbanBoard({
                       </div>
                       <div className="text-[10px] text-slate-500">{col.hint}</div>
                     </div>
-                    <span className="rounded bg-muted px-2 py-0.5 text-xs tabular-nums">
+                    <span className="inline-block min-w-[3ch] whitespace-nowrap rounded bg-muted px-2 py-0.5 text-center text-xs tabular-nums">
                       {colTickets.length}
                     </span>
                   </Link>
@@ -311,7 +312,7 @@ export function KanbanBoard({
                     {colTickets.slice(0, showCount).map((t) => (
                       <li key={t.id}>
                         <Link
-                          href={`/tickets/${t.id}`}
+                          href={`/tickets/${t.incidentNumber}`}
                           draggable
                           onDragStart={(e) => handleDragStart(e, t.id)}
                           onDragEnd={handleDragEnd}
@@ -321,12 +322,15 @@ export function KanbanBoard({
                           )}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-mono text-accent">
+                            <span className="font-medium tracking-tight text-accent">
                               {t.incidentNumber}
                             </span>
                             <SlaBadge ticket={t} compact />
                           </div>
-                          <div className="mt-1 line-clamp-1 text-slate-300">
+                          <div
+                            className="mt-1 line-clamp-1 text-slate-300"
+                            title={t.shortDescription}
+                          >
                             {t.shortDescription}
                           </div>
                           <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
@@ -388,7 +392,7 @@ export function KanbanBoard({
                     <div className="text-[10px] text-slate-500">{col.hint}</div>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="rounded bg-muted px-2 py-0.5 text-xs tabular-nums">
+                    <span className="inline-block min-w-[3ch] whitespace-nowrap rounded bg-muted px-2 py-0.5 text-center text-xs tabular-nums">
                       {colTickets.length}
                     </span>
                     <Link
@@ -416,7 +420,7 @@ export function KanbanBoard({
                   {colTickets.slice(0, 40).map((t) => (
                     <li key={t.id}>
                       <Link
-                        href={`/tickets/${t.id}`}
+                        href={`/tickets/${t.incidentNumber}`}
                         draggable
                         onDragStart={(e) => handleDragStart(e, t.id)}
                         onDragEnd={handleDragEnd}
@@ -426,12 +430,15 @@ export function KanbanBoard({
                         )}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-accent">
+                          <span className="font-medium tracking-tight text-accent">
                             {t.incidentNumber}
                           </span>
                           <SlaBadge ticket={t} compact />
                         </div>
-                        <div className="mt-1 line-clamp-2 text-slate-300">
+                        <div
+                          className="mt-1 line-clamp-2 text-slate-300"
+                          title={t.shortDescription}
+                        >
                           {t.shortDescription}
                         </div>
                         <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">

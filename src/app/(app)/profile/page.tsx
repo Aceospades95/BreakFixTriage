@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { changeOwnPasswordAction } from "@/server/actions/admin";
+import { humanise } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,14 @@ export default async function ProfilePage({
       <PageHeader
         title="Your profile"
         subtitle="Change your password and review your role assignment."
+        actions={
+          <Link
+            href="/me/preferences"
+            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+          >
+            Preferences →
+          </Link>
+        }
       />
 
       {searchParams?.error && (
@@ -44,11 +53,11 @@ export default async function ProfilePage({
             <dt className="text-slate-400">Name</dt>
             <dd>{session.name}</dd>
             <dt className="text-slate-400">Email</dt>
-            <dd className="font-mono text-xs">{session.email}</dd>
+            <dd className="font-medium tracking-tight text-xs">{session.email}</dd>
             <dt className="text-slate-400">Role</dt>
             <dd>
-              <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-[10px] uppercase">
-                {session.role}
+              <span className="inline-flex items-center whitespace-nowrap rounded bg-surface-border px-2 py-0.5 text-[10px] font-medium tracking-wide">
+                {humanise(session.role)}
               </span>
             </dd>
             <dt className="text-slate-400">Districts</dt>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { QuoteStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
@@ -61,9 +62,12 @@ export default async function InvoicesPage({
       )}
 
       {tickets.length === 0 ? (
-        <div className="rounded border border-surface-border bg-surface-muted/40 p-6 text-center text-sm text-slate-400">
-          Nothing in the invoice queue. 🎉
-        </div>
+        // Round-13 §3C — migrate from emoji-only to the shared
+        // EmptyState component (CircleCheckBig at slate-500).
+        <EmptyState
+          headline="Nothing in the invoice queue"
+          body="When a ticket is closed and the SPOC has approved a quote, it lands here for invoicing. The queue is currently caught up."
+        />
       ) : (
         <ul className="space-y-4">
           {tickets.map((t) => {
@@ -78,8 +82,8 @@ export default async function InvoicesPage({
                   <div>
                     <div className="text-sm">
                       <Link
-                        href={`/tickets/${t.id}`}
-                        className="font-mono text-accent hover:underline"
+                        href={`/tickets/${t.incidentNumber}`}
+                        className="font-medium tracking-tight text-accent hover:underline"
                       >
                         {t.incidentNumber}
                       </Link>
@@ -90,7 +94,7 @@ export default async function InvoicesPage({
                     <div className="mt-0.5 text-xs text-slate-400">
                       {t.school.name}
                       {t.school.code && (
-                        <span className="ml-2 font-mono text-slate-500">
+                        <span className="ml-2 font-medium tracking-tight text-slate-500">
                           {t.school.code}
                         </span>
                       )}
@@ -100,7 +104,7 @@ export default async function InvoicesPage({
                     {latestQuote ? (
                       <div className="mt-2 text-xs text-slate-300">
                         Approved quote{" "}
-                        <span className="font-mono text-slate-400">
+                        <span className="font-medium tracking-tight text-slate-400">
                           {latestQuote.id.slice(-6)}
                         </span>
                         {latestQuote.amountCents != null && (
@@ -140,7 +144,7 @@ export default async function InvoicesPage({
                             type="text"
                             name="poNumber"
                             required
-                            placeholder="PO-2025-00123"
+                            placeholder="e.g. PO-2025-00123"
                             className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
                           />
                         </label>
@@ -153,7 +157,7 @@ export default async function InvoicesPage({
                             name="amount"
                             required
                             inputMode="decimal"
-                            placeholder="199.00"
+                            placeholder="e.g. 199.00"
                             defaultValue={
                               latestQuote.amountCents != null
                                 ? (latestQuote.amountCents / 100).toFixed(2)
@@ -175,7 +179,7 @@ export default async function InvoicesPage({
                           <div className="text-[10px] uppercase tracking-wide text-slate-400">
                             Attached PO
                           </div>
-                          <div className="mt-1 font-mono text-sm">
+                          <div className="mt-1 font-medium tracking-tight text-sm">
                             {po.poNumber}
                           </div>
                           <div className="mt-1 text-slate-400">

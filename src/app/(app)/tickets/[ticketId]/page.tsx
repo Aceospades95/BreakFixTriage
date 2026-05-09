@@ -1,18 +1,18 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { QuoteStatus, TicketPriority, TicketState as TicketStateEnum } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList } from "@/components/attachment-list";
+import { ForceChangeForm } from "@/components/force-change-form";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { allowedNextStates } from "@/lib/workflow";
 import { readStatusConfig } from "@/lib/workflow/status-config";
 import {
-  forceTransitionTicketAction,
   transitionTicketAction,
   updateTicketAction,
 } from "@/server/actions/tickets";
@@ -33,8 +33,10 @@ import {
   startTimerAction,
   stopTimerAction,
 } from "@/server/actions/time";
-import { mergeTicketAction } from "@/server/actions/merge";
+import { mergeTicketAction, unmergeTicketAction } from "@/server/actions/merge";
 import { totalMinutesForTicket } from "@/lib/time/time-tracking";
+import { formatCents, humanise } from "@/lib/format";
+import { EmailSpocButton } from "@/components/tickets/EmailSpocButton";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +45,7 @@ export default async function TicketDetailPage({
   searchParams,
 }: {
   params: { ticketId: string };
-  searchParams?: { error?: string };
+  searchParams?: { error?: string; view?: string };
 }) {
   const session = await requireRole(PERMISSIONS.TICKETS_READ);
   const canTransition = can(session.role, PERMISSIONS.TICKETS_TRANSITION);
@@ -51,11 +53,56 @@ export default async function TicketDetailPage({
   const canWriteQuotes = can(session.role, PERMISSIONS.QUOTES_WRITE);
   const canForceTransition = can(session.role, PERMISSIONS.USERS_MANAGE);
 
+  // Round-12 §1B — canonical URL is /tickets/<incidentNumber>, not
+  // /tickets/<cuid>. R5 §2.11 originally went the other direction;
+  // R12 reverses it because the cuid leaked into browser history,
+  // copy-link sharing, and referrer headers. The lookup accepts
+  // both forms, but a cuid hit responds with HTTP 308 to the
+  // canonical incidentNumber URL.
+  const isCuidParam =
+    /^[a-z0-9]{20,}$/i.test(params.ticketId) &&
+    !/^(INC|LOCAL|SYN-|LOCAL-RP)/i.test(params.ticketId);
+  const isHumanReadableParam = /^(INC|LOCAL|SYN-|LOCAL-RP)/i.test(
+    params.ticketId,
+  );
+
+  if (isCuidParam) {
+    const byId = await prisma.ticket.findUnique({
+      where: { id: params.ticketId },
+      select: { incidentNumber: true },
+    });
+    if (!byId) notFound();
+    if (byId.incidentNumber) {
+      permanentRedirect(`/tickets/${byId.incidentNumber}`);
+    }
+    // Fall through with the cuid in place if the row has no
+    // incident number (legacy data).
+  }
+
+  // Round-12 §1B — accept either incidentNumber or cuid. By the
+  // time we reach here, a cuid param has already been redirected
+  // away (above), but the cuid path is still hit when a ticket
+  // has no incidentNumber yet.
+  const ticketWhere = isHumanReadableParam
+    ? { incidentNumber: params.ticketId.toUpperCase() }
+    : { id: params.ticketId };
+
   const [ticket, assignableUsers, siblingTickets] = await Promise.all([
     prisma.ticket.findUnique({
-      where: { id: params.ticketId },
+      where: ticketWhere,
       include: {
-        school: { include: { district: true, address: true } },
+        school: {
+          include: {
+            district: true,
+            address: true,
+            // Round-6 §3B — count SPOC contacts so the Email SPOC
+            // button knows whether to render disabled.
+            contacts: {
+              where: { receivesTicketEmails: true, email: { not: null } },
+              select: { id: true },
+            },
+          },
+        },
         device: { include: { model: true } },
         assignee: { select: { id: true, name: true, email: true } },
         events: {
@@ -112,33 +159,30 @@ export default async function TicketDetailPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true },
     }),
-    prisma.ticket.findMany({
-      where: {
-        NOT: { id: params.ticketId },
-        OR: [{ schoolId: { in: [] } }],
-      },
-      take: 0,
-    }),
+    Promise.resolve([] as never[]),
   ]);
   if (!ticket) notFound();
 
   // If the ticket has been merged into another one, bounce to the
   // target so writes don't accidentally land on a closed source.
   // Skip the redirect when the caller explicitly asks to view the
-  // source via `?view=source`.
+  // source via `?view=source` or arrives with an error toast (e.g.
+  // "writes go to the target" — see Merged-in card link).
   if (
     ticket.mergedIntoTicketId &&
     ticket.mergedInto &&
-    searchParams?.error == null
+    searchParams?.error == null &&
+    searchParams?.view !== "source"
   ) {
-    const url = new URL(
-      `/tickets/${ticket.mergedIntoTicketId}`,
-      "http://local",
-    );
+    // Round-12 §1B — canonical URL uses incidentNumber, not cuid.
+    const targetSlug =
+      ticket.mergedInto.incidentNumber ?? ticket.mergedIntoTicketId;
+    const url = new URL(`/tickets/${targetSlug}`, "http://local");
     url.searchParams.set(
       "ok",
       `Merged — showing target ${ticket.mergedInto.incidentNumber}`,
     );
+    url.searchParams.set("dur", "6000");
     redirect(url.pathname + url.search);
   }
 
@@ -197,6 +241,7 @@ export default async function TicketDetailPage({
 
   const nextStates = allowedNextStates(ticket.state);
   const returnTo = `/tickets/${ticket.id}`;
+  const spocCount = ticket.school.contacts.length;
 
   // Load admin status config for the "Change status" dropdown. Labels
   // may be customized and some states disabled — keep those out of the
@@ -209,11 +254,9 @@ export default async function TicketDetailPage({
           .filter((s) => s !== ticket.state)
           .map((s) => ({
             state: s,
-            label:
-              statusConfig.labels?.[s] ??
-              s.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) =>
-                c.toUpperCase(),
-              ),
+            // Round-4 §pre-work-2: humanise() canonical surface.
+            // Was an inline replace+lowercase+capitalise chain.
+            label: statusConfig.labels?.[s] ?? humanise(s),
           }))
           .sort((a, b) => a.label.localeCompare(b.label))
       : [];
@@ -227,6 +270,25 @@ export default async function TicketDetailPage({
           <div className="flex items-center gap-2">
             <SlaBadge ticket={ticket} />
             <StatePill state={ticket.state} />
+            {canWrite && (
+              <EmailSpocButton
+                ticketId={ticket.id}
+                ticketIncidentNumber={ticket.incidentNumber}
+                ticketShortDescription={ticket.shortDescription}
+                ticketState={humanise(ticket.state)}
+                schoolName={ticket.school.name}
+                schoolId={ticket.schoolId}
+                hasSpoc={spocCount > 0}
+              />
+            )}
+            <Link
+              href={`/tickets/${ticket.id}/print?autoprint=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded border border-surface-border px-2 py-1 text-xs text-slate-200 hover:border-accent hover:text-white"
+            >
+              Print Work Order
+            </Link>
           </div>
         }
       />
@@ -234,6 +296,44 @@ export default async function TicketDetailPage({
       {searchParams?.error && (
         <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
           {searchParams.error}
+        </div>
+      )}
+
+      {ticket.mergedIntoTicketId && ticket.mergedInto && (
+        <div className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm text-amber-100">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-semibold">Read-only: merged source</span>
+            <span className="text-amber-200/80">
+              This ticket was merged into{" "}
+              <Link
+                href={`/tickets/${ticket.mergedIntoTicketId}`}
+                className="font-medium underline hover:text-amber-50"
+              >
+                {ticket.mergedInto.incidentNumber}
+              </Link>
+              . Edits and transitions go to the target.
+            </span>
+            {canForceTransition && (
+              <form
+                action={unmergeTicketAction}
+                className="ml-auto flex items-center gap-2"
+              >
+                <input type="hidden" name="sourceTicketId" value={ticket.id} />
+                <input
+                  type="text"
+                  name="reason"
+                  placeholder="Reason (optional)"
+                  className="rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1 text-xs text-amber-100 placeholder:text-amber-200/40 focus:border-amber-300 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded border border-amber-300/60 bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-50 hover:bg-amber-500/30"
+                >
+                  Un-merge
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       )}
 
@@ -257,7 +357,7 @@ export default async function TicketDetailPage({
                     >
                       {Object.values(TicketPriority).map((p) => (
                         <option key={p} value={p}>
-                          {p}
+                          {humanise(p)}
                         </option>
                       ))}
                     </select>
@@ -269,7 +369,7 @@ export default async function TicketDetailPage({
                     </button>
                   </form>
                 ) : (
-                  ticket.priority
+                  humanise(ticket.priority)
                 )}
               </Dd>
               <Dt>Assignee</Dt>
@@ -285,7 +385,7 @@ export default async function TicketDetailPage({
                       <option value="">— unassigned —</option>
                       {assignableUsers.map((u) => (
                         <option key={u.id} value={u.id}>
-                          {u.name} ({u.role})
+                          {u.name} ({humanise(u.role)})
                         </option>
                       ))}
                     </select>
@@ -310,7 +410,7 @@ export default async function TicketDetailPage({
                 >
                   {ticket.school.name}
                 </Link>
-                <span className="ml-2 font-mono text-xs text-slate-500">
+                <span className="ml-2 font-medium tracking-tight text-xs text-slate-500">
                   {ticket.school.code}
                 </span>
                 <div className="text-xs text-slate-500">
@@ -323,7 +423,7 @@ export default async function TicketDetailPage({
                   <>
                     <Link
                       href={`/admin/devices/${ticket.device.id}`}
-                      className="font-mono text-accent hover:underline"
+                      className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {ticket.device.serialNumber}
                     </Link>
@@ -338,8 +438,8 @@ export default async function TicketDetailPage({
                   <span className="text-slate-500">—</span>
                 )}
               </Dd>
-              <Dt>ServiceNow sys_id</Dt>
-              <Dd className="font-mono text-xs text-slate-400">
+              <Dt>ServiceNow ID</Dt>
+              <Dd className="font-medium tracking-tight text-xs text-slate-400">
                 {ticket.serviceNowSysId ?? "—"}
               </Dd>
               <Dt>Invoice required</Dt>
@@ -502,7 +602,7 @@ export default async function TicketDetailPage({
                         </span>
                       )}
                     </span>
-                    <span className="font-mono text-xs text-slate-400">
+                    <span className="font-medium tracking-tight text-xs text-slate-400">
                       {e.endedAt != null && e.minutes != null
                         ? formatHours(e.minutes)
                         : "—"}
@@ -558,41 +658,14 @@ export default async function TicketDetailPage({
                 state-machine edge check. A reason is required and the
                 change is audited.
               </p>
-              <form
-                action={forceTransitionTicketAction}
-                className="flex flex-col gap-2 rounded border border-amber-500/30 bg-amber-500/5 p-2"
-              >
-                <input type="hidden" name="ticketId" value={ticket.id} />
-                <select
-                  name="to"
-                  defaultValue=""
-                  required
-                  className="rounded border border-surface-border bg-surface-muted px-2 py-1 text-sm focus:border-accent focus:outline-none"
-                >
-                  <option value="" disabled>
-                    Pick a target state…
-                  </option>
-                  {allStatesForPicker.map((s) => (
-                    <option key={s.state} value={s.state}>
-                      {s.label} ({s.state})
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  name="reason"
-                  required
-                  minLength={3}
-                  placeholder="Reason (required)"
-                  className="rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  className="rounded border border-amber-500/60 bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/30"
-                >
-                  Force change
-                </button>
-              </form>
+              {/* Key includes the current state + stateEnteredAt so a
+                  successful force change re-mounts the form, clearing
+                  every uncontrolled input. Closes findings §3.A6. */}
+              <ForceChangeForm
+                key={`force-${ticket.state}-${ticket.stateEnteredAt.toISOString()}`}
+                ticketId={ticket.id}
+                states={allStatesForPicker}
+              />
             </Card>
           )}
 
@@ -650,8 +723,8 @@ export default async function TicketDetailPage({
                     <div className="flex items-center justify-between">
                       <QuoteStatusPill status={q.status} />
                       {q.amountCents != null ? (
-                        <span className="font-mono">
-                          ${(q.amountCents / 100).toFixed(2)}
+                        <span className="font-medium tracking-tight tabular-nums">
+                          {formatCents(q.amountCents)}
                         </span>
                       ) : q.diagnosticOnly ? (
                         <span className="text-xs text-slate-400">
@@ -662,11 +735,12 @@ export default async function TicketDetailPage({
                     {q.holdUntil && (
                       <div className="mt-1 text-xs text-slate-500">
                         hold until {q.holdUntil.toISOString().slice(0, 10)}
-                        {q.holdUntil.getTime() <= Date.now() && (
-                          <span className="ml-1 text-amber-300">
-                            (expired)
-                          </span>
-                        )}
+                        {(q.status === "SENT" || q.status === "APPROVED") &&
+                          q.holdUntil.getTime() <= Date.now() && (
+                            <span className="ml-1 text-amber-300">
+                              (expired — pending sweep)
+                            </span>
+                          )}
                       </div>
                     )}
                     {q.notes && (
@@ -674,11 +748,11 @@ export default async function TicketDetailPage({
                     )}
                     {q.purchaseOrder && (
                       <div className="mt-2 rounded border border-surface-border bg-surface-muted/40 p-2 text-xs">
-                        <div className="font-mono">
+                        <div className="font-medium tracking-tight">
                           PO {q.purchaseOrder.poNumber}
                         </div>
-                        <div className="text-slate-400">
-                          ${(q.purchaseOrder.amountCents / 100).toFixed(2)}
+                        <div className="tabular-nums text-slate-400">
+                          {formatCents(q.purchaseOrder.amountCents)}
                           {q.purchaseOrder.invoicedAt && (
                             <>
                               {" "}
@@ -765,16 +839,15 @@ export default async function TicketDetailPage({
                       >
                         {u.part.name}
                       </Link>
-                      <span className="ml-2 font-mono text-xs text-slate-500">
+                      <span className="ml-2 font-medium tracking-tight text-xs text-slate-500">
                         {u.part.sku}
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="font-mono text-xs">×{u.quantity}</span>
+                      <span className="font-medium tracking-tight text-xs">×{u.quantity}</span>
                       {u.part.costCents != null && (
-                        <div className="text-[10px] text-slate-500">
-                          $
-                          {((u.part.costCents * u.quantity) / 100).toFixed(2)}
+                        <div className="text-[10px] tabular-nums text-slate-500">
+                          {formatCents(u.part.costCents * u.quantity)}
                         </div>
                       )}
                     </div>
@@ -845,7 +918,7 @@ export default async function TicketDetailPage({
                     className="rounded border border-surface-border bg-surface px-3 py-2"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs">
+                      <span className="font-medium tracking-tight text-xs">
                         {rma.rmaNumber}
                       </span>
                       <span className="text-xs text-slate-400">
@@ -870,7 +943,7 @@ export default async function TicketDetailPage({
                       )}
                     </div>
                     {(rma.trackingOut || rma.trackingIn) && (
-                      <div className="mt-1 font-mono text-[10px] text-slate-500">
+                      <div className="mt-1 font-medium tracking-tight text-[10px] text-slate-500">
                         {rma.trackingOut && <>out: {rma.trackingOut}</>}
                         {rma.trackingIn && (
                           <>
@@ -1007,7 +1080,7 @@ export default async function TicketDetailPage({
                   name="targetIncidentNumber"
                   required
                   placeholder="Target incident #"
-                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs font-mono focus:border-accent focus:outline-none"
+                  className="w-full rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs font-medium tracking-tight focus:border-accent focus:outline-none"
                 />
                 <input
                   type="text"
@@ -1031,10 +1104,8 @@ export default async function TicketDetailPage({
                 {ticket.mergedFrom.map((m) => (
                   <li key={m.id}>
                     <Link
-                      href={`/tickets/${m.id}?error=${encodeURIComponent(
-                        "Viewing a merged source — writes go to the target.",
-                      )}`}
-                      className="font-mono text-accent hover:underline"
+                      href={`/tickets/${m.id}?view=source`}
+                      className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {m.incidentNumber}
                     </Link>
@@ -1055,8 +1126,8 @@ export default async function TicketDetailPage({
                     {deviceTickets.map((t) => (
                       <li key={t.id} className="truncate text-xs">
                         <Link
-                          href={`/tickets/${t.id}`}
-                          className="font-mono text-accent hover:underline"
+                          href={`/tickets/${t.incidentNumber}`}
+                          className="font-medium tracking-tight text-accent hover:underline"
                         >
                           {t.incidentNumber}
                         </Link>{" "}
@@ -1075,8 +1146,8 @@ export default async function TicketDetailPage({
                     {schoolOpenTickets.map((t) => (
                       <li key={t.id} className="truncate text-xs">
                         <Link
-                          href={`/tickets/${t.id}`}
-                          className="font-mono text-accent hover:underline"
+                          href={`/tickets/${t.incidentNumber}`}
+                          className="font-medium tracking-tight text-accent hover:underline"
                         >
                           {t.incidentNumber}
                         </Link>{" "}
@@ -1142,7 +1213,7 @@ function QuoteStatusPill({ status }: { status: QuoteStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
     >
       {status}
     </span>

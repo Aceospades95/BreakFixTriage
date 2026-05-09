@@ -97,17 +97,17 @@ export default async function ImportBatchPage({
             <tbody className="divide-y divide-surface-border">
               {batch.rows.map((r) => (
                 <tr key={r.id}>
-                  <td className="px-3 py-2 font-mono text-xs">
+                  <td className="px-3 py-2 font-medium tracking-tight text-xs">
                     {r.rowNumber}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">
+                  <td className="px-3 py-2 font-medium tracking-tight text-xs">
                     <RowStatus status={r.status} />
                   </td>
                   <td className="px-3 py-2">
                     {r.resultingTicket ? (
                       <Link
-                        href={`/tickets/${r.resultingTicket.id}`}
-                        className="font-mono text-accent hover:underline"
+                        href={`/tickets/${r.resultingTicket.incidentNumber}`}
+                        className="font-medium tracking-tight text-accent hover:underline"
                       >
                         {r.resultingTicket.incidentNumber}
                       </Link>

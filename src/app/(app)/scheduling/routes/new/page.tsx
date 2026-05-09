@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { formatRole } from "@/lib/format";
 import { buildRouteAction } from "@/server/actions/scheduling";
 
 export const dynamic = "force-dynamic";
@@ -101,7 +102,7 @@ export default async function NewRoutePage({
                 <option value="">Choose a driver…</option>
                 {driverCandidates.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.name} ({u.role})
+                    {u.name} ({formatRole(u.role)})
                   </option>
                 ))}
               </select>
@@ -113,7 +114,7 @@ export default async function NewRoutePage({
               <input
                 type="text"
                 name="vehicleRef"
-                placeholder="VAN-02"
+                placeholder="e.g. VAN-02"
                 className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
               />
             </label>
@@ -144,12 +145,12 @@ export default async function NewRoutePage({
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2 text-sm font-medium">
-                        <span className="rounded bg-surface-border px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                        <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase">
                           {j.type}
                         </span>
                         <span>{j.school.name}</span>
                         {j.school.code && (
-                          <span className="font-mono text-xs text-slate-500">
+                          <span className="font-medium tracking-tight text-xs text-slate-500">
                             {j.school.code}
                           </span>
                         )}

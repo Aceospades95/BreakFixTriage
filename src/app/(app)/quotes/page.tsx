@@ -5,6 +5,7 @@ import { StatePill } from "@/components/state-pill";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { formatCents, humanise } from "@/lib/format";
 import { sweepQuotesAction } from "@/server/actions/quotes";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +55,7 @@ export default async function QuotesPage({
     }),
     prisma.quote.count({
       where: {
-        status: QuoteStatus.SENT,
+        status: { in: [QuoteStatus.SENT, QuoteStatus.APPROVED] },
         holdUntil: { lte: new Date() },
       },
     }),
@@ -83,7 +84,7 @@ export default async function QuotesPage({
                 <button
                   type="submit"
                   className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-                  title="Expire any SENT quote whose hold window has passed."
+                  title="Expire any SENT or APPROVED quote whose hold window has passed."
                 >
                   Run hold-window sweep
                 </button>
@@ -107,7 +108,7 @@ export default async function QuotesPage({
       {expiringSoonCount > 0 && (
         <div className="mb-4 flex items-center justify-between rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
           <span>
-            <strong>{expiringSoonCount}</strong> sent quote
+            <strong>{expiringSoonCount}</strong> sent or approved quote
             {expiringSoonCount === 1 ? "" : "s"} past their hold window.
           </span>
           {canWrite && (
@@ -142,7 +143,18 @@ export default async function QuotesPage({
               }`}
             >
               {tab.label}
-              <span className="ml-1.5 font-mono text-slate-500">{count}</span>
+              {/* Round-13 §3A — count promoted to a nested pill
+                  chip for visual consistency with other filter
+                  rows (matching /tickets, /admin/audit). */}
+              <span
+                className={`ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0 text-[10px] font-medium tracking-tight tabular-nums ${
+                  active
+                    ? "bg-accent/30 text-white"
+                    : "bg-surface-border text-slate-400"
+                }`}
+              >
+                {count}
+              </span>
             </Link>
           );
         })}
@@ -163,7 +175,8 @@ export default async function QuotesPage({
           <tbody className="divide-y divide-surface-border">
             {quotes.map((q) => {
               const holdExpired =
-                q.status === QuoteStatus.SENT &&
+                (q.status === QuoteStatus.SENT ||
+                  q.status === QuoteStatus.APPROVED) &&
                 q.holdUntil != null &&
                 q.holdUntil.getTime() <= Date.now();
               return (
@@ -173,8 +186,8 @@ export default async function QuotesPage({
                 >
                   <td className="px-3 py-2">
                     <Link
-                      href={`/tickets/${q.ticketId}`}
-                      className="font-mono text-accent hover:underline"
+                      href={`/tickets/${q.ticket.incidentNumber}`}
+                      className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {q.ticket.incidentNumber}
                     </Link>
@@ -182,7 +195,7 @@ export default async function QuotesPage({
                   <td className="px-3 py-2">
                     {q.ticket.school.name}
                     {q.ticket.school.code && (
-                      <span className="ml-2 font-mono text-xs text-slate-500">
+                      <span className="ml-2 font-medium tracking-tight text-xs text-slate-500">
                         {q.ticket.school.code}
                       </span>
                     )}
@@ -190,9 +203,9 @@ export default async function QuotesPage({
                   <td className="px-3 py-2">
                     <QuoteStatusPill status={q.status} />
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">
+                  <td className="px-3 py-2 text-xs tabular-nums">
                     {q.amountCents != null
-                      ? `$${(q.amountCents / 100).toFixed(2)}`
+                      ? formatCents(q.amountCents)
                       : q.diagnosticOnly
                         ? "diagnostic"
                         : "—"}
@@ -245,9 +258,9 @@ function QuoteStatusPill({ status }: { status: QuoteStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide ${cls[status]}`}
     >
-      {status}
+      {humanise(status)}
     </span>
   );
 }

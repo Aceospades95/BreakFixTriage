@@ -49,8 +49,8 @@ export default async function NewPartPage({
               name="sku"
               required
               maxLength={50}
-              placeholder="SCREEN-EB14"
-              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono uppercase focus:border-accent focus:outline-none"
+              placeholder="e.g. SCREEN-EB14"
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight uppercase focus:border-accent focus:outline-none"
             />
           </Field>
           <Field label="Name" required>
@@ -58,7 +58,7 @@ export default async function NewPartPage({
               type="text"
               name="name"
               required
-              placeholder="14-inch replacement screen"
+              placeholder="e.g. 14-inch replacement screen"
               className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </Field>
@@ -85,15 +85,15 @@ export default async function NewPartPage({
               type="text"
               name="costDollars"
               inputMode="decimal"
-              placeholder="89.00"
-              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono focus:border-accent focus:outline-none"
+              placeholder="e.g. 89.00"
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight focus:border-accent focus:outline-none"
             />
           </Field>
           <Field label="Location">
             <input
               type="text"
               name="location"
-              placeholder="A3-shelf-2"
+              placeholder="e.g. A3-shelf-2"
               className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </Field>

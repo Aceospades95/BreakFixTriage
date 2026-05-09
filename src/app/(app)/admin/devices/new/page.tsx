@@ -48,14 +48,14 @@ export default async function NewDevicePage({
             type="text"
             name="serialNumber"
             required
-            className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono focus:border-accent focus:outline-none"
+            className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight focus:border-accent focus:outline-none"
           />
         </Field>
         <Field label="Asset tag">
           <input
             type="text"
             name="assetTag"
-            className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-mono focus:border-accent focus:outline-none"
+            className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm font-medium tracking-tight focus:border-accent focus:outline-none"
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">
@@ -63,7 +63,7 @@ export default async function NewDevicePage({
             <input
               type="text"
               name="manufacturer"
-              placeholder="Acme"
+              placeholder="e.g. Acme"
               className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </Field>
@@ -71,7 +71,7 @@ export default async function NewDevicePage({
             <input
               type="text"
               name="modelName"
-              placeholder="EduBook 14"
+              placeholder="e.g. EduBook 14"
               className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </Field>
@@ -96,7 +96,7 @@ export default async function NewDevicePage({
               name="warrantyMonths"
               min={0}
               max={120}
-              placeholder="36"
+              placeholder="e.g. 36"
               className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </Field>

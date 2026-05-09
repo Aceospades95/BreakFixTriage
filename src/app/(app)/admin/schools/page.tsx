@@ -88,7 +88,7 @@ export default async function AdminSchoolsPage({
                 <td className="px-3 py-2 text-xs text-slate-400">
                   {s.district.name}
                 </td>
-                <td className="px-3 py-2 font-mono text-xs">{s.code ?? "—"}</td>
+                <td className="px-3 py-2 font-medium tracking-tight text-xs">{s.code ?? "—"}</td>
                 <td className="px-3 py-2">{s._count.contacts}</td>
                 <td className="px-3 py-2">{s._count.devices}</td>
                 <td className="px-3 py-2">{s._count.tickets}</td>

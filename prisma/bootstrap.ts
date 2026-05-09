@@ -93,7 +93,7 @@ function validatePassword(raw: string): PasswordPolicyResult {
   return errors.length > 0 ? { ok: false, errors } : { ok: true };
 }
 
-async function main() {
+async function ensureAdminUser() {
   const userCount = await prisma.user.count();
   if (userCount > 0) {
     console.log(
@@ -137,6 +137,26 @@ async function main() {
     },
   });
   console.log(`[bootstrap] Created initial admin user: ${admin.email}`);
+}
+
+async function main() {
+  await ensureAdminUser();
+
+  // Round-12 §1A — auto-seed defaults on every container start.
+  // The R11 path was an opt-in `npm run db:seed:defaults` script
+  // that operators forgot to run in production, leaving
+  // EmailRule / EmailTemplate / Holiday tables empty. Wiring the
+  // call into bootstrap means the seed runs on every deploy.
+  // Idempotent: re-running produces no duplicate rows.
+  try {
+    const { seedDefaults } = await import("./seed-defaults");
+    const r = await seedDefaults(prisma);
+    console.log(
+      `[bootstrap] seed-defaults: templates=${r.templatesUpserted} ruleCreated=${r.ruleCreated} holidaysCreated=${r.holidaysCreated} years=${r.year}-${r.year + 2} audits=${r.auditsWritten}`,
+    );
+  } catch (err) {
+    console.error("[bootstrap] seed-defaults failed:", err);
+  }
 }
 
 main()

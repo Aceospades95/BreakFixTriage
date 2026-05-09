@@ -5,6 +5,7 @@ import { StatePill } from "@/components/state-pill";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { humanise } from "@/lib/format";
 import { createJobAction } from "@/server/actions/scheduling";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default async function SchedulingPage({
   const session = await requireRole(PERMISSIONS.SCHEDULING_READ);
   const canWrite = can(session.role, PERMISSIONS.SCHEDULING_WRITE);
   const canBuild = can(session.role, PERMISSIONS.ROUTES_BUILD);
+  const isAdmin = session.role === "ADMIN";
 
   const [
     activeRoutes,
@@ -110,6 +112,7 @@ export default async function SchedulingPage({
           label="Active routes"
           value={activeRoutes.length}
           href="/scheduling"
+          hint="Routes in DRAFT, PLANNED, or IN_PROGRESS. Counted the same way My Day's tile shows it."
         />
         <Kpi
           label="Pending pickups"
@@ -141,8 +144,13 @@ export default async function SchedulingPage({
                       </div>
                       <div className="text-xs text-slate-400">
                         {r.stops.length} stop
-                        {r.stops.length === 1 ? "" : "s"} · optimizer=
-                        {r.optimizerName ?? "—"}
+                        {r.stops.length === 1 ? "" : "s"}
+                        {isAdmin && r.optimizerName && (
+                          <span className="text-slate-500">
+                            {" · optimized by "}
+                            {humaniseOptimizer(r.optimizerName)}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <RouteStatusPill status={r.status} />
@@ -294,7 +302,7 @@ function JobCandidateColumn({
     <div className="rounded-lg border border-surface-border bg-surface-muted/60 p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold">{title}</h3>
-        <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
+        <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-xs">
           {total}
         </span>
       </div>
@@ -312,7 +320,7 @@ function JobCandidateColumn({
               <div className="text-sm font-medium">
                 {g.schoolName}
                 {g.schoolCode && (
-                  <span className="ml-2 font-mono text-xs text-slate-500">
+                  <span className="ml-2 font-medium tracking-tight text-xs text-slate-500">
                     {g.schoolCode}
                   </span>
                 )}
@@ -321,8 +329,8 @@ function JobCandidateColumn({
                 {g.tickets.map((t) => (
                   <li key={t.id} className="flex gap-2">
                     <Link
-                      href={`/tickets/${t.id}`}
-                      className="font-mono text-accent hover:underline"
+                      href={`/tickets/${t.incidentNumber}`}
+                      className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {t.incidentNumber}
                     </Link>
@@ -365,25 +373,26 @@ function Kpi({
   value,
   href,
   emphasize = false,
+  hint,
 }: {
   label: string;
   value: number;
   href: string;
   emphasize?: boolean;
+  hint?: string;
 }) {
   return (
     <Link
       href={href}
+      title={hint}
       className={`block rounded-lg border p-4 transition hover:border-accent ${
         emphasize
           ? "border-amber-500/60 bg-amber-500/10"
           : "border-surface-border bg-surface-muted"
       }`}
     >
-      <div className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className="mt-1 text-3xl font-semibold">{value}</div>
+      <div className="text-xs font-medium text-slate-400">{label}</div>
+      <div className="mt-1 text-3xl font-semibold tabular-nums">{value}</div>
     </Link>
   );
 }
@@ -413,9 +422,17 @@ function RouteStatusPill({
             : "bg-slate-500/20 text-slate-200 border-slate-500/40";
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls}`}
+      className={`rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide ${cls}`}
     >
-      {status}
+      {humanise(status)}
     </span>
   );
+}
+
+function humaniseOptimizer(name: string): string {
+  // Round-6 §2D — admin-only optimizer subline. Drop the key=value
+  // form ("optimizer=nearest-neighbor"); render English instead.
+  // Known kebab-case optimizer names land here; unknown values
+  // fall through with hyphens replaced by spaces.
+  return name.replace(/[-_]/g, " ").trim();
 }

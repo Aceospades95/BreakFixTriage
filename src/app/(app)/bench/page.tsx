@@ -1,15 +1,17 @@
 import Link from "next/link";
-import { TicketState } from "@prisma/client";
+import { TicketSource, TicketState } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { formatRole } from "@/lib/format";
 import {
   daysInState,
   slaHealth,
 } from "@/lib/reports/sla";
+import { pickUpTicketAction } from "@/server/actions/tickets";
 
 export const dynamic = "force-dynamic";
 
@@ -98,14 +100,17 @@ export default async function BenchPage({
   }
 
   // All benches (manager view).
-  const [byAssignee, unassigned] = await Promise.all([
-    prisma.ticket.groupBy({
-      by: ["assignedUserId"],
+  const [ticketsByUserRaw, unassigned, unlinked] = await Promise.all([
+    prisma.ticket.findMany({
       where: {
         state: { in: activeStates },
         assignedUserId: { not: null },
       },
-      _count: { _all: true },
+      orderBy: { stateEnteredAt: "asc" },
+      include: {
+        school: { select: { name: true } },
+        device: { select: { serialNumber: true } },
+      },
     }),
     prisma.ticket.findMany({
       where: { state: { in: activeStates }, assignedUserId: null },
@@ -116,42 +121,50 @@ export default async function BenchPage({
       },
       take: 100,
     }),
-  ]);
-
-  const assigneeIds = byAssignee
-    .map((r) => r.assignedUserId)
-    .filter((id): id is string => id != null);
-  const [users, ticketsByUser] = await Promise.all([
-    prisma.user.findMany({
-      where: { id: { in: assigneeIds } },
-      select: { id: true, name: true, role: true },
-    }),
     prisma.ticket.findMany({
-      where: {
-        assignedUserId: { in: assigneeIds },
-        state: { in: activeStates },
-      },
-      orderBy: { stateEnteredAt: "asc" },
+      where: { state: TicketState.PENDING_PICKUP_UNLINKED },
+      orderBy: { reportedAt: "desc" },
       include: {
         school: { select: { name: true } },
         device: { select: { serialNumber: true } },
       },
+      take: 100,
     }),
   ]);
 
-  const byUser = new Map<string, typeof ticketsByUser>();
-  for (const t of ticketsByUser) {
+  const byUser = new Map<string, typeof ticketsByUserRaw>();
+  for (const t of ticketsByUserRaw) {
     if (!t.assignedUserId) continue;
     const bucket = byUser.get(t.assignedUserId) ?? [];
     bucket.push(t);
     byUser.set(t.assignedUserId, bucket);
   }
 
+  const assigneeIds = Array.from(byUser.keys());
+  const users =
+    assigneeIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: assigneeIds } },
+          select: { id: true, name: true, role: true },
+          orderBy: { name: "asc" },
+        })
+      : [];
+
+  // Pin the current user's bucket to the front (if they have one).
+  const sortedUsers = [
+    ...users.filter((u) => u.id === session.userId),
+    ...users.filter((u) => u.id !== session.userId),
+  ];
+
+  // +1 for Unassigned, +1 for Unlinked (Round-4 §N1)
+  const totalBuckets = sortedUsers.length + 2;
+  const totalAssignedOpen = ticketsByUserRaw.length;
+
   return (
     <>
       <PageHeader
         title="All benches"
-        subtitle="Every active ticket grouped by assignee"
+        subtitle={`${totalAssignedOpen} assigned · ${unassigned.length} unassigned · ${unlinked.length} unlinked · ${sortedUsers.length} active assignee${sortedUsers.length === 1 ? "" : "s"}`}
         actions={
           <Link
             href="/bench?scope=me"
@@ -162,51 +175,108 @@ export default async function BenchPage({
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {users.map((u) => {
-          const tickets = byUser.get(u.id) ?? [];
-          return (
-            <section
-              key={u.id}
-              className="rounded-lg border border-surface-border bg-surface-muted p-4"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold">{u.name}</div>
-                  <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                    {u.role}
+      <div className="-mx-4 overflow-x-auto px-4 pb-2">
+        <div
+          className="flex gap-4"
+          style={{ minWidth: `${totalBuckets * 320}px` }}
+        >
+          {sortedUsers.map((u) => {
+            const tickets = byUser.get(u.id) ?? [];
+            const breached = tickets.filter((t) => {
+              const days = daysInState(t, new Date());
+              return slaHealth(t.state, days) === "breached";
+            }).length;
+            return (
+              <section
+                key={u.id}
+                className="flex w-80 shrink-0 flex-col rounded-lg border border-surface-border bg-surface-muted p-4"
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold">{u.name}</div>
+                    <div className="text-[10px] tracking-wide text-slate-500">
+                      {formatRole(u.role)}
+                      {u.id === session.userId && " · you"}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {breached > 0 && (
+                      <span
+                        className="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium tabular-nums text-red-200"
+                        title={`${breached} past SLA`}
+                      >
+                        {breached} ⚠
+                      </span>
+                    )}
+                    <span className="rounded bg-surface-border px-2 py-0.5 text-xs font-medium tabular-nums">
+                      {tickets.length}
+                    </span>
                   </div>
                 </div>
-                <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
-                  {tickets.length}
-                </span>
+                {tickets.length === 0 ? (
+                  <p className="text-xs text-slate-400">empty</p>
+                ) : (
+                  <CompactTicketList tickets={tickets} />
+                )}
+              </section>
+            );
+          })}
+          <section className="flex w-80 shrink-0 flex-col rounded-lg border border-surface-border bg-surface-muted p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold">Unassigned</div>
+                <div className="text-[10px] tracking-wide text-slate-500">
+                  no owner
+                </div>
               </div>
-              {tickets.length === 0 ? (
-                <p className="text-xs text-slate-400">empty</p>
-              ) : (
-                <CompactTicketList tickets={tickets} />
-              )}
-            </section>
-          );
-        })}
-        <section className="rounded-lg border border-surface-border bg-surface-muted p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold">Unassigned</div>
-              <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                no owner
-              </div>
+              <span className="rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium tabular-nums text-amber-200">
+                {unassigned.length}
+              </span>
             </div>
-            <span className="rounded bg-amber-500/20 px-2 py-0.5 font-mono text-xs text-amber-200">
-              {unassigned.length}
-            </span>
-          </div>
-          {unassigned.length === 0 ? (
-            <p className="text-xs text-slate-400">empty</p>
-          ) : (
-            <CompactTicketList tickets={unassigned} />
-          )}
-        </section>
+            {unassigned.length === 0 ? (
+              <p className="text-xs text-slate-400">empty</p>
+            ) : (
+              <CompactTicketList tickets={unassigned} pickUpEnabled />
+            )}
+          </section>
+          <section className="flex w-80 shrink-0 flex-col rounded-lg border border-violet-500/30 bg-violet-500/5 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-violet-100">
+                  Unlinked
+                  <span
+                    className="rounded border border-violet-400/40 bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-100"
+                    title="Synthetic tickets minted on-route, awaiting SNOW link."
+                  >
+                    SYN
+                  </span>
+                </div>
+                <div className="text-[10px] tracking-wide text-violet-300/80">
+                  {/* Round-10 §1C — drop the /duplicates URL from
+                      prose; link the words "duplicate queue" via
+                      the existing <Link> below instead. */}
+                  on-route synthetic · resolve in the duplicate queue
+                </div>
+              </div>
+              <span className="rounded bg-violet-500/20 px-2 py-0.5 text-xs font-medium tabular-nums text-violet-100">
+                {unlinked.length}
+              </span>
+            </div>
+            {unlinked.length === 0 ? (
+              <p className="text-xs text-violet-300/80">empty</p>
+            ) : (
+              <CompactTicketList tickets={unlinked} />
+            )}
+            {unlinked.length > 0 && (
+              <Link
+                href="/duplicates"
+                className="mt-2 self-start rounded border border-violet-400/40 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-100 hover:bg-violet-500/20"
+              >
+                Resolve in queue →
+              </Link>
+            )}
+          </section>
+        </div>
       </div>
     </>
   );
@@ -248,15 +318,15 @@ function TicketList({
         >
           <div className="flex items-center gap-3">
             <Link
-              href={`/tickets/${t.id}`}
-              className="font-mono text-sm text-accent hover:underline"
+              href={`/tickets/${t.incidentNumber}`}
+              className="font-medium tracking-tight text-sm text-accent hover:underline"
             >
               {t.incidentNumber}
             </Link>
             <StatePill state={t.state} />
             <SlaBadge ticket={t} compact />
             {t.device && (
-              <span className="font-mono text-xs text-slate-400">
+              <span className="font-medium tracking-tight text-xs text-slate-400">
                 {t.device.serialNumber}
               </span>
             )}
@@ -275,6 +345,7 @@ function TicketList({
 
 function CompactTicketList({
   tickets,
+  pickUpEnabled = false,
 }: {
   tickets: Array<{
     id: string;
@@ -284,24 +355,56 @@ function CompactTicketList({
     reportedAt: Date;
     shortDescription: string;
   }>;
+  // Round-10 §2F — when true, render a "Pick up" button on each
+  // card. Used by the Unassigned column on /bench so a tech can
+  // claim work in one click.
+  pickUpEnabled?: boolean;
 }) {
+  const now = new Date();
   return (
-    <ul className="space-y-1 text-xs">
-      {tickets.slice(0, 10).map((t) => (
-        <li key={t.id} className="flex items-center gap-2">
+    <ul className="space-y-1.5 text-xs">
+      {tickets.slice(0, 10).map((t) => {
+        // Round-8 §2B — aging cue: red left-border at 14d, double
+        // emphasis at 21d. Bench cards with no urgency styling
+        // were too easy to ignore.
+        const days = daysInState(t, now);
+        const ageCls =
+          days >= 21
+            ? "border-l-2 border-l-red-500 bg-red-500/5 pl-2"
+            : days >= 14
+              ? "border-l-2 border-l-amber-500/70 pl-2"
+              : "";
+        return (
+        <li
+          key={t.id}
+          className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${ageCls}`}
+        >
           <Link
-            href={`/tickets/${t.id}`}
-            className="font-mono text-accent hover:underline"
+            href={`/tickets/${t.incidentNumber}`}
+            className="whitespace-nowrap font-medium tracking-tight text-accent hover:underline"
           >
             {t.incidentNumber}
           </Link>
           <StatePill state={t.state} />
           <SlaBadge ticket={t} compact />
-          <span className="ml-auto truncate text-slate-500">
+          {pickUpEnabled && (
+            <form action={pickUpTicketAction} className="ml-auto">
+              <input type="hidden" name="ticketId" value={t.id} />
+              <button
+                type="submit"
+                className="rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent hover:bg-accent/20"
+                title="Assign this ticket to me"
+              >
+                Pick up
+              </button>
+            </form>
+          )}
+          <span className="basis-full truncate text-slate-500">
             {t.shortDescription}
           </span>
         </li>
-      ))}
+        );
+      })}
       {tickets.length > 10 && (
         <li className="text-slate-500">…and {tickets.length - 10} more</li>
       )}

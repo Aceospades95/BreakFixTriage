@@ -1,11 +1,14 @@
 import Link from "next/link";
-import { TicketState, type Prisma } from "@prisma/client";
+import { TicketPriority, TicketState, type Prisma } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { PriorityPill } from "@/components/priority-pill";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { humanise } from "@/lib/format";
+import { TicketsBulkActions } from "@/components/tickets-bulk-actions";
 import {
   bulkAssignAction,
   bulkTransitionAction,
@@ -53,13 +56,15 @@ export default async function TicketsPage({
     | "state"
     | "priority"
     | "incidentNumber"
-    | "stateEnteredAt";
+    | "stateEnteredAt"
+    | "shortDescription";
   const validSortKeys: SortKey[] = [
     "reportedAt",
     "state",
     "priority",
     "incidentNumber",
     "stateEnteredAt",
+    "shortDescription",
   ];
   const sortParam = searchParams?.sort;
   const sortKey: SortKey = (
@@ -232,7 +237,7 @@ export default async function TicketsPage({
             type="text"
             name="deviceSerial"
             placeholder="Device serial (optional)"
-            className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none"
+            className="w-40 rounded border border-surface-border bg-surface px-2 py-1 font-medium tracking-tight text-xs focus:border-accent focus:outline-none"
           />
           <button
             type="submit"
@@ -363,17 +368,30 @@ export default async function TicketsPage({
       </form>
 
       {canTransition && tickets.length > 0 && (
-        <BulkActionForm
-          tickets={tickets}
-          assignableUsers={assignableUsers}
+        <TicketsBulkActions
           returnTo={returnTo}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          baseQuery={{
-            ...(stateFilter ? { state: stateFilter } : {}),
-            ...(query ? { q: query } : {}),
-          }}
-        />
+          bulkTransitionAction={bulkTransitionAction}
+          bulkAssignAction={bulkAssignAction}
+          assignableUsers={assignableUsers.map((u) => ({
+            id: u.id,
+            name: u.name,
+          }))}
+          transitionOptions={Object.values(TicketState).map((s) => ({
+            value: s,
+            label: humanise(s),
+          }))}
+        >
+          <TicketTable
+            tickets={tickets}
+            withCheckbox
+            sortKey={sortKey}
+            sortDir={sortDir}
+            baseQuery={{
+              ...(stateFilter ? { state: stateFilter } : {}),
+              ...(query ? { q: query } : {}),
+            }}
+          />
+        </TicketsBulkActions>
       )}
 
       {!canTransition && (
@@ -402,113 +420,6 @@ export default async function TicketsPage({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Bulk action form (client-free: buttons submit the enclosing form to
-// different actions via the `formAction` attribute)
-// ---------------------------------------------------------------------------
-
-function BulkActionForm({
-  tickets,
-  assignableUsers,
-  returnTo,
-  sortKey,
-  sortDir,
-  baseQuery,
-}: {
-  tickets: Array<{
-    id: string;
-    incidentNumber: string;
-    state: TicketState;
-    stateEnteredAt: Date | null;
-    reportedAt: Date;
-    shortDescription: string;
-    school: { name: string };
-    device: { serialNumber: string } | null;
-    assignee: { name: string } | null;
-  }>;
-  assignableUsers: { id: string; name: string; role: string }[];
-  returnTo: string;
-  sortKey: string;
-  sortDir: "asc" | "desc";
-  baseQuery: Record<string, string>;
-}) {
-  return (
-    <form>
-      <input type="hidden" name="returnTo" value={returnTo} />
-      <div className="mb-2 flex flex-wrap items-end gap-3 rounded border border-surface-border bg-surface-muted/40 p-3 text-xs">
-        <span className="text-[10px] uppercase tracking-wide text-slate-400">
-          Bulk actions
-        </span>
-        <label className="flex items-center gap-1">
-          Transition to:
-          <select
-            name="to"
-            defaultValue=""
-            className="rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
-          >
-            <option value="" disabled>
-              pick state…
-            </option>
-            {Object.values(TicketState).map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            name="reason"
-            placeholder="reason (optional)"
-            className="w-40 rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
-          />
-          <button
-            type="submit"
-            formAction={bulkTransitionAction}
-            className="rounded bg-accent px-2 py-0.5 text-xs font-semibold hover:bg-accent-strong"
-          >
-            Apply
-          </button>
-        </label>
-        <label className="flex items-center gap-1">
-          Assign to:
-          <select
-            name="assigneeUserId"
-            defaultValue=""
-            className="rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
-          >
-            <option value="">— unassign —</option>
-            {assignableUsers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            formAction={bulkAssignAction}
-            className="rounded bg-accent px-2 py-0.5 text-xs font-semibold hover:bg-accent-strong"
-          >
-            Apply
-          </button>
-        </label>
-        <span className="text-slate-500">
-          Actions apply to checked rows only.
-        </span>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-surface-border">
-        <TicketTable
-          tickets={tickets}
-          withCheckbox
-          sortKey={sortKey}
-          sortDir={sortDir}
-          baseQuery={baseQuery}
-        />
-      </div>
-    </form>
-  );
-}
-
 function TicketTable({
   tickets,
   withCheckbox = false,
@@ -519,6 +430,7 @@ function TicketTable({
   tickets: Array<{
     id: string;
     incidentNumber: string;
+    priority: TicketPriority;
     state: TicketState;
     stateEnteredAt: Date | null;
     reportedAt: Date;
@@ -560,6 +472,16 @@ function TicketTable({
           </th>
           <th className="px-3 py-2 font-medium">
             <Link
+              href={sortHref("priority")}
+              className="hover:text-white"
+              scroll={false}
+              title="Sort by priority"
+            >
+              Priority{sortIndicator("priority")}
+            </Link>
+          </th>
+          <th className="px-3 py-2 font-medium">
+            <Link
               href={sortHref("state")}
               className="hover:text-white"
               scroll={false}
@@ -586,7 +508,17 @@ function TicketTable({
               scroll={false}
               title="Sort by report date"
             >
-              Summary{sortIndicator("reportedAt")}
+              Reported{sortIndicator("reportedAt")}
+            </Link>
+          </th>
+          <th className="px-3 py-2 font-medium">
+            <Link
+              href={sortHref("shortDescription")}
+              className="hover:text-white"
+              scroll={false}
+              title="Sort by summary text"
+            >
+              Summary{sortIndicator("shortDescription")}
             </Link>
           </th>
         </tr>
@@ -606,11 +538,14 @@ function TicketTable({
             )}
             <td className="px-3 py-2">
               <Link
-                href={`/tickets/${t.id}`}
-                className="font-mono text-accent hover:underline"
+                href={`/tickets/${t.incidentNumber}`}
+                className="font-medium tracking-tight text-accent hover:underline"
               >
                 {t.incidentNumber}
               </Link>
+            </td>
+            <td className="px-3 py-2">
+              <PriorityPill priority={t.priority} />
             </td>
             <td className="px-3 py-2">
               <StatePill state={t.state} />
@@ -624,18 +559,23 @@ function TicketTable({
               )}
             </td>
             <td className="px-3 py-2">{t.school.name}</td>
-            <td className="px-3 py-2 font-mono text-xs text-slate-400">
+            <td className="px-3 py-2 font-medium tracking-tight text-xs text-slate-400">
               {t.device?.serialNumber ?? "—"}
             </td>
+            <td className="px-3 py-2 text-xs text-slate-400">
+              {t.reportedAt.toISOString().slice(0, 10)}
+            </td>
             <td className="px-3 py-2 text-slate-300">
-              <span className="line-clamp-1">{t.shortDescription}</span>
+              <span className="line-clamp-1" title={t.shortDescription}>
+                {t.shortDescription}
+              </span>
             </td>
           </tr>
         ))}
         {tickets.length === 0 && (
           <tr>
             <td
-              colSpan={withCheckbox ? 8 : 7}
+              colSpan={withCheckbox ? 10 : 9}
               className="px-3 py-8 text-center text-slate-400"
             >
               No tickets match the current filters. Try clearing them or

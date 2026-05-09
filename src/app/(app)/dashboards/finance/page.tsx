@@ -113,14 +113,6 @@ export default async function FinanceDashboardPage() {
       <PageHeader
         title="Finance"
         subtitle={`Last 12 months · ${pos.length} POs · ${pendingInvoices} tickets awaiting invoice`}
-        actions={
-          <Link
-            href="/dashboards"
-            className="text-sm text-slate-400 hover:text-white"
-          >
-            ← Overview
-          </Link>
-        }
       />
 
       <section className="mb-6 grid gap-4 sm:grid-cols-4">
@@ -147,14 +139,14 @@ export default async function FinanceDashboardPage() {
                 key={month}
                 className="flex items-center gap-3 rounded bg-surface-muted/40 px-3 py-1.5"
               >
-                <span className="w-20 font-mono text-xs text-slate-400">
+                <span className="w-20 font-medium tracking-tight text-xs text-slate-400">
                   {month}
                 </span>
                 <span
                   className="h-4 rounded bg-accent/80"
                   style={{ width: `${(cents / monthMax) * 60}%` }}
                 />
-                <span className="ml-auto font-mono text-xs">
+                <span className="ml-auto font-medium tracking-tight text-xs">
                   {formatCents(cents)}
                 </span>
               </li>
@@ -180,8 +172,8 @@ export default async function FinanceDashboardPage() {
               {districtRows.map(([id, row]) => (
                 <tr key={id}>
                   <td className="px-3 py-2">{row.name}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{row.poCount}</td>
-                  <td className="px-3 py-2 font-mono">
+                  <td className="px-3 py-2 font-medium tracking-tight text-xs">{row.poCount}</td>
+                  <td className="px-3 py-2 font-medium tracking-tight">
                     {formatCents(row.amountCents)}
                   </td>
                 </tr>
@@ -207,7 +199,7 @@ export default async function FinanceDashboardPage() {
         </h2>
         {recentPos.length === 0 ? (
           <p className="text-sm text-slate-400">
-            Every issued PO has been invoiced. 🎉
+            All caught up — every issued PO has been invoiced.
           </p>
         ) : (
           <ul className="space-y-1 text-sm">
@@ -216,17 +208,17 @@ export default async function FinanceDashboardPage() {
                 key={po.id}
                 className="flex items-center justify-between rounded border border-surface-border bg-surface-muted/40 px-3 py-1.5"
               >
-                <span className="font-mono text-accent">{po.poNumber}</span>
+                <span className="font-medium tracking-tight text-accent">{po.poNumber}</span>
                 <Link
-                  href={`/tickets/${po.quote.ticket.id}`}
-                  className="font-mono text-xs text-slate-400 hover:text-white"
+                  href={`/tickets/${po.quote.ticket.incidentNumber}`}
+                  className="font-medium tracking-tight text-xs text-slate-400 hover:text-white"
                 >
                   {po.quote.ticket.incidentNumber}
                 </Link>
                 <span className="text-xs text-slate-500">
                   issued {po.issuedAt.toISOString().slice(0, 10)}
                 </span>
-                <span className="font-mono text-sm">
+                <span className="font-medium tracking-tight text-sm">
                   {formatCents(po.amountCents)}
                 </span>
               </li>
@@ -240,13 +232,12 @@ export default async function FinanceDashboardPage() {
           Parts cost consumed (last 12 months)
         </h2>
         <div className="rounded-lg border border-surface-border bg-surface-muted/40 p-4 text-sm">
-          <div className="font-mono text-2xl">
+          <div className="font-medium tracking-tight text-2xl">
             {formatCents(partsConsumedValueCents)}
           </div>
           <div className="mt-1 text-xs text-slate-400">
-            Total value of parts consumed on repairs. Sums{" "}
-            <code>|quantity| × Part.costCents</code> across every CONSUMED
-            movement in the window.
+            Total value of parts pulled out of inventory and consumed on
+            repairs over the last twelve months.
           </div>
         </div>
       </section>
@@ -276,10 +267,8 @@ function Kpi({
         : "border-surface-border bg-surface-muted";
   return (
     <div className={`rounded-lg border p-4 ${cls}`}>
-      <div className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className="mt-1 font-mono text-2xl">{value}</div>
+      <div className="text-xs font-medium text-slate-400">{label}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
     </div>
   );
 }

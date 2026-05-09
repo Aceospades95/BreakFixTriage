@@ -37,6 +37,11 @@ export function AutoRefresh({
   const router = useRouter();
   const [enabled, setEnabled] = useState(false);
   const [countdown, setCountdown] = useState(intervalSeconds);
+  // Round-10 §2D — surface a live "last updated" timestamp so
+  // operators can tell at a glance when the page last refreshed.
+  // Initialised at component mount; bumped to `new Date()` inside
+  // the polling tick whenever a refresh fires.
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // SSE — always on. Ticket list pages and the kanban both care
   // about both per-ticket and bulk changes.
@@ -69,10 +74,12 @@ export function AutoRefresh({
     }
     let seconds = intervalSeconds;
     setCountdown(seconds);
+    setLastUpdated(new Date());
     const handle = setInterval(() => {
       seconds -= 1;
       if (seconds <= 0) {
         router.refresh();
+        setLastUpdated(new Date());
         seconds = intervalSeconds;
       }
       setCountdown(seconds);
@@ -95,11 +102,26 @@ export function AutoRefresh({
         aria-label="Also poll on interval"
       />
       Auto-refresh
-      {enabled && (
-        <span className="font-mono text-[10px] text-slate-500">
-          {countdown}s
-        </span>
-      )}
+      <span className="text-[10px] text-slate-500">
+        {/* Round-10 §2D — extended label: when off, "off"; when on,
+            "refreshes every {N}s · last updated {hh:mm:ss}". The
+            timestamp re-renders on each refresh so operators can
+            see staleness at a glance. */}
+        {enabled ? (
+          <>
+            · refreshes every {intervalSeconds}s · last updated{" "}
+            {lastUpdated
+              ? lastUpdated.toLocaleTimeString(undefined, {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })
+              : "—"}
+          </>
+        ) : (
+          <>· off</>
+        )}
+      </span>
     </label>
   );
 }

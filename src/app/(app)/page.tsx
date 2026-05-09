@@ -14,10 +14,12 @@ import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/auth/rbac";
+import { formatRole } from "@/lib/format";
 import { daysInState, slaHealth } from "@/lib/reports/sla";
 import { getSlaThresholds } from "@/lib/settings/settings";
 import { updateStopStatusAction } from "@/server/actions/scheduling";
 import { uploadAttachmentAction } from "@/server/actions/attachments";
+import { sweepQuotesAction } from "@/server/actions/quotes";
 
 export const dynamic = "force-dynamic";
 
@@ -111,7 +113,7 @@ export default async function HomePage() {
     isManager
       ? prisma.quote.count({
           where: {
-            status: QuoteStatus.SENT,
+            status: { in: [QuoteStatus.SENT, QuoteStatus.APPROVED] },
             holdUntil: { lte: now },
           },
         })
@@ -252,8 +254,8 @@ export default async function HomePage() {
           <span className="text-amber-100">
             Timer running on{" "}
             <Link
-              href={`/tickets/${openTimer.ticket.id}`}
-              className="font-mono text-amber-200 underline"
+              href={`/tickets/${openTimer.ticket.incidentNumber}`}
+              className="font-medium tracking-tight text-amber-200 underline"
             >
               {openTimer.ticket.incidentNumber}
             </Link>{" "}
@@ -261,7 +263,7 @@ export default async function HomePage() {
             {openTimer.startedAt.toISOString().replace("T", " ").slice(11, 16)}.
           </span>
           <Link
-            href={`/tickets/${openTimer.ticket.id}`}
+            href={`/tickets/${openTimer.ticket.incidentNumber}`}
             className="rounded bg-amber-500/30 px-3 py-1 text-xs font-semibold text-amber-100 hover:bg-amber-500/50"
           >
             Stop / review
@@ -301,7 +303,7 @@ export default async function HomePage() {
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
                 Today's routes{" "}
-                <span className="font-mono text-xs text-slate-500">
+                <span className="font-medium tracking-tight text-xs text-slate-500">
                   {doneStops}/{totalStops} stops done
                 </span>
               </h2>
@@ -323,7 +325,7 @@ export default async function HomePage() {
                       <div className="text-sm font-semibold">
                         {route.date.toISOString().slice(0, 10)}
                         {route.vehicleRef && (
-                          <span className="ml-2 font-mono text-xs text-slate-400">
+                          <span className="ml-2 font-medium tracking-tight text-xs text-slate-400">
                             {route.vehicleRef}
                           </span>
                         )}
@@ -350,11 +352,11 @@ export default async function HomePage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 text-sm font-semibold">
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-surface-border font-mono text-xs">
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-surface-border font-medium tracking-tight text-xs">
                                 {stop.sequence}
                               </span>
                               <span>{stop.job.school.name}</span>
-                              <span className="rounded bg-surface-border px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                              <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase">
                                 {stop.job.type}
                               </span>
                             </div>
@@ -383,8 +385,8 @@ export default async function HomePage() {
                                   className="flex items-center gap-2"
                                 >
                                   <Link
-                                    href={`/tickets/${tl.ticket.id}`}
-                                    className="font-mono text-accent hover:underline"
+                                    href={`/tickets/${tl.ticket.incidentNumber}`}
+                                    className="font-medium tracking-tight text-accent hover:underline"
                                   >
                                     {tl.ticket.incidentNumber}
                                   </Link>
@@ -484,7 +486,7 @@ export default async function HomePage() {
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
               My queue{" "}
-              <span className="font-mono text-xs text-slate-500">
+              <span className="font-medium tracking-tight text-xs text-slate-500">
                 ({myOpenTickets.length})
               </span>
             </h2>
@@ -516,15 +518,15 @@ export default async function HomePage() {
                   >
                     <div className="flex flex-wrap items-center gap-3">
                       <Link
-                        href={`/tickets/${t.id}`}
-                        className="font-mono text-sm text-accent hover:underline"
+                        href={`/tickets/${t.incidentNumber}`}
+                        className="font-medium tracking-tight text-sm text-accent hover:underline"
                       >
                         {t.incidentNumber}
                       </Link>
                       <StatePill state={t.state} />
                       <SlaBadge ticket={t} compact />
                       {t.device && (
-                        <span className="font-mono text-xs text-slate-400">
+                        <span className="font-medium tracking-tight text-xs text-slate-400">
                           {t.device.serialNumber}
                         </span>
                       )}
@@ -579,11 +581,11 @@ export default async function HomePage() {
                           <div className="truncate text-sm font-medium text-slate-100">
                             {user?.name ?? "Unknown"}
                           </div>
-                          <div className="font-mono text-[10px] uppercase text-slate-500">
-                            {user?.role ?? "—"}
+                          <div className="font-medium tracking-tight text-[10px] uppercase text-slate-500">
+                            {user?.role ? formatRole(user.role) : "—"}
                           </div>
                         </div>
-                        <span className="rounded bg-surface-border px-2 py-0.5 font-mono text-xs">
+                        <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-xs">
                           {row._count._all}
                         </span>
                       </div>
@@ -617,7 +619,7 @@ export default async function HomePage() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">{r.assignee.name}</span>
-                    <span className="font-mono text-xs text-slate-500">
+                    <span className="font-medium tracking-tight text-xs text-slate-500">
                       {r.stops.filter((s) => s.status === "COMPLETED").length}
                       /{r.stops.length}
                     </span>
@@ -635,45 +637,98 @@ export default async function HomePage() {
               Ops attention
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {/*
+                Findings §2#9 + §6.MyDay reconciliation:
+                "SLA breached" and "Aging > 30 days" are NOT the same
+                metric. Both are docs/ui-conventions.md §9-aligned,
+                but they answer different questions:
+
+                  SLA breached  = floor(now - stateEnteredAt) >= the
+                                  state's SLA threshold (state-aware,
+                                  state-dependent threshold; see
+                                  src/lib/reports/sla.ts::slaHealth)
+                  Aging > 30d   = floor(now - reportedAt) > 30
+                                  (state-agnostic, anchored at
+                                  reportedAt; see
+                                  src/lib/reports/sla.ts::isAgingOpenTicket)
+
+                A ticket can be one without the other. Tiles now
+                carry a `hint` tooltip so operators can read the
+                definition; the tile clicks anchor to the inline
+                breached panel below.
+              */}
+              {/* Round-13 §3B — promote the in-page anchor jump
+                  to a filtered /tickets navigation so the card is
+                  a real deep-link, not just a scroll target. The
+                  in-page list below still renders for context. */}
               <Kpi
                 label="SLA breached"
                 value={overdueBreached.length}
-                href="/dashboards"
+                href="/tickets?slaHealth=breached&state=open"
+                hint="Open tickets where days-in-current-state has crossed that state's SLA threshold."
                 emphasize={overdueBreached.length > 0}
               />
               <Kpi
                 label="Pending duplicates"
                 value={pendingDuplicates}
                 href="/duplicates"
+                hint="Conflicts in the import pipeline awaiting human review."
                 emphasize={pendingDuplicates > 0}
               />
               <Kpi
                 label="Quotes expired"
                 value={expiringQuotes}
-                href="/quotes?status=SENT"
+                href="/quotes"
+                hint="Sent or approved quotes whose hold-window has passed and are ready to sweep."
                 emphasize={expiringQuotes > 0}
               />
               <Kpi
                 label="Invoices needed"
                 value={invoicesPending}
-                href="/invoices"
+                href="/tickets?state=INVOICE_REQUIRED"
+                hint="Tickets in INVOICE_REQUIRED state — billing closes them."
                 emphasize={invoicesPending > 0}
               />
               <Kpi
                 label="Unscheduled jobs"
                 value={unscheduledJobs}
                 href="/scheduling/routes/new"
+                hint="Pickup or delivery jobs not yet on a route."
                 emphasize={unscheduledJobs > 0}
               />
               <Kpi
                 label="Active routes"
                 value={todaysRoutes.length}
                 href="/scheduling"
+                hint="Routes scheduled for today (planned + in progress). Matches the count on /scheduling."
               />
             </div>
 
+            {/* Inline sweep action — matches the banner on /quotes,
+                same server action, no duplicated logic. Closes the
+                §6.MyDay "consolidate the action behavior" item. */}
+            {expiringQuotes > 0 && can(session.role, PERMISSIONS.QUOTES_WRITE) && (
+              <div className="mt-3 flex items-center justify-between rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                <span>
+                  <strong>{expiringQuotes}</strong> sent or approved quote
+                  {expiringQuotes === 1 ? "" : "s"} past their hold window.
+                </span>
+                <form action={sweepQuotesAction}>
+                  <button
+                    type="submit"
+                    className="rounded bg-amber-500/30 px-3 py-1 text-xs font-semibold hover:bg-amber-500/50"
+                  >
+                    Sweep now
+                  </button>
+                </form>
+              </div>
+            )}
+
             {overdueBreached.length > 0 && (
-              <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/5 p-4">
+              <div
+                id="sla-breached"
+                className="mt-4 scroll-mt-20 rounded-lg border border-red-500/40 bg-red-500/5 p-4"
+              >
                 <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-red-200">
                   Oldest SLA-breached tickets
                 </h3>
@@ -684,8 +739,8 @@ export default async function HomePage() {
                       className="flex flex-wrap items-center gap-3 rounded px-2 py-1 hover:bg-red-500/5"
                     >
                       <Link
-                        href={`/tickets/${t.id}`}
-                        className="font-mono text-red-200 hover:underline"
+                        href={`/tickets/${t.incidentNumber}`}
+                        className="font-medium tracking-tight text-red-200 hover:underline"
                       >
                         {t.incidentNumber}
                       </Link>
@@ -731,26 +786,29 @@ function Kpi({
   label,
   value,
   href,
+  hint,
   emphasize = false,
 }: {
   label: string;
   value: number;
   href: string;
+  /** Tooltip explaining the metric — closes findings §6.MyDay
+      definition reconciliation requirement. */
+  hint?: string;
   emphasize?: boolean;
 }) {
   return (
     <Link
       href={href}
+      title={hint}
       className={`block rounded-lg border p-4 transition hover:border-accent ${
         emphasize
           ? "border-amber-500/60 bg-amber-500/10"
           : "border-surface-border bg-surface-muted"
       }`}
     >
-      <div className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className="mt-1 text-3xl font-semibold">{value}</div>
+      <div className="text-xs font-medium text-slate-400">{label}</div>
+      <div className="mt-1 text-3xl font-semibold tabular-nums">{value}</div>
     </Link>
   );
 }
@@ -807,7 +865,7 @@ function StopStatusPill({ status }: { status: JobStatus }) {
   };
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
     >
       {status}
     </span>

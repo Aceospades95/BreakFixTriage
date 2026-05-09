@@ -87,7 +87,7 @@ export default async function AdminPartsPage({
                   key={p.id}
                   className={`transition hover:bg-surface-muted/40 ${low ? "bg-amber-500/5" : ""}`}
                 >
-                  <td className="px-3 py-2 font-mono">
+                  <td className="px-3 py-2 font-medium tracking-tight">
                     <Link
                       href={`/admin/parts/${p.id}`}
                       className="text-accent hover:underline"
@@ -104,17 +104,17 @@ export default async function AdminPartsPage({
                     )}
                   </td>
                   <td
-                    className={`px-3 py-2 font-mono ${low ? "text-amber-300" : ""}`}
+                    className={`px-3 py-2 font-medium tracking-tight ${low ? "text-amber-300" : ""}`}
                   >
                     {p.onHand}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                  <td className="px-3 py-2 font-medium tracking-tight text-xs text-slate-400">
                     {p.reorderLevel || "—"}
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-400">
                     {p.location ?? "—"}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">
+                  <td className="px-3 py-2 font-medium tracking-tight text-xs">
                     {p.costCents != null
                       ? `$${(p.costCents / 100).toFixed(2)}`
                       : "—"}

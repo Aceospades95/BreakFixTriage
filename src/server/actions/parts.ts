@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { applyPartMovement, recordPartUsage } from "@/lib/parts/inventory";
+import { writeAudit } from "@/lib/audit/audit";
 
 /**
  * Parts admin actions.
@@ -87,6 +88,20 @@ export async function createPartAction(formData: FormData) {
       },
     });
     createdId = part.id;
+    // Round-9 §3D — every mutation server action writes an audit row.
+    await writeAudit({
+      actorUserId: session.userId,
+      entityType: "Part",
+      entityId: part.id,
+      action: "create",
+      after: {
+        sku: part.sku,
+        name: part.name,
+        reorderLevel: part.reorderLevel,
+        modelCount: parsed.data.modelIds.length,
+      },
+      reason: `Part ${part.sku} created`,
+    });
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : "Create failed";
   }

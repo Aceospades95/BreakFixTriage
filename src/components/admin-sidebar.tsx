@@ -15,8 +15,15 @@ const ADMIN_LINKS = [
   { href: "/admin/permissions", label: "Permissions" },
   { href: "/admin/statuses", label: "Statuses" },
   { href: "/admin/templates", label: "Templates" },
+  // Round-3 §A — email + holidays admin pages.
+  { href: "/admin/email-rules", label: "Email rules" },
+  { href: "/admin/email-templates", label: "Email templates" },
+  { href: "/admin/email-log", label: "Email log" },
+  { href: "/admin/holidays", label: "Holidays" },
+  // Round-3 §L — bulk close stale (preview + commit).
+  { href: "/admin/tools/bulk-close", label: "Bulk close stale" },
   { href: "/admin/settings", label: "Settings" },
-  { href: "/audit", label: "Audit log" },
+  { href: "/admin/audit", label: "Audit log" },
 ] as const;
 
 export function AdminSidebar() {

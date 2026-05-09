@@ -26,6 +26,14 @@ import {
 const bodySchema = z.object({
   to: z.nativeEnum(TicketState),
   reason: z.string().max(500).optional(),
+  /**
+   * Optional source tag for audit-trail filtering. The kanban DnD
+   * client sends "kanban"; future webhook callers can send
+   * "webhook". Anything else falls back to "manual".
+   *
+   * See `TransitionType` in src/lib/audit/audit.ts.
+   */
+  source: z.enum(["kanban", "webhook"]).optional(),
 });
 
 export async function POST(
@@ -50,6 +58,7 @@ export async function POST(
     await transitionTicket(params.ticketId, parsed.data.to, {
       actorUserId: session.userId,
       reason: parsed.data.reason,
+      transitionType: parsed.data.source ?? "manual",
     });
     publish({ topic: "tickets.changed", ticketId: params.ticketId });
     return NextResponse.json({ ok: true });

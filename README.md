@@ -22,6 +22,120 @@ spreadsheet-based operational workflow with:
 See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 `docs/ASSUMPTIONS.md` for the full design.
 
+## Migration audit (May 2026)
+
+A two-pass audit landed on `claude/breakfix-triage-audit-ZDYuJ`.
+
+**Pass 1 — migration audit.** Produced:
+- `docs/architecture-map.md` — concrete map of where everything is
+  (route table, jobs, integrations, hot-spots), complementing
+  `ARCHITECTURE.md`.
+- `docs/legacy-parity.md` — Google Sheet ↔ web-app parity table.
+- `docs/proposed-issues.md` — gap-closures and feature proposals
+  needing maintainer sign-off.
+- `docs/adr/0001..0004-*.md` — ADRs for the migration mapping, the
+  canonical aging convention, the hold-window minimum, and the
+  APPROVED-quote sweep funnel.
+- `qa/persona-runs/SUMMARY.md` — per-role static-walkthrough
+  findings + Playwright skeleton.
+
+**Pass 2 — findings-driven bugfix and UX hardening.** A field QA
+pass against `https://triage.omnia-house.com` produced 9 confirmed
+bugs (A1–A9), 5 workflow concerns (B1–B5), per-page UX issues, and
+theme/polish issues. Fixed in this branch (one commit per concern,
+all green in CI):
+
+| Finding | Summary                                                    | Where                                                                                          |
+| ------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| A1      | Dashboard tab nav drops on /dashboards/*                   | `src/app/(app)/dashboards/layout.tsx`, `src/components/dashboard-tabs.tsx`                     |
+| A2      | Audit-log JSON drops the reason; no transitionType column  | `src/lib/audit/audit.ts`, `src/lib/workflow/transition.ts`, ADR `0006-audit-row-includes-reason.md` |
+| A3      | Raw Prisma errors leak in import summary                   | `src/lib/import/error-translate.ts`, `src/lib/import/pipeline.ts`                              |
+| A4 + A5 | Topbar dropdowns don't close; search becomes unclickable   | `src/components/popover-menu.tsx`, `notification-bell.tsx`, `help-menu.tsx`                    |
+| A6      | Force-change holds residual state after submit             | `src/components/force-change-form.tsx`, `src/server/actions/tickets.ts`                        |
+| A7      | Comment delete is permanent with no confirmation           | `src/components/comment-delete-button.tsx`, `comment-thread.tsx`                               |
+| A8      | "SUMMARY ↓" header sorts by `reportedAt`                   | `src/app/(app)/tickets/page.tsx`                                                               |
+| A9      | `/admin/audit` 404s                                        | `src/app/(app)/admin/audit/page.tsx`, `src/app/(app)/audit/page.tsx`, `admin-sidebar.tsx`      |
+| B2 / D  | AWAITING_* color collision; `ALL_CAPS_SNAKE_CASE` pills    | `src/components/state-pill.tsx`, `src/lib/cn.ts::humaniseEnum`, `src/components/sla-badge.tsx` |
+| §2#2    | IMPORTED hidden from Kanban (248/252 tickets invisible)    | `src/app/(app)/tickets/kanban/page.tsx`                                                        |
+| §6 list | Priority + Reported columns on Tickets list; sortable      | `src/app/(app)/tickets/page.tsx`, `src/components/priority-pill.tsx`                           |
+| §6 day  | KPI tiles clickable + reconcile metric definitions         | `src/app/(app)/page.tsx`                                                                       |
+| §4      | 16-state taxonomy proposal + ON_HOLD overlay (Stage 1 ADR) | `docs/adr/0005-status-taxonomy-simplification.md` — **gated on maintainer sign-off**            |
+
+Pass 1 also closed the four bugs from the original migration brief
+(`§4` of the migration task): bench bucketing, APPROVED-quote sweep,
+aging off-by-one, and quote default hold-window. Those land on the
+same branch.
+
+**Conventions enforced going forward:** `docs/ui-conventions.md`
+captures the toast policy, pill casing, dash style, empty-state
+convention, and the forbidden-token list (Prisma stack tokens
+never leak to user-facing surfaces — pinned by
+`tests/forbidden-tokens.test.ts`).
+
+## Personas (RBAC matrix at a glance)
+
+7 roles, expanded in `src/lib/auth/rbac.ts`:
+
+| Role         | Default permission focus                                    |
+| ------------ | ----------------------------------------------------------- |
+| ADMIN        | Everything; can `force` transitions; admin pages.           |
+| OPS_MANAGER  | Read + write + transition + scheduling + quotes write.      |
+| DISPATCHER   | Read + transition + scheduling/routes/stops.                |
+| WAREHOUSE    | Read + transition. Primary tool: `/scan/warehouse`.         |
+| TECHNICIAN   | Read + transition. Primary tool: `/bench?scope=me`.         |
+| DRIVER       | Tickets read + scheduling read + stops update.              |
+| READ_ONLY    | Read-only across tickets / imports / scheduling / quotes.   |
+
+Login as the seeded persona for any role: `<role>@breakfix.local` /
+`breakfix-dev`. Per-role permission overrides are persisted in
+`AppSetting` and editable at `/admin/permissions`.
+
+## Ticket state machine (high-level)
+
+26 states. The full transition table is `src/lib/workflow/states.ts`.
+
+```mermaid
+flowchart LR
+  IMPORTED --> TRIAGE
+  TRIAGE --> AWAITING_PICKUP
+  TRIAGE --> AWAITING_ONSITE
+  TRIAGE --> OUT_OF_SCOPE
+  AWAITING_PICKUP --> PICKUP_SCHEDULED
+  PICKUP_SCHEDULED --> IN_WAREHOUSE
+  IN_WAREHOUSE --> DIAGNOSIS
+  DIAGNOSIS --> IN_REPAIR
+  DIAGNOSIS --> AWAITING_PARTS
+  DIAGNOSIS --> QUOTE_REQUIRED
+  DIAGNOSIS --> MANUFACTURER_RMA
+  AWAITING_PARTS --> PARTS_ORDERED
+  PARTS_ORDERED --> IN_REPAIR
+  IN_REPAIR --> REPAIR_COMPLETED
+  REPAIR_COMPLETED --> PENDING_DELIVERY
+  AWAITING_ONSITE --> ONSITE_IN_PROGRESS
+  ONSITE_IN_PROGRESS --> REPAIR_COMPLETED
+  QUOTE_REQUIRED --> QUOTE_SENT
+  QUOTE_SENT --> QUOTE_APPROVED
+  QUOTE_SENT --> QUOTE_DECLINED
+  QUOTE_SENT --> QUOTE_NO_RESPONSE
+  QUOTE_APPROVED --> IN_REPAIR
+  QUOTE_DECLINED --> PENDING_DELIVERY
+  QUOTE_NO_RESPONSE --> PENDING_DELIVERY
+  MANUFACTURER_RMA --> PENDING_DELIVERY
+  PENDING_DELIVERY --> DELIVERY_SCHEDULED
+  DELIVERY_SCHEDULED --> RETURNED
+  RETURNED --> INVOICE_REQUIRED
+  RETURNED --> CLOSED
+  INVOICE_REQUIRED --> CLOSED
+  CLOSED --> REOPENED
+  REOPENED --> TRIAGE
+  ON_HOLD -.-> TRIAGE
+```
+
+`ON_HOLD` is reachable from every non-terminal state and resumes via
+`payload.resumeState`. Force changes (`force: true`) bypass the edge
+check and are gated to ADMIN; every force still writes a TicketEvent
+plus an AuditLog row.
+
 ## Status
 
 **Phase 0 — Foundations** ✓ complete.

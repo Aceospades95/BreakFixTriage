@@ -215,6 +215,8 @@ function buildGroups(isAdmin: boolean, isManager: boolean): NavGroup[] {
         { href: "/tickets", label: "Tickets", icon: IconTicket },
         { href: "/bench", label: "Bench", icon: IconWrench },
         { href: "/scheduling", label: "Scheduling", icon: IconCalendar },
+        // Round-4 §N2: people scheduling page.
+        { href: "/scheduling/people", label: "People", icon: IconCalendar },
       ],
     },
   ];

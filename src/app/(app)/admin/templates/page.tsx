@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { humanise } from "@/lib/format";
 import {
   createTemplateAction,
   toggleTemplateAction,
@@ -59,7 +60,7 @@ export default async function AdminTemplatesPage() {
               >
                 {Object.values(TicketPriority).map((p) => (
                   <option key={p} value={p}>
-                    {p}
+                    {humanise(p)}
                   </option>
                 ))}
               </select>
@@ -90,7 +91,7 @@ export default async function AdminTemplatesPage() {
               <tr key={t.id}>
                 <td className="px-3 py-2 font-medium">{t.name}</td>
                 <td className="px-3 py-2 text-slate-300">{t.shortDescription}</td>
-                <td className="px-3 py-2 font-mono text-xs">{t.priority}</td>
+                <td className="px-3 py-2 text-xs">{humanise(t.priority)}</td>
                 <td className="px-3 py-2 text-xs">
                   {t.active ? (
                     <span className="text-emerald-300">active</span>

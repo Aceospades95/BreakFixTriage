@@ -41,30 +41,8 @@ export default async function DashboardsPage() {
         }
       />
 
-      {/* Dashboard tabs */}
-      <nav className="mb-6 flex gap-1 rounded-lg border border-surface-border bg-surface-muted/60 p-1">
-        <span className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white">
-          Overview
-        </span>
-        <Link
-          href="/dashboards/finance"
-          className="rounded-md px-4 py-2 text-sm text-slate-300 transition hover:bg-surface-border/40 hover:text-white"
-        >
-          Finance
-        </Link>
-        <Link
-          href="/dashboards/productivity"
-          className="rounded-md px-4 py-2 text-sm text-slate-300 transition hover:bg-surface-border/40 hover:text-white"
-        >
-          Productivity
-        </Link>
-        <Link
-          href="/dashboards/devices"
-          className="rounded-md px-4 py-2 text-sm text-slate-300 transition hover:bg-surface-border/40 hover:text-white"
-        >
-          Device Hotspots
-        </Link>
-      </nav>
+      {/* Tab nav now lives in dashboards/layout.tsx so it renders on
+          every sub-route — see findings bug A1. */}
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="Open tickets" value={openTotal} href="/tickets" />
@@ -82,7 +60,9 @@ export default async function DashboardsPage() {
         <Kpi
           label="Aging > 30d"
           value={aging.length}
-          href="/tickets"
+          // Round-13 §3B — link to the filtered list so the card
+          // is a navigation affordance, not just a counter.
+          href="/tickets?ageDays=gte:30&state=open"
           tone={aging.length > 0 ? "warn" : undefined}
         />
       </section>
@@ -114,7 +94,7 @@ export default async function DashboardsPage() {
                       />
                     </div>
                   </div>
-                  <div className="w-10 text-right font-mono text-xs text-slate-300">
+                  <div className="w-10 text-right font-medium tracking-tight text-xs text-slate-300">
                     {row.count}
                   </div>
                 </li>
@@ -156,8 +136,8 @@ export default async function DashboardsPage() {
                 <tr key={t.id}>
                   <td className="px-3 py-2">
                     <Link
-                      href={`/tickets/${t.id}`}
-                      className="font-mono text-accent hover:underline"
+                      href={`/tickets/${t.incidentNumber}`}
+                      className="font-medium tracking-tight text-accent hover:underline"
                     >
                       {t.incidentNumber}
                     </Link>
@@ -209,10 +189,8 @@ function Kpi({
       href={href}
       className={`block rounded-lg border p-4 transition hover:border-accent ${toneClass}`}
     >
-      <div className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className="mt-1 text-3xl font-semibold">{value}</div>
+      <div className="text-xs font-medium text-slate-400">{label}</div>
+      <div className="mt-1 text-3xl font-semibold tabular-nums">{value}</div>
     </Link>
   );
 }
@@ -222,23 +200,78 @@ function MonthBars({
 }: {
   rows: { month: Date; count: number }[];
 }) {
-  const max = Math.max(...rows.map((r) => r.count), 1);
+  const dataMax = Math.max(...rows.map((r) => r.count), 0);
+  const yMax = niceCeiling(dataMax);
+  const CHART_PX = 96;
   return (
-    <div className="flex items-end gap-2">
-      {rows.map((r) => (
-        <div key={r.month.toISOString()} className="flex flex-1 flex-col items-center gap-1">
-          <div
-            className="w-full rounded bg-accent"
-            style={{
-              height: `${Math.max(4, Math.round((r.count / max) * 100))}px`,
-            }}
-            title={`${r.count} closed`}
-          />
-          <div className="text-[10px] text-slate-500">
-            {r.month.toISOString().slice(0, 7)}
+    <div>
+      <div className="flex items-stretch gap-2">
+        <div className="flex w-8 flex-col justify-between text-right text-[10px] tabular-nums text-slate-500">
+          <span>{yMax}</span>
+          <span>{Math.round(yMax / 2)}</span>
+          <span>0</span>
+        </div>
+        <div className="relative flex-1" style={{ height: `${CHART_PX}px` }}>
+          <div className="absolute inset-x-0 top-0 border-t border-slate-700/50" />
+          <div className="absolute inset-x-0 top-1/2 border-t border-slate-700/30" />
+          <div className="absolute inset-x-0 bottom-0 border-t border-slate-600" />
+          <div className="absolute inset-0 flex items-end gap-2">
+            {rows.map((r) => {
+              const px =
+                yMax === 0 ? 0 : Math.round((r.count / yMax) * CHART_PX);
+              return (
+                <div
+                  key={r.month.toISOString()}
+                  className="flex flex-1 flex-col items-center"
+                >
+                  <div
+                    className="w-full rounded-t bg-accent"
+                    style={{ height: `${Math.max(r.count > 0 ? 2 : 0, px)}px` }}
+                    title={`${r.count} closed in ${r.month
+                      .toISOString()
+                      .slice(0, 7)}`}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
-      ))}
+      </div>
+      <div className="ml-10 mt-1 flex gap-2">
+        {rows.map((r) => (
+          <div
+            key={r.month.toISOString()}
+            className="flex flex-1 justify-center text-[10px] text-slate-500"
+            title={r.month.toLocaleDateString(undefined, {
+              month: "long",
+              year: "numeric",
+              timeZone: "UTC",
+            })}
+          >
+            {/* Round-8 §2H — short month + 2-digit year ("Jun '25")
+                instead of just the numeric month so operators can
+                tell at a glance which year they're looking at. */}
+            {r.month
+              .toLocaleDateString("en-US", {
+                month: "short",
+                year: "2-digit",
+                timeZone: "UTC",
+              })
+              .replace(" ", " '")}
+          </div>
+        ))}
+      </div>
     </div>
   );
+}
+
+function niceCeiling(n: number): number {
+  if (n <= 0) return 5;
+  if (n <= 5) return 5;
+  if (n <= 10) return 10;
+  const pow = Math.pow(10, Math.floor(Math.log10(n)));
+  const norm = n / pow;
+  const niceNorm =
+    norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  return niceNorm * pow;
 }

@@ -688,6 +688,13 @@ model StopDevice {
   /// Null is valid only for transient orphans (resolve via
   /// /duplicates).
   ticketId      String?
+  /// Whether this device is being PICKED UP from the school or
+  /// DELIVERED to it. Defaults to the parent Job.type when not
+  /// supplied — usually the same intent — but can be overridden
+  /// when a delivery stop discovers a device that needs pickup
+  /// (or vice versa). Operators set this from the +Add device
+  /// form on /scheduling/routes/[routeId].
+  purpose       StopDevicePurpose @default(PICKUP)
   addedAt       DateTime @default(now())
   addedByUserId String
   /// Set when the operator taps "× Remove". The device row stays
@@ -696,6 +703,10 @@ model StopDevice {
   /// ticket).
   removedAt     DateTime?
   removedByUserId String?
+  /// Required when removing — operator must explain why the device
+  /// is coming off the stop (loaded wrong device, school doesn't
+  /// have it, customer cancelled, etc.). Min 3 chars enforced at
+  /// the action layer.
   removedReason String?
 
   stop          RouteStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
@@ -706,6 +717,16 @@ model StopDevice {
   @@index([deviceId])
   @@index([ticketId])
   @@index([removedAt])
+  @@index([purpose])
+}
+
+/// Round-13 — pickup vs delivery for an individual StopDevice line.
+/// Mirrors the JobType enum (PICKUP/DELIVERY) so a stop can mix
+/// both intents on the same visit if a missed pickup is discovered
+/// during a delivery (or vice versa).
+enum StopDevicePurpose {
+  PICKUP
+  DELIVERY
 }
 
 // ---------------------------------------------------------------------------

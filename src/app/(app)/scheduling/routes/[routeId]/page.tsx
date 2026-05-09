@@ -318,6 +318,16 @@ export default async function RouteDetailPage({
                               sd.removedAt ? "opacity-50" : ""
                             }`}
                           >
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                sd.purpose === "DELIVERY"
+                                  ? "border border-emerald-400/40 bg-emerald-500/15 text-emerald-100"
+                                  : "border border-sky-400/40 bg-sky-500/15 text-sky-100"
+                              }`}
+                              title={`Per-line ${sd.purpose === "DELIVERY" ? "delivery" : "pickup"} intent`}
+                            >
+                              {sd.purpose === "DELIVERY" ? "Delivery" : "Pickup"}
+                            </span>
                             <code className="rounded bg-surface-muted px-1.5 py-0.5 text-[11px] text-slate-200">
                               {sd.device.assetTag ?? sd.device.serialNumber}
                             </code>
@@ -381,13 +391,17 @@ export default async function RouteDetailPage({
                                   <input
                                     type="text"
                                     name="reason"
-                                    placeholder="Reason"
-                                    className="w-24 rounded border border-surface-border bg-surface-muted px-1 py-0.5 text-[10px] focus:border-accent focus:outline-none"
+                                    required
+                                    minLength={3}
+                                    maxLength={500}
+                                    placeholder="Reason (required)"
+                                    title="A reason is required to remove a device from a stop"
+                                    className="w-40 rounded border border-surface-border bg-surface-muted px-1 py-0.5 text-[10px] focus:border-accent focus:outline-none"
                                   />
                                   <button
                                     type="submit"
                                     className="rounded border border-red-500/40 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-200 hover:bg-red-500/20"
-                                    title="Remove this device from the stop"
+                                    title="Remove this device from the stop (reason required)"
                                   >
                                     × Remove
                                   </button>
@@ -399,7 +413,15 @@ export default async function RouteDetailPage({
                       </ul>
                     )}
 
-                    {canUpdateStop && routeOpen && (
+                    {canUpdateStop && routeOpen && (() => {
+                      // The form's purpose select defaults to the
+                      // job's natural type (PICKUP/DELIVERY) so the
+                      // common case is one click. Operators
+                      // overriding for a missed-pickup-during-delivery
+                      // (or vice versa) flip it explicitly.
+                      const defaultPurpose =
+                        stop.job.type === "DELIVERY" ? "DELIVERY" : "PICKUP";
+                      return (
                       <details className="rounded border border-surface-border bg-surface-muted/40 p-2 text-xs">
                         <summary className="cursor-pointer select-none text-accent hover:underline">
                           + Add device
@@ -446,6 +468,23 @@ export default async function RouteDetailPage({
                                 placeholder="Condition / notes"
                                 className="rounded border border-surface-border bg-surface-muted px-2 py-1 focus:border-accent focus:outline-none"
                               />
+                              <select
+                                name="purpose"
+                                defaultValue={defaultPurpose}
+                                title="Pickup or delivery for this individual device line"
+                                className="rounded border border-surface-border bg-surface-muted px-2 py-1 focus:border-accent focus:outline-none"
+                              >
+                                <option value="PICKUP">Pickup</option>
+                                <option value="DELIVERY">Delivery</option>
+                              </select>
+                              <input
+                                type="text"
+                                name="incidentNumber"
+                                placeholder="Existing INC# (optional)"
+                                pattern="[A-Za-z0-9\-]{3,40}"
+                                title="Attach to a known incident number at this school. Leave blank to mint a synthetic SYN ticket."
+                                className="rounded border border-surface-border bg-surface-muted px-2 py-1 focus:border-accent focus:outline-none"
+                              />
                             </div>
                             <button
                               type="submit"
@@ -455,19 +494,26 @@ export default async function RouteDetailPage({
                             </button>
                           </form>
                           <p className="text-[10px] text-slate-500">
-                            Adding a device here mints a synthetic ticket in
-                            "Pending pickup (unlinked)" — link it later from{" "}
+                            Every device line gets a ticket. Type a
+                            known INC# to attach an existing
+                            ticket; leave blank to mint a synthetic
+                            ticket in "Pending pickup (unlinked)" — link it
+                            later from{" "}
                             <Link
                               href="/duplicates"
                               className="text-accent hover:underline"
                             >
                               /duplicates
                             </Link>{" "}
-                            once the SNOW incident posts.
+                            once the SNOW incident posts. Use the
+                            Pickup/Delivery toggle if a missed pickup
+                            is discovered during a delivery (or vice
+                            versa).
                           </p>
                         </div>
                       </details>
-                    )}
+                      );
+                    })()}
                   </div>
                   );
                 })()}

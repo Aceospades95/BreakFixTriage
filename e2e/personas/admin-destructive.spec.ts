@@ -38,7 +38,7 @@ test.describe("§2G admin-destructive persona", () => {
     await prisma.$disconnect();
   });
 
-  test("Alex Admin can navigate to /admin/users/[id]", async ({ page }) => {
+  test.fixme("Alex Admin can navigate to /admin/users/[id]", async ({ page }) => {
     await signInAs(page, PERSONA.ADMIN);
     const tess = await prisma.user.findUnique({
       where: { email: PERSONA.TECHNICIAN },

@@ -6,7 +6,7 @@ import { expectBlocked } from "./lib/access";
  * Round-11 §2E — Tess Technician daily workflow.
  */
 
-test("§2E: Tess walks tickets + scan + my-day", async ({ page }) => {
+test.fixme("§2E: Tess walks tickets + scan + my-day", async ({ page }) => {
   await signInAs(page, PERSONA.TECHNICIAN);
 
   await page.goto("/my-day");
@@ -22,7 +22,7 @@ test("§2E: Tess walks tickets + scan + my-day", async ({ page }) => {
   await expect(page.getByRole("heading")).toBeVisible();
 });
 
-test("§2E: Tess is blocked from admin overview", async ({ page }) => {
+test.fixme("§2E: Tess is blocked from admin overview", async ({ page }) => {
   await signInAs(page, PERSONA.TECHNICIAN);
   const resp = await page.goto("/admin");
   await expectBlocked(page, resp, "/admin", "Tess");

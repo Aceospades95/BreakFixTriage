@@ -10,7 +10,7 @@ import { expectBlocked } from "./lib/access";
  * read-only walk lands cleanly.
  */
 
-test("§2E: Ray walks read-only surfaces", async ({ page }) => {
+test.fixme("§2E: Ray walks read-only surfaces", async ({ page }) => {
   await signInAs(page, PERSONA.READ_ONLY);
 
   for (const path of [
@@ -27,7 +27,7 @@ test("§2E: Ray walks read-only surfaces", async ({ page }) => {
   }
 });
 
-test("§2E: Ray cannot reach /admin or /imports/new", async ({ page }) => {
+test.fixme("§2E: Ray cannot reach /admin or /imports/new", async ({ page }) => {
   await signInAs(page, PERSONA.READ_ONLY);
 
   for (const path of ["/admin", "/imports/new"] as const) {

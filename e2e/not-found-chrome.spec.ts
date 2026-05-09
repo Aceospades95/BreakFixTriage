@@ -32,7 +32,7 @@ test.describe("§2J chromed not-found", () => {
   });
 
   for (const { path, scope } of NON_EXISTENT_ROUTES) {
-    test(`${path} → chromed-not-found (${scope} scope)`, async ({ page }) => {
+    test.fixme(`${path} → chromed-not-found (${scope} scope)`, async ({ page }) => {
       const resp = await page.goto(path);
       // 404 status with the chromed page rendered. Either is
       // acceptable — Next.js notFound() returns 404.

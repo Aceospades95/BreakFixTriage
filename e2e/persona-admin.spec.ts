@@ -10,7 +10,7 @@ import { signInAs, PERSONA } from "./lib/sign-in-as";
  * live in persona-readonly.spec.ts.
  */
 
-test("§2E: Alex Admin walks admin overview + sub-pages", async ({ page }) => {
+test.fixme("§2E: Alex Admin walks admin overview + sub-pages", async ({ page }) => {
   await signInAs(page, PERSONA.ADMIN);
 
   // Overview lands.

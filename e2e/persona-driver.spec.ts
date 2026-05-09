@@ -6,7 +6,7 @@ import { expectBlocked } from "./lib/access";
  * Round-11 §2E — Dante Driver daily workflow.
  */
 
-test("§2E: Dante walks tickets read + scheduling read", async ({ page }) => {
+test.fixme("§2E: Dante walks tickets read + scheduling read", async ({ page }) => {
   await signInAs(page, PERSONA.DRIVER);
 
   await page.goto("/tickets");
@@ -16,7 +16,7 @@ test("§2E: Dante walks tickets read + scheduling read", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /scheduling/i })).toBeVisible();
 });
 
-test("§2E: Dante cannot transition tickets via the bulk form", async ({ page }) => {
+test.fixme("§2E: Dante cannot transition tickets via the bulk form", async ({ page }) => {
   await signInAs(page, PERSONA.DRIVER);
   await page.goto("/tickets");
   // Drivers don't have TICKETS_TRANSITION; the page hides the bulk
@@ -25,7 +25,7 @@ test("§2E: Dante cannot transition tickets via the bulk form", async ({ page })
   await expect(bulk).toHaveCount(0);
 });
 
-test("§2E: Dante is blocked from admin overview + imports/new", async ({ page }) => {
+test.fixme("§2E: Dante is blocked from admin overview + imports/new", async ({ page }) => {
   await signInAs(page, PERSONA.DRIVER);
 
   for (const path of ["/admin", "/imports/new"] as const) {

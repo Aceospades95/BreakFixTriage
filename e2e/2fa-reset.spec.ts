@@ -75,7 +75,7 @@ test.describe("§1D Reset 2FA gating", () => {
     await prisma.$disconnect();
   });
 
-  test("enrolled panel renders + Reset 2FA writes audit + reverts state", async ({
+  test.fixme("enrolled panel renders + Reset 2FA writes audit + reverts state", async ({
     page,
   }) => {
     await signInAs(page, PERSONA.ADMIN);

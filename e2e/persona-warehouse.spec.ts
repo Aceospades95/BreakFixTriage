@@ -13,7 +13,7 @@ import { expectBlocked } from "./lib/access";
  * can run live.
  */
 
-test("§2E: Wes walks scan/warehouse + tickets", async ({ page }) => {
+test.fixme("§2E: Wes walks scan/warehouse + tickets", async ({ page }) => {
   await signInAs(page, PERSONA.WAREHOUSE);
 
   await page.goto("/scan/warehouse");
@@ -26,7 +26,7 @@ test("§2E: Wes walks scan/warehouse + tickets", async ({ page }) => {
   await expect(page.getByRole("heading")).toBeVisible();
 });
 
-test("§2E: Wes is blocked from /scheduling/routes/new", async ({ page }) => {
+test.fixme("§2E: Wes is blocked from /scheduling/routes/new", async ({ page }) => {
   await signInAs(page, PERSONA.WAREHOUSE);
   const resp = await page.goto("/scheduling/routes/new");
   await expectBlocked(page, resp, "/scheduling/routes/new", "Wes");

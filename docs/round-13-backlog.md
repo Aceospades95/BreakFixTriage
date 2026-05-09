@@ -139,3 +139,73 @@ The biggest deferred items that should headline R14:
    dedupe + audit per row.
 4. **`/people` graduation (B11)** — real directory page.
 5. **Audit string normalisation (B13)** — sweep + migration.
+
+---
+
+## R13 security pass — newly deferred (in scope of the R13 prompt)
+
+These items were listed in the R13 security and correctness pass
+but did not ship in this round. Each documents the trigger / blocker
+for graduation.
+
+- **B16 — §1F synthetic-merge import reconciliation idempotency
+  keys.** The eventual-consistency boundary is documented in
+  `docs/round-13-assumptions.md` but the idempotency keys on
+  runner-up comments + `failed_merge` audit rows are not yet
+  written. Filed for R14: trivial code change, no schema delta.
+- **B17 — §2A full conversion to `*ForSession` helpers.** R13
+  ships the helpers and converts `/api/search` (§1C) +
+  `/api/attachments/[id]` (§1D). Remaining hot paths land in R14
+  (CSV exports, `/bench`, `/dashboards/*`, `/notifications`).
+  ADR 0014 records the conversion roadmap.
+- **B18 — §2B `lib/humanise.ts` becomes the implementation.**
+  Current re-export shape is acceptable; the truthfulness fix is
+  the grep-gate enforcement which already holds. R14 entrypoint:
+  move implementations into `lib/humanise.ts` once the call-site
+  audit confirms no consumer imports from `lib/format` directly
+  for new code.
+- **B19 — §2C internal-link `incidentNumber` sweep.** Search
+  results (§1C) updated. Remaining sites (returnTo, audit chip
+  click-through, notification list, email templates) follow in
+  R14.
+- **B20 — §2E manager bench query cap + cursor-pagination
+  decision.** Trigger: tickets > 5,000 OR p95 list-render >
+  800ms. Until then, offset pagination is acceptable.
+- **B21 — §2F email queue idempotency comment fix.** Comment
+  update + provider-level idempotency keys filed for R14.
+- **B22 — §2G schema FK + index cleanup migration.** Soft FKs
+  remain on `DistrictUser` index, `UserPreference` cascade,
+  `PortalRequest` relations.
+- **B23 — §2I render-invariant tests.** Component-render tests
+  for high-leak surfaces (audit row, kanban card, palette,
+  role chip). Grep-gate freeze is in effect; new leaks ship
+  with render tests.
+- **B24 — §2J Round-N comment cleanup.** Round history stays in
+  source comments for R13; sweep deferred. ADRs and round-NN
+  summary docs remain the authoritative history.
+- **B25 — §2K persona suite golden-path un-fixme.** 7 persona
+  spec files exist; un-fixme'ing one per persona deferred to
+  R14 once the matching surface assertions stabilise.
+- **B26 — §3A Ops Exceptions dashboard.** New `/admin/exceptions`
+  page with 6 sections (failed email jobs, failed synthetic
+  merges, orphan StopDevice rows, stuck imports, near-expiry
+  portal tokens, anomalous sign-ins). Filed for R14 as the
+  reviewer's recommended new feature.
+- **B27 — §3B audit wave 5 spec.** Partial: every R13 mutation
+  uses the new column schema. Full coverage spec deferred.
+- **B28 — §3C CI fail-on-skip enforcement.** Current CI runs all
+  unit tests; integration tests skipped without `DATABASE_URL`
+  do not fail the build. Filed for the CI hardening pass.
+- **B29 — Per-session `jti` for fine-grained revocation.** R13
+  §1A ships coarse `sessionRevokedBefore`. Per-session `jti`
+  unblocks "Sign out THIS device" affordance per row. ADR 0015
+  records the alternative.
+- **B30 — Audit `ipHash` column on AuditLog.** Mentioned in
+  the §1J prompt; deferred until anomalous-sign-in feature
+  requires it. Current sign-in audit row already carries the
+  IP via the `before/after` JSON.
+- **B31 — Provider-level email idempotency key.** The §2F
+  comment fix surfaces a real duplicate-send window that
+  exists for high-volume queues. Add a provider-level `Idempotency-Key`
+  header (Resend supports it natively) once the worker design
+  is ready.

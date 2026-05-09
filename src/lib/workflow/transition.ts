@@ -4,13 +4,17 @@ import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit, type TransitionType } from "@/lib/audit/audit";
 import { publish } from "@/lib/events/bus";
 import { dispatchEmailEvent } from "@/lib/email/send";
-import { getEffectiveNotifyOnEnter, readStatusConfig } from "./status-config";
+import {
+  getEffectiveNotifyOnEnter,
+  getEffectiveTransitions,
+  readStatusConfig,
+  type StatusConfig,
+} from "./status-config";
 import {
   GuardFailedError,
   InvalidTransitionError,
   WorkflowError,
 } from "./errors";
-import { canTransition } from "./states";
 
 /**
  * Round-6 §3A — map the four targeted "enter this state" transitions
@@ -188,11 +192,22 @@ async function transitionInTx(
     return ticket;
   }
 
-  if (!opts.force && !canTransition(from, to)) {
-    throw new InvalidTransitionError(ticketId, from, to);
-  }
-
+  // Round-13 §1E — `canTransition` now reads StatusConfig overrides
+  // so admin-configured graphs are actually enforced. Disabled
+  // states are rejected with a clear operator-facing message. The
+  // hardcoded ALLOWED_TRANSITIONS map remains as the first-run
+  // safety net (StatusConfig empty → defaults).
+  const config = await readStatusConfig();
   if (!opts.force) {
+    if (config.disabled.includes(to)) {
+      throw new WorkflowError(
+        `Status ${to} is disabled. Choose another target state.`,
+      );
+    }
+    const allowed = getEffectiveTransitions(from, config);
+    if (!allowed.includes(to)) {
+      throw new InvalidTransitionError(ticketId, from, to);
+    }
     for (const guard of Object.values(guards)) {
       await guard(tx, ticket, to, opts);
     }
@@ -237,12 +252,12 @@ async function transitionInTx(
         : `transition:${from}->${to}`,
       before: { state: from },
       after: { state: to },
-      // Mirror reason + transitionType onto every transition's
-      // audit row so reviewers can read the why directly off the
-      // audit log. Closes findings §3.A2; ADR 0006 captures the
-      // Stage-2 plan to promote these to dedicated columns.
       reason: opts.reason ?? null,
       transitionType: opts.force ? "forced" : (opts.transitionType ?? "manual"),
+      // Round-13 §1J — force-change audit rows write `severity: warn`
+      // so /admin/audit can filter for them. ADR 0016 documents the
+      // engine bypass behaviour.
+      severity: opts.force ? "warn" : "info",
     },
     tx,
   );

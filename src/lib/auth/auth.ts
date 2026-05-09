@@ -190,6 +190,12 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id as string;
         token.role = user.role;
         token.districtIds = user.districtIds;
+        // Round-13 §1A — stamp iat (issued-at, seconds-since-epoch)
+        // so the session gate can compare against the user's
+        // sessionRevokedBefore cutoff. NextAuth sets `iat` natively
+        // on the encoded JWT; copying it onto the token object
+        // makes it accessible inside the session callback below.
+        token.iat = Math.floor(Date.now() / 1000);
       }
       return token;
     },
@@ -198,6 +204,9 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id;
         session.user.role = token.role;
         session.user.districtIds = token.districtIds;
+        // Round-13 §1A — propagate iat so getSession() can call
+        // isJwtRevoked() without rehydrating the JWT.
+        session.user.iat = (token as { iat?: number }).iat;
       }
       return session;
     },

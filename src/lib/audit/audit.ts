@@ -27,10 +27,19 @@ export type TransitionType =
   | "kanban"
   | "scheduled"
   | "webhook"
+  /** Bulk action — multiple rows share a requestId; one summary row
+      records the total scope. */
+  | "bulk"
+  /** Import row reconciliation — Round-13 §1F. */
+  | "import"
+  /** Idempotent first-run seed write. */
+  | "system_seed"
   /** Round-2 §15 / §20 — every email send is its own audit row,
       written by `dispatchEmailEvent`. Distinguishes "operator
       did a thing" from "the email engine reacted to it". */
   | "email_send";
+
+export type AuditSeverity = "info" | "warn" | "critical";
 
 export interface AuditEntry {
   actorUserId: string | null;
@@ -40,27 +49,37 @@ export interface AuditEntry {
   before?: Prisma.InputJsonValue | null;
   after?: Prisma.InputJsonValue | null;
   /**
-   * Human-readable rationale for the change. Mirrored into
-   * `after.reason` so the existing JSON-stored row carries it
-   * without a schema migration. See ADR 0006.
+   * Human-readable rationale for the change. Round-13 §1J promotes
+   * this to a top-level column; the legacy JSON mirror is kept for
+   * a deprecation window so existing render paths don't break.
    */
   reason?: string | null;
   /**
-   * One of the TransitionType values. Mirrored into
-   * `after.transitionType`. Optional because not every audit
-   * write is a transition — admin CRUD writes don't have one.
+   * One of the TransitionType values. Round-13 §1J promotes this to
+   * a top-level column with the JSON mirror retained.
    */
   transitionType?: TransitionType | null;
+  /**
+   * Round-13 §1J — info | warn | critical. Force changes are warn,
+   * cross-tenant rejects are critical, default is info.
+   */
+  severity?: AuditSeverity | null;
+  /**
+   * Round-13 §1J — request-scoped correlation id. Bulk actions emit
+   * N detail rows + 1 summary row sharing the same requestId so
+   * /admin/audit can collapse them. Auto-populated from async-local
+   * storage when not supplied.
+   */
+  requestId?: string | null;
 }
 
 /**
  * Append-only audit log. All significant state changes should call this.
- * Intentionally simple: one row per action, no soft-delete semantics.
  *
- * When `reason` and/or `transitionType` are passed, both are mirrored
- * into the `after` JSON so the audit log viewer can render them
- * inline without a schema migration. ADR 0006 plans the move to
- * dedicated columns once approved.
+ * Round-13 §1J — `reason`, `transitionType`, `requestId`, `severity`
+ * are written to dedicated columns. The legacy JSON mirror is kept
+ * so existing /admin/audit render paths don't break during the
+ * column-promotion deprecation window. ADR 0006 captures the plan.
  */
 export async function writeAudit(
   entry: AuditEntry,
@@ -93,6 +112,10 @@ export async function writeAudit(
       action: entry.action,
       before: entry.before ?? undefined,
       after,
+      reason: entry.reason ?? null,
+      transitionType: entry.transitionType ?? null,
+      severity: entry.severity ?? "info",
+      requestId: entry.requestId ?? null,
     },
   });
 }

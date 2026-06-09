@@ -2,13 +2,43 @@
 
 ## What shipped
 
-R13 lands as 2 stacked commits on
-`claude/breakfix-triage-audit-ZDYuJ`:
+R13 lands across two distinct waves on
+`claude/round-13-security-fixes-toQft` (stacked on the prior R13
+sidebar/leak work that already merged via PR #5):
+
+**Wave 1 (already merged) — sidebar / leak / persona pass**:
 
 1. **`64212b6` fix(sidebar):** §1A /people redirect + §1B-§1D
    enum/token leak fixes + §1E + §2A-§2G + §3A-§3H + §4A-§4E.
-2. **`<this commit>` docs(round-13):** decisions + backlog +
+2. **`4f805b5` docs(round-13):** initial decisions + backlog +
    qa-checklist + summary.
+
+**Wave 2 (this PR) — security and correctness pass**, triggered by
+an independent code review that surfaced four S1 bugs the prior
+rounds had not addressed:
+
+3. **fix(security): §1A + §1B + §1J** — session revocation
+   enforcement + 2FA reset cascade + audit column promotion.
+4. **fix(security): §1C + §1D + §2A** — global search + attachment
+   IDOR fixed via the new tenant-scoped query helpers.
+5. **fix(critical): §1E** — workflow engine actually reads
+   `StatusConfig` overrides; admin UI is no longer a lie.
+6. **fix(email): §1G** — `nodemailer` consolidated under
+   `lib/email/providers/`; legacy `dispatchNotification` SMTP path
+   delegates to the chokepoint.
+7. **fix(security): §1H** — error boundary scrubs digest from
+   user-facing copy; renders generic message + 8-char support code.
+8. **fix(security): §1I + §2D** — portal tokens hashed at rest,
+   shown plaintext ONCE, default 365-day expiry, portal pages send
+   `Referrer-Policy: no-referrer`.
+9. **feat(deploy): §2H** — `/api/health` exposes deploy-readiness
+   counts so `verify-deploy.sh` no longer needs an admin cookie.
+10. **test(round-13): R12 regression spec** — locks in every R12
+    PASS as `tests/round-13/round-12-regression.test.ts` (G13).
+11. **test(round-13): R13 source pin** — every §1 + §2 fix has a
+    Vitest source-pin test (G14, 37/37 green).
+12. **docs(round-13): ADRs 0014-0016** — tenant scoping, session
+    revocation, workflow engine config.
 
 ## Hard gates (final state)
 
@@ -17,12 +47,17 @@ R13 lands as 2 stacked commits on
   parens-enum (catches `(AWAITING_ONSITE)` in JSX text),
   snake-case-token (catches `school_spoc` in JSX text outside
   `<code>`).
-- **G3 vitest** — 750 active passing / 7 integration skipped
-  (need DATABASE_URL) / 13 todo. R13 added 54 new vitest cases
-  across 4 files.
-- **G4 Playwright** — 7 new persona specs + contrast sweep
-  spec; runs under §1E runtime.
-- **G5 prisma migrate deploy** — no schema changes this round.
+- **G3 vitest** — 799 active passing / 7 integration skipped
+  (need DATABASE_URL) / 13 todo. Wave 2 added 56 new vitest cases:
+  37 in `tests/round-13/security-fixes.test.ts` and 19 in
+  `tests/round-13/round-12-regression.test.ts`.
+- **G4 Playwright** — 7 persona specs + contrast sweep spec;
+  runs under §1E runtime.
+- **G5 prisma migrate deploy** — wave-2 ships
+  `prisma/migrations/20260509000000_round13_security/migration.sql`
+  with idempotent `ADD COLUMN IF NOT EXISTS` for sessionRevokedBefore,
+  PortalToken hashing + default expiry backfill, and AuditLog
+  column promotion + indexes.
 - **G6 verify-deploy** — extended to ping /api/health and emit
   a one-line "Round-13 health: OK" / "FAIL — N failure(s)".
 - **G7 7 persona Playwright spec files** — driver, technician,
@@ -37,7 +72,13 @@ R13 lands as 2 stacked commits on
   covers §1A; 50+ documented routes.
 - **G11 production seed-state** — no change from R12.
 - **G12 R12 regression suite** — `npx vitest run tests/round-12/`
-  still green.
+  still green (119/119).
+- **G13 R12 verification spec** — wave-2 added
+  `tests/round-13/round-12-regression.test.ts` to lock in every R12
+  PASS (19/19).
+- **G14 R13 security source pin** —
+  `tests/round-13/security-fixes.test.ts` covers every §1 + §2
+  source change (37/37).
 
 ## Critical fixes
 
@@ -171,6 +212,8 @@ After R13 lands in production:
 
 ## Files touched
 
+**Wave 1** (already merged via PR #5):
+
 - 1 new redirect page (/people)
 - 4 modified app pages (my-day, email-rules, holidays, invoices,
   quotes, dashboards, force-change-form, admin-card-kebab,
@@ -181,3 +224,61 @@ After R13 lands in production:
 - 4 new tests/round-13/ files (54 new cases)
 - 4 new docs files (decisions + backlog + qa-checklist + summary)
 - Modified scripts/check-forbidden-tokens.sh + scripts/verify-deploy.sh
+
+**Wave 2 — security and correctness pass** (this PR):
+
+- `prisma/schema.prisma` — `User.sessionRevokedBefore`,
+  `AuditLog.{reason,transitionType,requestId,severity}` + indexes,
+  `PortalToken.{tokenPrefix,dataScope}` (one new migration).
+- `prisma/migrations/20260509000000_round13_security/migration.sql`
+  — idempotent column adds + portal-token hash + audit backfill.
+- `src/lib/auth/sessions.ts` — `isJwtRevoked`, `touchSession`
+  rejects revoked JWTs, `revokeAllSessionsForUser` writes
+  `sessionRevokedBefore` in a transaction.
+- `src/lib/auth/auth.ts` — JWT callback stamps `iat`; session
+  callback propagates it.
+- `src/lib/auth/session.ts` — `getSession()` rejects revoked JWTs.
+- `src/types/next-auth.d.ts` — `iat` typed on Session + JWT.
+- `src/server/actions/2fa.ts` — `adminResetTotpAction` cascades
+  to session revocation; audit row carries `revokedCount`,
+  `twoFactorWasEnrolled`, `severity: warn`.
+- `src/lib/data/forSession.ts` (NEW) — tenant-scoped query helpers.
+- `src/lib/search.ts` — accepts `session`; uses helpers; admin
+  URLs gated; user results gated on `USERS_MANAGE`.
+- `src/app/api/search/route.ts` — passes session to globalSearch.
+- `src/app/api/attachments/[id]/route.ts` — uses
+  `attachmentForSession`; cross-tenant returns 404.
+- `src/lib/workflow/transition.ts` — reads `StatusConfig`;
+  disabled-state rejection; force change writes `severity: warn`.
+- `src/lib/email/providers/smtp.ts` (NEW) — nodemailer chokepoint.
+- `src/lib/notifications/smtp.ts` — delegates to the new provider;
+  no longer imports `nodemailer` directly.
+- `src/app/(app)/error.tsx` — generic copy + support code; digest
+  scrubbed; dev-only details block.
+- `src/lib/portal/tokens.ts` — `createPortalToken` returns
+  `{row, plaintext}`; `resolvePortalToken` hashes the input;
+  default 365-day TTL; `dataScope` plumbing.
+- `src/server/actions/portal.ts` — passes plaintext to redirect
+  query string ONCE; accepts `dataScope`.
+- `src/app/(app)/admin/schools/[schoolId]/page.tsx` — one-shot
+  banner; token list shows prefix not hash; data-scope select.
+- `src/app/api/health/route.ts` — surfaces seed counts; returns
+  503 when below documented minimums.
+- `src/lib/audit/audit.ts` — `severity` and `requestId` typed on
+  AuditEntry; writes to new columns directly.
+- `next.config.mjs` — global `Referrer-Policy:
+  strict-origin-when-cross-origin`; portal override to
+  `no-referrer`.
+- `tests/round-13/security-fixes.test.ts` (NEW) — 37 source-pin
+  tests for every R13 wave-2 fix.
+- `tests/round-13/round-12-regression.test.ts` (NEW) — 19 cases
+  locking in R12 PASSes (G13).
+- `docs/adr/0014-tenant-scoping.md` (NEW)
+- `docs/adr/0015-session-revocation.md` (NEW)
+- `docs/adr/0016-workflow-engine-config.md` (NEW)
+- `docs/round-13-assumptions.md` (NEW)
+- `docs/round-13-qa-checklist.md` — appended security-pass
+  section.
+- `docs/round-13-backlog.md` — appended R13 security-pass deferred
+  items (B16-B31).
+- `docs/round-13-summary.md` — this file.

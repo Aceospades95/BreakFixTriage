@@ -175,6 +175,13 @@ export async function disableTotpAction(formData: FormData) {
  * Admin emergency reset: blank out 2FA for a user who lost their
  * device and exhausted their recovery codes. Audit-logged so
  * compliance has a clear trail. Admin-only.
+ *
+ * Round-13 §1B — also cascades to session revocation: every active
+ * UserSession row gets revokedAt set AND `User.sessionRevokedBefore`
+ * is bumped so any cached JWT is invalidated by the next request.
+ * The two-step (clear TOTP + revoke sessions) runs inside one
+ * transaction so a partial failure never leaves a user with TOTP
+ * cleared but stale JWTs still working.
  */
 export async function adminResetTotpAction(formData: FormData) {
   const session = await requireRole(PERMISSIONS.USERS_MANAGE);
@@ -182,19 +189,51 @@ export async function adminResetTotpAction(formData: FormData) {
   if (!userId) {
     redirect("/admin/users?error=Missing+user+id");
   }
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      totpSecret: null,
-      totpEnabledAt: null,
-      backupCodes: null,
-    },
+
+  const now = new Date();
+  const result = await prisma.$transaction(async (tx) => {
+    const before = await tx.user.findUnique({
+      where: { id: userId },
+      select: { totpEnabledAt: true },
+    });
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        totpSecret: null,
+        totpEnabledAt: null,
+        backupCodes: null,
+        sessionRevokedBefore: now,
+      },
+    });
+    const sessions = await tx.userSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    return {
+      twoFactorWasEnrolled: Boolean(before?.totpEnabledAt),
+      revokedCount: sessions.count,
+    };
   });
+
   await writeAudit({
     actorUserId: session.userId,
     entityType: "User",
     entityId: userId,
+    // Action string preserves the R11/R12 convention so historical
+    // audit queries keep working; the cascade fields land in the
+    // structured columns (Round-13 §1J).
     action: "2fa:admin-reset",
+    after: {
+      revokedCount: result.revokedCount,
+      sessionRevokedBefore: now.toISOString(),
+      twoFactorWasEnrolled: result.twoFactorWasEnrolled,
+    },
+    reason: `Admin reset 2FA${
+      result.revokedCount > 0
+        ? `; revoked ${result.revokedCount} session${result.revokedCount === 1 ? "" : "s"}`
+        : ""
+    }`,
+    severity: "warn",
   });
   revalidatePath(`/admin/users/${userId}`);
   redirect(`/admin/users/${userId}?ok=Two-factor+reset`);
@@ -216,14 +255,16 @@ export async function revokeAllUserSessionsAction(formData: FormData) {
 
   const { revokeAllSessionsForUser } = await import("@/lib/auth/sessions");
   const revokedCount = await revokeAllSessionsForUser(userId);
+  const sessionRevokedBefore = new Date().toISOString();
 
   await writeAudit({
     actorUserId: session.userId,
     entityType: "User",
     entityId: userId,
     action: "user.sessions.revoke_all",
-    after: { revokedCount },
+    after: { revokedCount, sessionRevokedBefore },
     reason: `Admin revoked ${revokedCount} session${revokedCount === 1 ? "" : "s"}`,
+    severity: "warn",
   });
 
   revalidatePath(`/admin/users/${userId}`);

@@ -22,12 +22,24 @@ export interface BreakFixSession {
 }
 
 /**
- * Read the current session, returning `null` if the user is not signed in.
- * Prefer `requireSession()` in server components that assume a user.
+ * Read the current session, returning `null` if the user is not signed in
+ * OR the JWT has been revoked via `User.sessionRevokedBefore` (Round-13
+ * §1A). Prefer `requireSession()` in server components that assume a user.
+ *
+ * The revocation gate runs against the User table; cached JWTs from
+ * before an admin "Sign out all sessions" or 2FA reset come back
+ * unauthenticated even though NextAuth would otherwise honor them.
  */
 export async function getSession(): Promise<BreakFixSession | null> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id || !session.user.email || !session.user.name) {
+    return null;
+  }
+  const iat = (session.user as { iat?: number }).iat;
+  // Lazy import: avoid the server-only import chain in test contexts
+  // that fabricate sessions without going through the auth module.
+  const { isJwtRevoked } = await import("./sessions");
+  if (await isJwtRevoked(session.user.id, iat)) {
     return null;
   }
   return {

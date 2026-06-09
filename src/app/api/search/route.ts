@@ -5,7 +5,10 @@ import { globalSearch } from "@/lib/search";
 /**
  * Global search API. Called by the header search box as the user
  * types. Returns a JSON array of `SearchHit` records. Gated on an
- * authenticated session.
+ * authenticated session AND on the actor's district scope —
+ * Round-13 §1C closes the cross-tenant enumeration that allowed any
+ * authenticated user to find tickets/schools/devices in any
+ * district.
  */
 export async function GET(request: Request) {
   const session = await getSession();
@@ -14,6 +17,6 @@ export async function GET(request: Request) {
   }
   const url = new URL(request.url);
   const q = url.searchParams.get("q") ?? "";
-  const hits = await globalSearch({ query: q });
+  const hits = await globalSearch({ query: q, session });
   return NextResponse.json(hits);
 }

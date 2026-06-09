@@ -22,7 +22,7 @@ export default async function SchoolProfilePage({
   searchParams,
 }: {
   params: { schoolId: string };
-  searchParams?: { error?: string; ok?: string };
+  searchParams?: { error?: string; ok?: string; newToken?: string };
 }) {
   await requireRole(PERMISSIONS.DISTRICTS_MANAGE);
 
@@ -75,6 +75,24 @@ export default async function SchoolProfilePage({
       {searchParams?.ok && (
         <div className="mb-4 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
           {searchParams.ok}
+        </div>
+      )}
+      {searchParams?.newToken && (
+        <div
+          data-testid="portal-token-once"
+          className="mb-4 space-y-2 rounded border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100"
+        >
+          <h3 className="text-sm font-semibold">
+            Copy this link now — you won't see it again
+          </h3>
+          <p className="text-xs text-amber-200/80">
+            This is the only time the full URL is shown. Once you
+            navigate away, only the prefix (first eight characters)
+            remains visible. Revoke and reissue if you lose it.
+          </p>
+          <div className="overflow-auto rounded bg-amber-950/40 px-2 py-1 font-medium tracking-tight text-xs text-amber-100">
+            /portal/{searchParams.newToken}
+          </div>
         </div>
       )}
 
@@ -405,7 +423,7 @@ export default async function SchoolProfilePage({
                   </div>
                   {active && (
                     <div className="mt-2 overflow-auto rounded bg-surface-muted px-2 py-1 font-medium tracking-tight text-[10px] text-slate-300">
-                      /portal/{t.token}
+                      /portal/{t.tokenPrefix ?? "????????"}…
                     </div>
                   )}
                 </li>
@@ -432,16 +450,29 @@ export default async function SchoolProfilePage({
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">
-              Expires in (days, optional)
+              Expires in (days, default 365)
             </span>
             <input
               type="number"
               name="expiresInDays"
               min={1}
               max={3650}
-              placeholder="e.g. 180"
+              placeholder="365"
               className="w-32 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              Data scope
+            </span>
+            <select
+              name="dataScope"
+              defaultValue="STANDARD"
+              className="w-44 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="STANDARD">Standard (full info)</option>
+              <option value="MINIMAL">Minimal (counts only)</option>
+            </select>
           </label>
           <button
             type="submit"

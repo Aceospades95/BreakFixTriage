@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
-import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 import { resolveStoredPath } from "@/lib/attachments/storage";
+import { attachmentForSession } from "@/lib/data/forSession";
 
 /**
  * Stream an attachment back to the browser. Every read is gated on
- * an authenticated session — we deliberately do not expose a public
- * signed URL because everything inside this app is private.
+ * an authenticated session AND on the actor's district scope —
+ * Round-13 §1D fixed the IDOR where any authenticated user could
+ * stream any attachment by guessing the cuid.
  *
- * Returns 401 for unauthenticated, 404 for missing, 500 for disk
- * errors. Sets Content-Disposition so the browser preserves the
- * original filename on download.
+ * Returns 401 for unauthenticated, 404 for missing OR cross-tenant
+ * (matching responses prevent enumeration), 500 for disk errors.
+ * Sets Content-Disposition so the browser preserves the original
+ * filename on download.
  */
 export async function GET(
   _req: Request,
@@ -22,9 +24,7 @@ export async function GET(
     return new NextResponse("unauthorized", { status: 401 });
   }
 
-  const attachment = await prisma.attachment.findUnique({
-    where: { id: params.id },
-  });
+  const attachment = await attachmentForSession(session, params.id);
   if (!attachment) {
     return new NextResponse("not found", { status: 404 });
   }

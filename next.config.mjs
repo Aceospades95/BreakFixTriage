@@ -55,6 +55,16 @@ const nextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      // Round-13 §1I + §2D — portal pages override Referrer-Policy
+      // to `no-referrer` so a school IT lead clicking a link from
+      // /portal/[token] never leaks the bearer URL via the Referer
+      // header.
+      {
+        source: "/portal/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
     ];
   },
 };

@@ -3,14 +3,13 @@ import { createHash } from "crypto";
 import { prisma } from "@/lib/db/prisma";
 
 /**
- * Round-11 §1C — UserSession write path.
+ * UserSession write path + revocation gate.
  *
- * The R10 schema landed but the panel always showed
- * "No sessions recorded yet" because the middleware that updates
- * lastSeenAt never ran. R11 wires the touch + privacy-aware
- * fingerprinting inside the (app) layout server component, which
- * runs in the Node runtime on every authenticated page request
- * (and therefore CAN reach Prisma — Edge middleware cannot).
+ * The /admin/users/[id] "Recent sessions" panel and the "Sign out
+ * all sessions" affordance read/write the UserSession table. The
+ * coarse revocation flag lives on User.sessionRevokedBefore and is
+ * compared against the JWT's `iat` claim by `getSession()` and
+ * `isJwtRevoked()` below. ADR 0015 covers the design choice.
  */
 
 const SALT = process.env.AUTH_SESSION_SALT ?? "breakfix-default-session-salt";
@@ -42,19 +41,49 @@ export function hashUserAgent(ua: string | null): string | null {
 }
 
 /**
+ * Compare a JWT's `iat` (issued-at, seconds since epoch) against the
+ * user's `sessionRevokedBefore` timestamp. Returns true if the JWT
+ * predates the revocation cutoff and should be rejected.
+ *
+ * Round-13 §1A — `getSession()` calls this on every authenticated
+ * read so revoking sessions actually invalidates outstanding JWTs.
+ */
+export async function isJwtRevoked(
+  userId: string,
+  iatSeconds: number | undefined,
+): Promise<boolean> {
+  if (!iatSeconds || !Number.isFinite(iatSeconds)) {
+    return false;
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { sessionRevokedBefore: true },
+  });
+  if (!user?.sessionRevokedBefore) return false;
+  const cutoffSeconds = Math.floor(
+    user.sessionRevokedBefore.getTime() / 1000,
+  );
+  return iatSeconds < cutoffSeconds;
+}
+
+/**
  * Update the most-recent active session for the user with fresh
  * lastSeenAt + ip/UA fingerprint. Debounced — at most one write
  * per minute per session.
  *
- * If no active session exists (e.g. the sign-in event predates
- * R11 schema or the row was revoked), a new one is created so the
- * panel never goes silent for an active user.
+ * Returns false if the JWT predates `sessionRevokedBefore` so the
+ * caller can short-circuit. Otherwise creates or updates the active
+ * session row and returns true.
  */
 export async function touchSession(
   userId: string,
   ip: string | null,
   ua: string | null,
-): Promise<void> {
+  iatSeconds?: number,
+): Promise<boolean> {
+  if (await isJwtRevoked(userId, iatSeconds)) {
+    return false;
+  }
   const ipHash = hashIp(ip);
   const uaFingerprint = hashUserAgent(ua);
   const now = new Date();
@@ -74,7 +103,7 @@ export async function touchSession(
         expiresAt: new Date(now.getTime() + SESSION_TTL_MS),
       },
     });
-    return;
+    return true;
   }
 
   const stale =
@@ -85,7 +114,7 @@ export async function touchSession(
   // touched request can populate them.
   const newHashAvailable =
     (ipHash && !active.ipHash) || (uaFingerprint && !active.uaFingerprint);
-  if (!stale && !newHashAvailable) return;
+  if (!stale && !newHashAvailable) return true;
 
   await prisma.userSession.update({
     where: { id: active.id },
@@ -95,20 +124,34 @@ export async function touchSession(
       uaFingerprint: uaFingerprint ?? active.uaFingerprint,
     },
   });
+  return true;
 }
 
 /**
- * Mark every active session for `userId` as revoked. Returns the
- * count of rows that were actually changed.
+ * Mark every active session for `userId` as revoked AND bump
+ * `User.sessionRevokedBefore` so any JWT issued before this moment
+ * is rejected on the next authenticated request. Returns the count
+ * of UserSession rows actually flipped.
+ *
+ * Round-13 §1A — the schema flag plus revoking the per-row state
+ * are atomic so a single transaction is the source of truth for
+ * "this user signed out everywhere". ADR 0015.
  */
 export async function revokeAllSessionsForUser(
   userId: string,
 ): Promise<number> {
-  const result = await prisma.userSession.updateMany({
-    where: { userId, revokedAt: null },
-    data: { revokedAt: new Date() },
+  const now = new Date();
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.userSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    await tx.user.update({
+      where: { id: userId },
+      data: { sessionRevokedBefore: now },
+    });
+    return result.count;
   });
-  return result.count;
 }
 
 /**

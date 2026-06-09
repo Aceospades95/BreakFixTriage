@@ -42,6 +42,11 @@ model User {
   /// JSON array of hashed one-time recovery codes. When a code is
   /// used successfully it is removed from the array.
   backupCodes  String?
+  /// JWTs issued before this timestamp are rejected. Bumped to now()
+  /// when an admin signs out all sessions OR resets a user's 2FA.
+  /// Coarse-grained (kills every session at once); pair with the
+  /// per-row UserSession.revokedAt for individual sign-outs. ADR 0015.
+  sessionRevokedBefore DateTime?
   /// Per-user key/value state owned by the app — onboarding flags,
   /// UI preferences, dismissed banners. JSON blob so we don't need a
   /// migration for every new key.
@@ -683,6 +688,13 @@ model StopDevice {
   /// Null is valid only for transient orphans (resolve via
   /// /duplicates).
   ticketId      String?
+  /// Whether this device is being PICKED UP from the school or
+  /// DELIVERED to it. Defaults to the parent Job.type when not
+  /// supplied — usually the same intent — but can be overridden
+  /// when a delivery stop discovers a device that needs pickup
+  /// (or vice versa). Operators set this from the +Add device
+  /// form on /scheduling/routes/[routeId].
+  purpose       StopDevicePurpose @default(PICKUP)
   addedAt       DateTime @default(now())
   addedByUserId String
   /// Set when the operator taps "× Remove". The device row stays
@@ -691,6 +703,10 @@ model StopDevice {
   /// ticket).
   removedAt     DateTime?
   removedByUserId String?
+  /// Required when removing — operator must explain why the device
+  /// is coming off the stop (loaded wrong device, school doesn't
+  /// have it, customer cancelled, etc.). Min 3 chars enforced at
+  /// the action layer.
   removedReason String?
 
   stop          RouteStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
@@ -701,6 +717,16 @@ model StopDevice {
   @@index([deviceId])
   @@index([ticketId])
   @@index([removedAt])
+  @@index([purpose])
+}
+
+/// Round-13 — pickup vs delivery for an individual StopDevice line.
+/// Mirrors the JobType enum (PICKUP/DELIVERY) so a stop can mix
+/// both intents on the same visit if a missed pickup is discovered
+/// during a delivery (or vice versa).
+enum StopDevicePurpose {
+  PICKUP
+  DELIVERY
 }
 
 // ---------------------------------------------------------------------------
@@ -777,12 +803,29 @@ model AuditLog {
   action      String
   before      Json?
   after       Json?
+  /// Round-13 §1J — promoted from JSON-buried before/after. Free-text
+  /// rationale supplied by the actor (e.g. "Customer escalation").
+  reason      String?
+  /// Round-13 §1J — transition kind for force/manual/kanban/scheduled
+  /// /webhook/system_seed/bulk/import. Filterable on /admin/audit.
+  transitionType String?
+  /// Round-13 §1J — request ID groups rows produced within one
+  /// inbound HTTP request. Bulk actions write N rows + 1 summary
+  /// sharing the same requestId.
+  requestId   String?
+  /// Round-13 §1J — severity tier: info | warn | critical. Force
+  /// changes write `warn`; tenant-violation rejections write
+  /// `critical`. Default keeps every prior write classified `info`.
+  severity    String?  @default("info")
   createdAt   DateTime @default(now())
 
   actor       User? @relation(fields: [actorUserId], references: [id])
 
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([transitionType])
+  @@index([severity])
+  @@index([requestId])
 }
 
 enum NotificationStatus {
@@ -1062,9 +1105,21 @@ model ManufacturerRma {
 /// tell ops who was using which link and when.
 model PortalToken {
   id         String    @id @default(cuid())
+  /// Round-13 §1I — SHA-256 hash of the plaintext token. Plaintext
+  /// is shown ONCE on creation and never stored. Legacy plaintext
+  /// values are migrated by `prisma/migrations/...portal-token-hash`.
   token      String    @unique
+  /// First eight characters of the plaintext (kept human-readable
+  /// for the operator UI), e.g. "xY4kP2mN". Never sent in URLs.
+  tokenPrefix String?
+  /// Round-13 §2L — STANDARD shows serial/asset/desc on the portal
+  /// page; MINIMAL hides them. Default STANDARD for backwards-compat
+  /// with R12 token rows.
+  dataScope  String    @default("STANDARD")
   schoolId   String
   label      String?
+  /// Default 365 days from creation per ADR 0015 — populated by the
+  /// generate helper when caller doesn't supply a TTL.
   expiresAt  DateTime?
   revokedAt  DateTime?
   lastUsedAt DateTime?

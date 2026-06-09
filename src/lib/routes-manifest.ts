@@ -57,12 +57,9 @@ export const ROUTES_MANIFEST: ReadonlyArray<RouteEntry> = [
   // Round-14 (B8) — chromed access-denied destination for
   // requireRole redirects.
   { path: "/forbidden", allow: ALL_AUTHENTICATED },
-  // Round-13 §1A — /people redirects to /scheduling/people.
-  {
-    path: "/people",
-    allow: ALL_AUTHENTICATED,
-    redirectsTo: "/scheduling/people",
-  },
+  // Round-15 (B11) — /people graduated from the Round-13 redirect
+  // into a real staff directory.
+  { path: "/people", allow: ALL_AUTHENTICATED },
 
   // Tickets
   { path: "/tickets", allow: ALL_AUTHENTICATED },
@@ -105,6 +102,8 @@ export const ROUTES_MANIFEST: ReadonlyArray<RouteEntry> = [
   // Admin
   { path: "/admin", allow: ["ADMIN"] },
   { path: "/admin/audit", allow: ["ADMIN"] },
+  // Round-15 (B26) — ops exceptions dashboard.
+  { path: "/admin/exceptions", allow: ["ADMIN"] },
   { path: "/admin/device-models", allow: ["ADMIN"] },
   { path: "/admin/device-models/[modelId]", allow: ["ADMIN"] },
   { path: "/admin/devices", allow: ["ADMIN"] },

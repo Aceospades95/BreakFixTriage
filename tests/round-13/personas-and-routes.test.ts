@@ -34,7 +34,9 @@ describe("Round-13 §4B — routes manifest", () => {
     expect(findRoute("/admin")).toBeDefined();
     expect(findRoute("/scheduling/people")).toBeDefined();
     expect(findRoute("/people")).toBeDefined();
-    expect(findRoute("/people")?.redirectsTo).toBe("/scheduling/people");
+    // Round-15 (B11): /people graduated from a redirect to a real
+    // directory page; it no longer declares redirectsTo.
+    expect(findRoute("/people")?.redirectsTo).toBeUndefined();
   });
 });
 

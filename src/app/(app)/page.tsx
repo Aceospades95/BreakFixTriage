@@ -502,7 +502,7 @@ export default async function HomePage() {
               Nothing assigned to you right now. Drop by the{" "}
               <Link
                 href="/tickets?state=TRIAGE"
-                className="text-accent hover:underline"
+                className="text-accent underline decoration-accent/40 hover:decoration-accent"
               >
                 triage queue
               </Link>

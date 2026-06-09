@@ -30,7 +30,11 @@
   --color-card: 255 255 255;             /* #ffffff  white cards pop on off-white */
   --color-card-foreground: 10 10 10;
   --color-muted: 232 234 236;            /* #e8eaec */
-  --color-muted-foreground: 107 124 107; /* #6b7c6b */
+  /* Round-15 (B9) — was 107 124 107 (#6b7c6b), which measured
+     4.04:1 on the off-white page surface and 4.45:1 on white
+     cards — both below the 4.5:1 AA floor the §1G.2 comment
+     claimed. #5c6c5c clears 5.0:1 on both. */
+  --color-muted-foreground: 92 108 92;   /* #5c6c5c */
   --color-secondary: 228 237 232;        /* #e4ede8  green-tinted light gray */
   --color-secondary-foreground: 21 88 62;
   --color-border: 213 216 220;           /* #d5d8dc  strong, visible */
@@ -136,8 +140,10 @@
 :root:not(.dark) .text-slate-200 { color: rgb(30 41 59); }
 :root:not(.dark) .text-slate-300 { color: rgb(51 65 85); }
 :root:not(.dark) .text-slate-400 { color: rgb(71 85 105); }
-:root:not(.dark) .text-slate-500 { color: rgb(100 116 139); }
-:root:not(.dark) .text-slate-600 { color: rgb(107 114 128); }
+/* Round-15 (B9) — slate-500 used to remap to itself (4.32:1 on the
+   off-white surface) and slate-600 to 4.39:1; both below AA. */
+:root:not(.dark) .text-slate-500 { color: rgb(84 98 117); }
+:root:not(.dark) .text-slate-600 { color: rgb(90 98 110); }
 :root:not(.dark) .text-white { color: rgb(15 23 42); }
 
 /* Keep primary-action buttons readable in light mode — text-white
@@ -167,10 +173,26 @@
 :root:not(.dark) .text-red-100,
 :root:not(.dark) .text-red-200 { color: rgb(127 29 29); }
 :root:not(.dark) .text-emerald-100,
-:root:not(.dark) .text-emerald-200 { color: rgb(6 78 59); }
+:root:not(.dark) .text-emerald-200,
+:root:not(.dark) .text-emerald-300 { color: rgb(6 78 59); }
+:root:not(.dark) .text-violet-100,
 :root:not(.dark) .text-violet-200 { color: rgb(76 29 149); }
+:root:not(.dark) .text-orange-100,
+:root:not(.dark) .text-orange-200 { color: rgb(124 45 18); }
+:root:not(.dark) .text-teal-100,
+:root:not(.dark) .text-teal-200 { color: rgb(19 78 74); }
+:root:not(.dark) .text-sky-100,
+:root:not(.dark) .text-sky-200 { color: rgb(12 74 110); }
+:root:not(.dark) .text-indigo-100 { color: rgb(30 27 75); }
 :root:not(.dark) .text-indigo-200 { color: rgb(30 27 75); }
 :root:not(.dark) .text-blue-200 { color: rgb(30 58 138); }
+
+/* Round-15 (B9) — dark-mode counterpart for the two slate tiers
+ * that fail AA against the dark card/muted surfaces (slate-500 is
+ * 3.05:1 on #1a2a40). One notch lighter clears 4.8:1+ everywhere
+ * the tiers are used. */
+:root.dark .text-slate-500,
+:root.dark .text-slate-600 { color: rgb(148 163 184); }
 
 body {
   color: rgb(var(--color-foreground));

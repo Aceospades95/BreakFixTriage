@@ -83,9 +83,10 @@ async function main() {
 
   // 1 device model + 50 devices distributed across schools.
   const model = await prisma.deviceModel.upsert({
-    where: { id: "test_model_eb14" },
+    where: {
+      manufacturer_modelName: { manufacturer: "Acme", modelName: "EduBook 14" },
+    },
     create: {
-      id: "test_model_eb14",
       manufacturer: "Acme",
       modelName: "EduBook 14",
       formFactor: "LAPTOP",
@@ -121,6 +122,13 @@ async function main() {
     const incidentNumber = `INC9${String(990000 + i).padStart(7, "0")}`;
     const school = schools[i % schools.length]!;
     const state = ticketStates[i % ticketStates.length]!;
+    // Device i is owned by schools[i % 5] — same modulus as the
+    // ticket — so the linked device always matches the school.
+    const serial = `SN-TEST-${String(i + 1).padStart(4, "0")}`;
+    const device = await prisma.device.findUnique({
+      where: { serialNumber: serial },
+      select: { id: true },
+    });
     await prisma.ticket.upsert({
       where: { incidentNumber },
       create: {
@@ -129,12 +137,140 @@ async function main() {
         state,
         priority: "NORMAL",
         schoolId: school.id,
+        deviceId: device?.id ?? null,
         reportedAt: new Date(Date.now() - (i + 1) * 24 * 60 * 60 * 1000),
         stateEnteredAt: new Date(Date.now() - i * 24 * 60 * 60 * 1000),
         assignedUserId: i % 4 === 0 ? tess?.id : null,
       },
-      update: {},
+      update: { deviceId: device?.id ?? null },
     });
+  }
+
+  // 1 route for Dante with 2 pickup stops — the header has promised
+  // this fixture since R12 but it was never written (found in the
+  // R14 audit; the driver persona spec depends on it). Idempotent:
+  // keyed on a fixed vehicleRef tag.
+  const dante = await prisma.user.findUniqueOrThrow({
+    where: { email: "dante@example.test" },
+    select: { id: true },
+  });
+  const existingRoute = await prisma.route.findFirst({
+    where: { vehicleRef: "TEST-VAN-1", assigneeUserId: dante.id },
+    select: { id: true },
+  });
+  if (!existingRoute) {
+    const pickupTickets = await prisma.ticket.findMany({
+      where: {
+        incidentNumber: { startsWith: "INC9" },
+        state: "AWAITING_PICKUP",
+      },
+      orderBy: { incidentNumber: "asc" },
+      take: 2,
+      select: { id: true, schoolId: true, deviceId: true },
+    });
+    if (pickupTickets.length > 0) {
+      const route = await prisma.route.create({
+        data: {
+          date: new Date(),
+          assigneeUserId: dante.id,
+          vehicleRef: "TEST-VAN-1",
+          status: "PLANNED",
+        },
+      });
+      let seq = 1;
+      for (const t of pickupTickets) {
+        const job = await prisma.job.create({
+          data: {
+            type: "PICKUP",
+            schoolId: t.schoolId,
+            status: "SCHEDULED",
+            ticketLinks: { create: { ticketId: t.id } },
+          },
+        });
+        const stop = await prisma.routeStop.create({
+          data: {
+            routeId: route.id,
+            jobId: job.id,
+            sequence: seq++,
+            status: "SCHEDULED",
+          },
+        });
+        if (t.deviceId) {
+          await prisma.stopDevice.create({
+            data: {
+              stopId: stop.id,
+              deviceId: t.deviceId,
+              ticketId: t.id,
+              purpose: "PICKUP",
+              addedByUserId: dante.id,
+            },
+          });
+        }
+        // The real route-build flow transitions a ticket to
+        // PICKUP_SCHEDULED when its job lands on a route; mirror
+        // that here so stop completion can cascade the ticket to
+        // IN_WAREHOUSE (AWAITING_PICKUP → IN_WAREHOUSE is not a
+        // legal edge).
+        await prisma.ticket.update({
+          where: { id: t.id },
+          data: { state: "PICKUP_SCHEDULED", stateEnteredAt: new Date() },
+        });
+      }
+      console.log(
+        `[seed-test] route ${route.id} created with ${pickupTickets.length} stops`,
+      );
+    }
+  }
+
+  // An enabled pickup_completed rule so the driver persona walk
+  // exercises the dispatchEmailEvent chokepoint (EmailLog row
+  // presence is the assertion until the Mailpit fixture lands —
+  // backlog B12). stdout transport means no real send.
+  const pickupTemplate = await prisma.emailTemplate.findFirst({
+    where: { key: "pickup_completed" },
+    select: { id: true },
+  });
+  if (pickupTemplate) {
+    const existingRule = await prisma.emailRule.findFirst({
+      where: { event: "pickup_completed", scope: "GLOBAL" },
+      select: { id: true },
+    });
+    if (!existingRule) {
+      await prisma.emailRule.create({
+        data: {
+          scope: "GLOBAL",
+          event: "pickup_completed",
+          recipients: { to: [{ kind: "spoc" }], cc: [], bcc: [] },
+          templateId: pickupTemplate.id,
+          enabled: true,
+        },
+      });
+      console.log("[seed-test] pickup_completed rule created");
+    }
+  }
+
+  // 1 quote on an IN_REPAIR ticket (same long-promised fixture).
+  const quoteTicket = await prisma.ticket.findFirst({
+    where: { incidentNumber: { startsWith: "INC9" }, state: "IN_REPAIR" },
+    select: { id: true },
+  });
+  if (quoteTicket) {
+    const existingQuote = await prisma.quote.findFirst({
+      where: { ticketId: quoteTicket.id },
+      select: { id: true },
+    });
+    if (!existingQuote) {
+      await prisma.quote.create({
+        data: {
+          ticketId: quoteTicket.id,
+          status: "SENT",
+          amountCents: 12_500,
+          sentAt: new Date(),
+          notes: "Synthetic fixture quote",
+        },
+      });
+      console.log("[seed-test] quote created");
+    }
   }
 
   console.log("[seed-test] Synthetic fixture ready.");

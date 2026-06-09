@@ -32,6 +32,7 @@ Every signed-in user reaches them.
 | `/profile` | any | Profile + name |
 | `/profile/2fa` | any | Personal 2FA setup |
 | `/people` | any | Round-13 §1A redirect → `/scheduling/people` |
+| `/forbidden` | any | Round-14 (B8) chromed access-denied page; `requireRole` redirects here |
 
 ## Tickets
 

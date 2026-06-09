@@ -2,11 +2,7 @@ import type { Role } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "./auth";
-import {
-  AuthorizationError,
-  canAsync,
-  type Permission,
-} from "./rbac";
+import { canAsync, type Permission } from "./rbac";
 
 /**
  * Minimal session shape used by server code. This is intentionally decoupled
@@ -63,8 +59,17 @@ export async function requireSession(): Promise<BreakFixSession> {
 
 /**
  * Read the current session, ensure it satisfies every supplied permission,
- * and throw `AuthorizationError` otherwise. Use as the first line of a
- * server action or server component that performs a protected operation.
+ * and redirect to the chromed `/forbidden` page otherwise. Use as the first
+ * line of a server action or server component that performs a protected
+ * operation.
+ *
+ * Round-14 (graduates backlog B8) — failure used to throw
+ * `AuthorizationError`, which the (app) error boundary rendered as a
+ * generic "Something went wrong" in production because Next.js scrubs
+ * server error messages outside dev. Redirecting gives the operator an
+ * actionable access-denied page instead of an error screen. Route
+ * handlers that need a real 401/403 status keep returning it directly
+ * (see src/app/api/exports/*).
  */
 export async function requireRole(
   ...permissions: Permission[]
@@ -72,7 +77,7 @@ export async function requireRole(
   const session = await requireSession();
   for (const perm of permissions) {
     if (!(await canAsync(session.role, perm))) {
-      throw new AuthorizationError(session.role, perm);
+      redirect(`/forbidden?perm=${encodeURIComponent(perm)}`);
     }
   }
   return session;

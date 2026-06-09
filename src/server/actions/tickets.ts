@@ -329,9 +329,15 @@ export async function updateTicketAction(formData: FormData) {
  *   - Unassigned-only invariant: throws if the ticket already has
  *     an assignee. Avoids a tech accidentally stealing work from
  *     a peer.
+ *
+ * Round-14 — gate relaxed from TICKETS_WRITE to TICKETS_TRANSITION.
+ * The §2F brief built this "so a tech can claim work in one click",
+ * but technicians never held TICKETS_WRITE, so the feature was only
+ * ever reachable by managers. Self-assignment of unassigned work is
+ * a transition-tier capability, not a general ticket write.
  */
 export async function pickUpTicketAction(formData: FormData) {
-  const session = await requireRole(PERMISSIONS.TICKETS_WRITE);
+  const session = await requireRole(PERMISSIONS.TICKETS_TRANSITION);
   const ticketId = formData.get("ticketId")?.toString();
   if (!ticketId) {
     redirect("/bench?error=Missing+ticket+id");

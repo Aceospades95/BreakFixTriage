@@ -71,10 +71,14 @@ describe("Round-12 §2 — polish batch", () => {
     expect(src).toContain('data-testid="chromed-not-found"');
   });
 
-  it("§2J: spec asserts 404 status + Common destinations + no error boundary", () => {
+  it("§2J: spec asserts status + Common destinations + no error boundary", () => {
     const src = read("e2e/not-found-chrome.spec.ts");
-    expect(src).toContain("expect(resp?.status()).toBe(404)");
-    expect(src).toContain('toContain("Common destinations")');
+    // Round-14 — unmatched URLs return a real 404; in-segment
+    // notFound() streams through the (app) loading boundary so its
+    // status is already committed as 200. The spec accepts both and
+    // pins the chromed body instead.
+    expect(src).toContain("expect([200, 404]).toContain(resp?.status() ?? 0)");
+    expect(src).toContain('getByText("Common destinations")');
     expect(src).toContain("global-error-boundary");
   });
 });

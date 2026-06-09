@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JobStatus, RouteStatus, TicketSource } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { RouteStatusPill } from "@/components/route-status-pill";
 import { StatePill } from "@/components/state-pill";
 import { AttachmentList } from "@/components/attachment-list";
 import { RouteMap } from "@/components/route-map";
@@ -219,6 +220,8 @@ export default async function RouteDetailPage({
             return (
               <li
                 key={stop.id}
+                data-testid="route-stop"
+                data-stop-id={stop.id}
                 className="rounded-lg border border-surface-border bg-surface-muted/60 p-4"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -707,23 +710,6 @@ function StopStatusPill({ status }: { status: JobStatus }) {
     COMPLETED: "bg-emerald-500/20 text-emerald-200 border-emerald-500/40",
     FAILED: "bg-red-500/20 text-red-200 border-red-500/40",
     CANCELLED: "bg-slate-500/20 text-slate-200 border-slate-500/40",
-  };
-  return (
-    <span
-      className={`rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide ${cls[status]}`}
-    >
-      {humanise(status)}
-    </span>
-  );
-}
-
-function RouteStatusPill({ status }: { status: RouteStatus }) {
-  const cls: Record<RouteStatus, string> = {
-    DRAFT: "bg-slate-500/20 text-slate-200 border-slate-500/40",
-    PLANNED: "bg-indigo-500/20 text-indigo-200 border-indigo-500/40",
-    IN_PROGRESS: "bg-amber-500/20 text-amber-200 border-amber-500/40",
-    COMPLETED: "bg-emerald-500/20 text-emerald-200 border-emerald-500/40",
-    CANCELLED: "bg-red-500/20 text-red-200 border-red-500/40",
   };
   return (
     <span

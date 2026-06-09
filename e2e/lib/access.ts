@@ -30,6 +30,15 @@ export async function expectBlocked(
   path: string,
   persona: string,
 ): Promise<void> {
+  // Round-14 — requireRole now redirects to /forbidden. Because the
+  // (app) loading.tsx boundary streams the response, the redirect
+  // arrives as a client navigation that may still be in flight when
+  // goto() resolves; give it a moment to land before sampling.
+  if ((resp?.status() ?? 0) < 400 && !page.url().includes("/forbidden")) {
+    await page
+      .waitForURL(/\/(forbidden|signin)/, { timeout: 5_000 })
+      .catch(() => {});
+  }
   const html = await page.content();
   const blocked =
     (resp?.status() ?? 0) >= 400 ||

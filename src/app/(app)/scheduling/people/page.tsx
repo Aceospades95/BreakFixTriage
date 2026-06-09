@@ -184,7 +184,7 @@ export default async function PeopleSchedulingPage({
             {sortedUsers.map((u) => {
               const userBlocks = blocksByUser.get(u.id) ?? [];
               return (
-                <tr key={u.id}>
+                <tr key={u.id} data-testid="people-row">
                   <td className="sticky left-0 z-10 bg-surface px-3 py-2 align-top">
                     <div className="font-medium">
                       {u.name}
@@ -211,6 +211,8 @@ export default async function PeopleSchedulingPage({
                         {userBlocks.map((b) => (
                           <span
                             key={b.id}
+                            data-testid="block-segment"
+                            data-kind={b.kind}
                             title={[
                               `${humanise(b.kind)}`,
                               `${formatMinutes(b.startMinute)}–${formatMinutes(b.endMinute)}`,
@@ -256,6 +258,7 @@ export default async function PeopleSchedulingPage({
                         </summary>
                         <form
                           action={createScheduleBlockAction}
+                          data-testid="people-add-block-form"
                           className="mt-1 grid gap-1 rounded border border-surface-border bg-surface-muted/40 p-2"
                         >
                           <input

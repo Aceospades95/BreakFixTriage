@@ -4,7 +4,7 @@ import { expectBlocked } from "../lib/access";
 
 /**
  * STATUS: Aspirational coverage for Round-13 §2F persona scope.
- * Tests below are marked test.fixme() because the read-only
+ * Tests below are marked test() because the read-only
  * role's full permission matrix + the /forbidden redirect path
  * + the seeded persona fixtures all assume app surfaces not yet
  * wired end-to-end on this branch. See docs/round-13-backlog.md
@@ -29,7 +29,7 @@ import { expectBlocked } from "../lib/access";
  */
 
 test.describe("§2F read-only persona", () => {
-  test.fixme("can browse every read surface", async ({ page }) => {
+  test("can browse every read surface", async ({ page }) => {
     await signInAs(page, PERSONA.READ_ONLY);
 
     for (const path of [
@@ -48,11 +48,28 @@ test.describe("§2F read-only persona", () => {
       "/me/preferences",
     ] as const) {
       const resp = await page.goto(path);
-      expect(resp?.status(), `${path} blocked Ray`).toBe(200);
+      if (path === "/my-day") {
+        // /my-day redirects to "/" via a streamed client
+        // navigation; let it settle before the next goto or the
+        // following navigation aborts with ERR_ABORTED.
+        await page.waitForURL((u) => u.pathname === "/", {
+          timeout: 10_000,
+        });
+      }
+      // goto() returns null when the navigation is superseded by a
+      // same-document transition; fall back to asserting the
+      // rendered page isn't an error or forbidden surface.
+      if (resp) {
+        expect(resp.status(), `${path} blocked Ray`).toBe(200);
+      }
+      await expect(page.getByTestId("global-error-boundary")).toHaveCount(0);
+      expect(page.url(), `${path} redirected Ray to /forbidden`).not.toMatch(
+        /\/(forbidden|signin)/,
+      );
     }
   });
 
-  test.fixme("API mutation endpoints return 403 to Ray", async ({ page }) => {
+  test("API mutation endpoints return 403 to Ray", async ({ page }) => {
     await signInAs(page, PERSONA.READ_ONLY);
 
     // Pick a representative mutation API endpoint. Read-only
@@ -69,7 +86,7 @@ test.describe("§2F read-only persona", () => {
     }
   });
 
-  test.fixme("forbidden pages 403 / redirect / error-boundary, never crash", async ({
+  test("forbidden pages 403 / redirect / error-boundary, never crash", async ({
     page,
   }) => {
     await signInAs(page, PERSONA.READ_ONLY);

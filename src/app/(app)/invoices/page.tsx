@@ -22,8 +22,11 @@ export default async function InvoicesPage({
 }: {
   searchParams?: { error?: string };
 }) {
-  // Invoices are only accessible to managers and admins
-  const session = await requireRole(PERMISSIONS.QUOTES_READ, PERMISSIONS.TICKETS_WRITE);
+  // Round-14 — the queue is a read surface (docs/sitemap.md:
+  // READ_ONLY + QUOTES_READ). The old TICKETS_WRITE gate locked the
+  // read-only role out entirely; writes stay gated by `canWrite`
+  // below plus the server actions' own permission checks.
+  const session = await requireRole(PERMISSIONS.QUOTES_READ);
   const canWrite = can(session.role, PERMISSIONS.QUOTES_WRITE);
 
   const tickets = await prisma.ticket.findMany({

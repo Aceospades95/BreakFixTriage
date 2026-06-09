@@ -149,7 +149,9 @@ describe("Round-12 §3F — Read-only API hardening", () => {
 
   it("e2e/readonly-role-403.spec.ts ships the live HTTP walk", () => {
     const src = read("e2e/readonly-role-403.spec.ts");
-    expect(src).toContain("READONLY_EMAIL");
+    // Round-14 — the spec signs in via the JWT helper's PERSONA
+    // constant instead of a local READONLY_EMAIL literal.
+    expect(src).toContain("PERSONA.READ_ONLY");
     expect(src).toMatch(/\[401, 403\]/);
     // Walks the API export endpoints.
     expect(src).toContain("/api/exports/users");

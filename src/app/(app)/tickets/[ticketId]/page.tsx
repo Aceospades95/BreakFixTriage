@@ -669,7 +669,7 @@ export default async function TicketDetailPage({
             </Card>
           )}
 
-          <Card title="Available transitions">
+          <Card title="Available transitions" testId="available-transitions">
             {!canTransition ? (
               <p className="text-sm text-slate-400">
                 Your role cannot transition tickets.
@@ -1175,12 +1175,17 @@ export default async function TicketDetailPage({
 function Card({
   title,
   children,
+  testId,
 }: {
   title: string;
   children: React.ReactNode;
+  testId?: string;
 }) {
   return (
-    <div className="rounded-lg border border-surface-border bg-surface-muted/60 p-4">
+    <div
+      data-testid={testId}
+      className="rounded-lg border border-surface-border bg-surface-muted/60 p-4"
+    >
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
         {title}
       </h2>

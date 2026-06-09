@@ -5,7 +5,7 @@ import { signInAs, PERSONA } from "../lib/sign-in-as";
 /**
  * STATUS: Aspirational coverage for Round-13 §2G persona scope.
  * The destructive-action stress walk (reset 2FA + revoke all
- * sessions + bulk close + force state) is marked test.fixme()
+ * sessions + bulk close + force state) is marked test()
  * because the bulk-close-stale and force-state flows are not
  * yet wired end-to-end on this branch. See docs/round-13-backlog.md
  * (B14).
@@ -38,7 +38,7 @@ test.describe("§2G admin-destructive persona", () => {
     await prisma.$disconnect();
   });
 
-  test.fixme("Alex Admin can navigate to /admin/users/[id]", async ({ page }) => {
+  test("Alex Admin can navigate to /admin/users/[id]", async ({ page }) => {
     await signInAs(page, PERSONA.ADMIN);
     const tess = await prisma.user.findUnique({
       where: { email: PERSONA.TECHNICIAN },
@@ -57,7 +57,7 @@ test.describe("§2G admin-destructive persona", () => {
     expect(html).not.toContain('data-testid="chromed-not-found"');
   });
 
-  test.fixme("reset 2FA + sign out all + bulk close + force state — each writes audit", async ({
+  test("reset 2FA + sign out all + bulk close + force state — each writes audit", async ({
     page,
   }) => {
     await signInAs(page, PERSONA.ADMIN);

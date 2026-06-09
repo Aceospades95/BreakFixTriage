@@ -54,6 +54,9 @@ export const ROUTES_MANIFEST: ReadonlyArray<RouteEntry> = [
   { path: "/notifications", allow: ALL_AUTHENTICATED },
   { path: "/profile", allow: ALL_AUTHENTICATED },
   { path: "/profile/2fa", allow: ALL_AUTHENTICATED },
+  // Round-14 (B8) — chromed access-denied destination for
+  // requireRole redirects.
+  { path: "/forbidden", allow: ALL_AUTHENTICATED },
   // Round-13 §1A — /people redirects to /scheduling/people.
   {
     path: "/people",

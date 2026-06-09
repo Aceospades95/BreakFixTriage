@@ -1,9 +1,17 @@
 name: ci
 
+# Round-14 — the push trigger pointed at `main`, but the repository's
+# default branch is `Main-BreakFix` and no `main` branch exists, so
+# the push trigger never fired; CI only ever ran on pull_request
+# events. Cover the default branch and working branches so every
+# push gets the full gate set (the docker-publish workflow already
+# builds claude/** pushes — they should be validated too).
 on:
   pull_request:
   push:
-    branches: [main]
+    branches:
+      - Main-BreakFix
+      - "claude/**"
 
 jobs:
   forbidden-tokens:

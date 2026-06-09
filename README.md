@@ -22,6 +22,20 @@ spreadsheet-based operational workflow with:
 See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
 `docs/ASSUMPTIONS.md` for the full design.
 
+## Round-14 live-runtime review (June 2026)
+
+The first full review run against a live runtime (Postgres +
+production build + Playwright). Re-activated the e2e suite (every
+spec had been blanket-`fixme`'d), fixed the authorization layer
+(`requireRole` now redirects to a chromed `/forbidden` page —
+ADR 0017), graduated `/scheduling/routes` to a real index page,
+added a root-level branded 404, made the bench "Pick up"
+affordance actually reachable by technicians, and implemented the
+state-machine + import-dedupe integration tests that had been
+`it.todo` stubs since Round 11. Full detail in
+`docs/round-14-summary.md`; verification protocol in
+`docs/round-14-qa-checklist.md`.
+
 ## Migration audit (May 2026)
 
 A two-pass audit landed on `claude/breakfix-triage-audit-ZDYuJ`.

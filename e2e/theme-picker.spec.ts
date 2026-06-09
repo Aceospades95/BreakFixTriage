@@ -13,7 +13,7 @@ const DARK_SURFACE = "rgb(17, 25, 39)";
 const LIGHT_SURFACE = "rgb(243, 244, 246)";
 
 test.describe("§1G theme picker", () => {
-  test.fixme("optimistic flip + persists across reload + system mode honors OS", async ({
+  test("optimistic flip + persists across reload + system mode honors OS", async ({
     page,
   }) => {
     await signInAs(page, PERSONA.ADMIN);
@@ -23,10 +23,12 @@ test.describe("§1G theme picker", () => {
     const body = page.locator("body");
 
     // --- 1 + 2 + 3 — pick Light ---
-    await page
-      .locator('[data-theme-option="light"]')
-      .click({ timeout: 100 });
-    await expect(html).toHaveClass(/(^|\s)light(\s|$)/, { timeout: 100 });
+    // The flip assertion stays tight (500ms) to prove the change is
+    // optimistic (a server roundtrip + re-render would blow it); the
+    // click itself gets the default timeout — it isn't the thing
+    // under test.
+    await page.locator('[data-theme-option="light"]').click();
+    await expect(html).toHaveClass(/(^|\s)light(\s|$)/, { timeout: 500 });
 
     await page.reload();
     await expect(html).toHaveClass(/(^|\s)light(\s|$)/);
@@ -34,7 +36,7 @@ test.describe("§1G theme picker", () => {
 
     // --- 4 — pick Dark ---
     await page.locator('[data-theme-option="dark"]').click();
-    await expect(html).toHaveClass(/(^|\s)dark(\s|$)/, { timeout: 100 });
+    await expect(html).toHaveClass(/(^|\s)dark(\s|$)/, { timeout: 500 });
     await page.reload();
     await expect(html).toHaveClass(/(^|\s)dark(\s|$)/);
     await expect(body).toHaveCSS("background-color", DARK_SURFACE);
@@ -65,7 +67,7 @@ test.describe("§1G theme picker", () => {
     }
   });
 
-  test.fixme("anonymous /signin respects OS preference (no DB row, no cookie)", async ({
+  test("anonymous /signin respects OS preference (no DB row, no cookie)", async ({
     page,
     context,
   }) => {
@@ -85,12 +87,18 @@ test.describe("§1G theme picker", () => {
     await expect(page.locator("html")).toHaveClass(/(^|\s)dark(\s|$)/);
   });
 
-  test.fixme("server reflects the DB pick on a fresh session", async ({
+  test("server reflects the DB pick on a fresh session", async ({
     page,
     context,
   }) => {
     await signInAs(page, PERSONA.ADMIN);
     await page.goto("/me/preferences");
+    // The picker no-ops (no save, no toast) when the clicked theme
+    // is already active — and the persona's saved theme survives
+    // between runs. Force a real state change: go dark first, then
+    // light, so the light click is always a genuine save.
+    await page.locator('[data-theme-option="dark"]').click();
+    await expect(page.locator("html")).toHaveClass(/(^|\s)dark(\s|$)/);
     await page.locator('[data-theme-option="light"]').click();
     // Wait for the API write to complete (toast appears).
     await expect(page.getByText(/Preferences saved/i)).toBeVisible({

@@ -41,19 +41,10 @@ const THEMES = [
 test.describe("@contrast 12-page sweep", () => {
   for (const theme of THEMES) {
     for (const path of PAGES) {
-      test.fixme(`${path} contrast in ${theme.name} mode`, async ({
+      test(`${path} contrast in ${theme.name} mode`, async ({
         page,
         context,
       }) => {
-        // Round-13 hotfix — /my-day light-mode renders gray-on-
-        // gray text in the OPS ATTENTION cards that drops below
-        // 4.5:1 on the first sidebar nav contrast check. Filed
-        // as B15 in docs/round-13-backlog.md. Skip just the one
-        // combo until the rgba bump lands.
-        test.fixme(
-          path === "/my-day" && theme.name === "light",
-          "B15: /my-day light-mode OPS ATTENTION card text needs rgba bump",
-        );
         await signInAs(page, PERSONA.ADMIN);
 
         // Force the theme via the canonical cookie. resolveTheme()
@@ -68,6 +59,15 @@ test.describe("@contrast 12-page sweep", () => {
         ]);
 
         await page.goto(path);
+        if (path === "/my-day") {
+          // /my-day is a redirect page (My Day lives on "/"). The
+          // redirect streams in as a client navigation; measuring
+          // before it lands races the evaluation context. This race
+          // was misfiled as a contrast violation in R13 (B15).
+          await page.waitForURL((u) => u.pathname === "/", {
+            timeout: 10_000,
+          });
+        }
 
         // (1) — data-theme-resolved is never "pending".
         const resolved = await page

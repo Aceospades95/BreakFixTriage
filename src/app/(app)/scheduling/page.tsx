@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { JobStatus, JobType, TicketState } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { RouteStatusPill } from "@/components/route-status-pill";
 import { StatePill } from "@/components/state-pill";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
@@ -402,30 +403,6 @@ function EmptyBlock({ children }: { children: React.ReactNode }) {
     <div className="rounded border border-surface-border bg-surface-muted/40 p-6 text-center text-sm text-slate-400">
       {children}
     </div>
-  );
-}
-
-function RouteStatusPill({
-  status,
-}: {
-  status: "DRAFT" | "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
-}) {
-  const cls =
-    status === "IN_PROGRESS"
-      ? "bg-amber-500/20 text-amber-200 border-amber-500/40"
-      : status === "PLANNED"
-        ? "bg-indigo-500/20 text-indigo-200 border-indigo-500/40"
-        : status === "COMPLETED"
-          ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/40"
-          : status === "CANCELLED"
-            ? "bg-red-500/20 text-red-200 border-red-500/40"
-            : "bg-slate-500/20 text-slate-200 border-slate-500/40";
-  return (
-    <span
-      className={`rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide ${cls}`}
-    >
-      {humanise(status)}
-    </span>
   );
 }
 

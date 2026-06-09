@@ -4,6 +4,7 @@ import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit, type TransitionType } from "@/lib/audit/audit";
 import { publish } from "@/lib/events/bus";
 import { dispatchEmailEvent } from "@/lib/email/send";
+import { buildTicketEmailVariables } from "@/lib/email/variables";
 import {
   getEffectiveNotifyOnEnter,
   getEffectiveTransitions,
@@ -313,18 +314,20 @@ async function maybeDispatchTransitionEmail(
   const config = await readStatusConfig();
   if (!getEffectiveNotifyOnEnter(ticket.state, config)) return;
   try {
+    // Round-15 — the templates interpolate {{ticket.*}} + {{link}}
+    // (and {{reason}} on ticket_closed); the old flat-id payload
+    // failed template validation on every transition send.
+    const variables = await buildTicketEmailVariables(ticket.id, db, {
+      reason: opts.reason ?? "",
+    });
+    if (!variables) return;
     await dispatchEmailEvent(
       event,
       {
         ticketId: ticket.id,
         schoolId: ticket.schoolId,
         actorUserId: opts.actorUserId ?? null,
-        variables: {
-          ticketId: ticket.id,
-          incidentNumber: ticket.incidentNumber,
-          state: ticket.state,
-          reason: opts.reason ?? null,
-        },
+        variables,
       },
       db,
     );

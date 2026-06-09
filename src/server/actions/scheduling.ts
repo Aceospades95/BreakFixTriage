@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { dispatchEmailEvent } from "@/lib/email";
+import { buildTicketEmailVariables } from "@/lib/email/variables";
 import { writeAudit } from "@/lib/audit/audit";
 import { buildRoute, createJob } from "@/lib/scheduling/jobs";
 import { cancelRoute, reorderRoute } from "@/lib/scheduling/routes";
@@ -137,20 +138,31 @@ export async function buildRouteAction(formData: FormData) {
               schoolId: true,
             },
           },
+          route: {
+            select: { assignee: { select: { name: true } } },
+          },
         },
       });
       for (const stop of deliveryStops) {
         for (const link of stop.job.ticketLinks) {
+          // Round-15 — the template interpolates {{ticket.*}},
+          // {{stop.window}} and {{driver.name}}; the old flat-id
+          // payload failed validation and never sent.
+          const variables = await buildTicketEmailVariables(
+            link.ticketId,
+            prisma,
+            {
+              stop: { window: parsed.data.date },
+              driver: { name: stop.route.assignee.name },
+            },
+          );
+          if (!variables) continue;
           await dispatchEmailEvent("delivery_scheduled", {
             ticketId: link.ticketId,
             schoolId: stop.job.schoolId,
             routeId: route.id,
             actorUserId: session.userId,
-            variables: {
-              ticketId: link.ticketId,
-              routeId: route.id,
-              date: parsed.data.date,
-            },
+            variables,
           });
         }
       }
@@ -299,14 +311,18 @@ export async function updateStopStatusAction(formData: FormData) {
         });
         if (stop?.job.type === JobType.PICKUP) {
           for (const link of stop.job.ticketLinks) {
+            // Round-15 — template interpolates {{ticket.*}} +
+            // {{link}}; flat ids failed validation and never sent.
+            const variables = await buildTicketEmailVariables(
+              link.ticketId,
+              prisma,
+            );
+            if (!variables) continue;
             await dispatchEmailEvent("pickup_completed", {
               ticketId: link.ticketId,
               schoolId: stop.job.schoolId,
               actorUserId: session.userId,
-              variables: {
-                ticketId: link.ticketId,
-                stopId: parsed.data.stopId,
-              },
+              variables,
             });
           }
         }

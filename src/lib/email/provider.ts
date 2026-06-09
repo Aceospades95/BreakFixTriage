@@ -1,13 +1,18 @@
 /**
  * Email provider abstraction.
  *
- * Round-2 §3. Three implementations:
+ * Round-2 §3. Four implementations:
  *
  *   - "stdout"  — logs to console; useful in dev / CI / when the
  *                 deploy target has no SMTP gateway. Default.
  *   - "smtp"    — reuses the existing nodemailer-backed
  *                 NotificationTransport from src/lib/notifications/.
  *                 SMTP_* envs are the contract.
+ *   - "memory"  — Round-15 (graduates backlog B12 option b): an
+ *                 in-process inbox for tests. Messages append to an
+ *                 array readable via getMemoryInbox(); nothing
+ *                 leaves the process. Selected via
+ *                 EMAIL_PROVIDER=memory or the explicit arg.
  *   - "resend"  — placeholder. The brief calls Resend the preferred
  *                 default; wiring requires `RESEND_API_KEY`. Until
  *                 that env is provisioned, the implementation falls
@@ -63,6 +68,28 @@ const StdoutProvider: EmailProvider = {
   },
 };
 
+// Round-15 (B12 option b) — in-memory inbox for integration tests.
+// Append-only within a process; tests clear between cases.
+const memoryInbox: EmailMessage[] = [];
+
+const MemoryProvider: EmailProvider = {
+  name: "memory",
+  async send(msg) {
+    memoryInbox.push(msg);
+    return { ok: true, providerMessageId: `memory-${memoryInbox.length}` };
+  },
+};
+
+/** Test-only: messages "sent" through the memory provider. */
+export function getMemoryInbox(): readonly EmailMessage[] {
+  return memoryInbox;
+}
+
+/** Test-only: empty the memory inbox between cases. */
+export function clearMemoryInbox(): void {
+  memoryInbox.length = 0;
+}
+
 function buildSmtpProvider(): EmailProvider | null {
   const t = buildSmtpTransport();
   if (!t) return null;
@@ -104,12 +131,22 @@ let cached: EmailProvider | null = null;
  * @param explicit  Override the cached resolution. Used by tests.
  */
 export function getEmailProvider(
-  explicit?: "stdout" | "smtp" | "resend",
+  explicit?: "stdout" | "smtp" | "resend" | "memory",
 ): EmailProvider {
   const choice =
     explicit ??
-    (process.env.EMAIL_PROVIDER as "stdout" | "smtp" | "resend" | undefined) ??
+    (process.env.EMAIL_PROVIDER as
+      | "stdout"
+      | "smtp"
+      | "resend"
+      | "memory"
+      | undefined) ??
     (isSmtpConfigured() ? "smtp" : "stdout");
+
+  if (choice === "memory") {
+    cached = MemoryProvider;
+    return MemoryProvider;
+  }
 
   if (choice === "smtp") {
     const smtp = buildSmtpProvider();

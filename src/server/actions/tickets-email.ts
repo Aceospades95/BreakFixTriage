@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { dispatchEmailEvent } from "@/lib/email";
+import { buildTicketEmailVariables } from "@/lib/email/variables";
 
 /**
  * Round-6 §3B — manual operator-to-SPOC ticket update.
@@ -78,21 +79,17 @@ export async function emailSpocFromTicket(input: {
     ticketId: ticket.id,
     schoolId: ticket.schoolId,
     actorUserId: session.userId,
-    variables: {
-      ticket: {
-        number: ticket.incidentNumber,
-        school: ticket.school.name,
-        summary: ticket.shortDescription,
-        status: ticket.state,
-      },
+    // Round-15 — shared builder; the old inline blob used a
+    // relative /tickets/<cuid> link (dead inside a mail client)
+    // and a raw enum for {{ticket.status}}.
+    variables: (await buildTicketEmailVariables(ticket.id, prisma, {
       body: parsed.data.body,
       // The render layer prefers explicit subject overrides via the
       // template, but pass the operator-edited subject as a variable
       // so a future template can choose `{{customSubject}}` if it
       // wants the operator's exact wording.
       customSubject: parsed.data.subject,
-      link: `/tickets/${ticket.id}`,
-    },
+    })) ?? { body: parsed.data.body },
   });
 
   await writeAudit({

@@ -21,14 +21,29 @@ test.describe("§1G theme picker", () => {
 
     const html = page.locator("html");
     const body = page.locator("body");
+    const savedToast = page.getByText(/Preferences saved/i);
+
+    // Force a known non-light starting state so every pick below is
+    // a real change (the picker no-ops when the clicked theme is
+    // already active, and a no-op shows no save confirmation).
+    const lightActive = await page
+      .locator('[data-theme-option="light"]')
+      .getAttribute("aria-checked");
+    if (lightActive === "true") {
+      await page.locator('[data-theme-option="dark"]').click();
+      await expect(savedToast).toBeVisible({ timeout: 5000 });
+      await page.reload();
+    }
 
     // --- 1 + 2 + 3 — pick Light ---
     // The flip assertion stays tight (500ms) to prove the change is
-    // optimistic (a server roundtrip + re-render would blow it); the
-    // click itself gets the default timeout — it isn't the thing
-    // under test.
+    // optimistic. Crucially: wait for the save confirmation BEFORE
+    // reloading — the optimistic flip resolves before the POST, and
+    // a reload mid-flight cancels the save (this raced under full-
+    // suite load).
     await page.locator('[data-theme-option="light"]').click();
     await expect(html).toHaveClass(/(^|\s)light(\s|$)/, { timeout: 500 });
+    await expect(savedToast).toBeVisible({ timeout: 5000 });
 
     await page.reload();
     await expect(html).toHaveClass(/(^|\s)light(\s|$)/);
@@ -37,6 +52,7 @@ test.describe("§1G theme picker", () => {
     // --- 4 — pick Dark ---
     await page.locator('[data-theme-option="dark"]').click();
     await expect(html).toHaveClass(/(^|\s)dark(\s|$)/, { timeout: 500 });
+    await expect(savedToast).toBeVisible({ timeout: 5000 });
     await page.reload();
     await expect(html).toHaveClass(/(^|\s)dark(\s|$)/);
     await expect(body).toHaveCSS("background-color", DARK_SURFACE);
@@ -55,6 +71,12 @@ test.describe("§1G theme picker", () => {
     // script stamps it before paint for system mode.
     for (const choice of ["light", "dark", "system"] as const) {
       await page.locator(`[data-theme-option="${choice}"]`).click();
+      // Same save-before-reload rule as above; the prior pick in
+      // this loop is always a different theme, so a toast always
+      // appears.
+      await expect(page.getByText(/Preferences saved/i)).toBeVisible({
+        timeout: 5000,
+      });
       await page.reload();
       const resolved = await html.getAttribute("data-theme-resolved");
       expect(

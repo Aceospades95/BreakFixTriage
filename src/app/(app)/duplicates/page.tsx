@@ -115,7 +115,7 @@ export default async function DuplicatesPage({
               {unlinkedSynthetics.length}
             </span>
           </h2>
-          <p className="mb-3 text-xs text-violet-300/80">
+          <p className="mb-3 text-xs text-violet-200">
             Each card below is a synthetic ticket minted by a tech on a
             route stop. Link it to its real SNOW incident number to fold
             the synthetic side into the SNOW record.

@@ -187,6 +187,18 @@
 :root:not(.dark) .text-indigo-200 { color: rgb(30 27 75); }
 :root:not(.dark) .text-blue-200 { color: rgb(30 58 138); }
 
+/* Round-15 (B9) — dark-mode accent buttons/links inherited the
+ * near-white body text on the bright green accent: 2.07:1. Mirror
+ * of the light-mode `button.bg-accent { color: white }` remap —
+ * primary-foreground in dark is the deep green (5 46 22), 6.5:1 on
+ * accent and 4.5:1 on the accent-strong hover. Elements that set
+ * an explicit readable text class are unaffected in practice (the
+ * remap simply pins the same value the design intends). */
+:root.dark .bg-accent,
+:root.dark .bg-accent-strong {
+  color: rgb(var(--color-primary-foreground));
+}
+
 /* Round-15 (B9) — dark-mode counterpart for the two slate tiers
  * that fail AA against the dark card/muted surfaces (slate-500 is
  * 3.05:1 on #1a2a40). One notch lighter clears 4.8:1+ everywhere

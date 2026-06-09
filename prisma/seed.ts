@@ -31,36 +31,40 @@ async function main() {
   });
 
   // Users: one per role
+  // Round-15 (C1) — names deliberately differ from the e2e personas
+  // in seed-test.ts (Alex/Olivia/Dana/Wes/Tess/Dante/Ray) so a dev
+  // DB seeded with both doesn't render duplicate identical names on
+  // /people and /scheduling/people.
   const users: { email: string; name: string; role: Role }[] = [
-    { email: "admin@breakfix.local", name: "Alex Admin", role: Role.ADMIN },
+    { email: "admin@breakfix.local", name: "Avery Admin", role: Role.ADMIN },
     {
       email: "ops@breakfix.local",
-      name: "Olivia Ops",
+      name: "Omar Ops",
       role: Role.OPS_MANAGER,
     },
     {
       email: "dispatch@breakfix.local",
-      name: "Dana Dispatcher",
+      name: "Dev Dispatcher",
       role: Role.DISPATCHER,
     },
     {
       email: "warehouse@breakfix.local",
-      name: "Wes Warehouse",
+      name: "Willa Warehouse",
       role: Role.WAREHOUSE,
     },
     {
       email: "tech@breakfix.local",
-      name: "Tess Technician",
+      name: "Theo Technician",
       role: Role.TECHNICIAN,
     },
     {
       email: "driver@breakfix.local",
-      name: "Dante Driver",
+      name: "Dora Driver",
       role: Role.DRIVER,
     },
     {
       email: "readonly@breakfix.local",
-      name: "Ray ReadOnly",
+      name: "Rita ReadOnly",
       role: Role.READ_ONLY,
     },
   ];

@@ -129,10 +129,14 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-xs uppercase tracking-wide text-slate-400">
+      <label
+        htmlFor={`pw-${name}`}
+        className="mb-1 block text-xs uppercase tracking-wide text-slate-400"
+      >
         {label}
       </label>
       <input
+        id={`pw-${name}`}
         type="password"
         name={name}
         required

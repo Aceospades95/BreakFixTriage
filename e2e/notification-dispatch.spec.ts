@@ -1,65 +1,67 @@
 import { test, expect } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+import { signInAs, PERSONA } from "./lib/sign-in-as";
+
+const prisma = new PrismaClient();
 
 /**
- * Round-11 §2B — graduates Round-10 §3D.
+ * Round-11 §2B — graduates Round-10 §3D. Re-activated in Round-15:
+ * the B12 blocker closed via the in-memory provider work, and the
+ * fixtures (TicketTemplate + SPOC contact + enabled GLOBAL
+ * ticket_created rule) now ship in prisma/seed-test.ts.
  *
- * Sign in as Alex Admin → create a new ticket via /tickets quick-
- * create from a seeded template → assert that within 5 seconds an
- * EmailLog row exists with:
- *
- *   - templateId matching the seeded ticket_created template
- *   - to[] including the school's SPOC contact email
- *   - status === "dispatched" (or "queued" if the async worker
- *     hasn't drained the queue yet)
- *   - subject matching the rendered template
- *
- * The fixture suite uses an in-memory SMTP transport (see
- * docs/round-11-email-fixtures.md) so the assertion doesn't
- * depend on a real provider. The transport is wired in the test
- * harness via SMTP_HOST / SMTP_PORT pointing at Mailpit.
- *
- * Runtime depends on §2D CI Postgres + Playwright + email
- * fixture. Until that lands, this spec runs manually per the
- * qa-checklist.
+ * Sign in as Alex Admin → create a ticket via the /tickets
+ * quick-create form → assert /admin/email-log shows the dispatch
+ * row for the new incident with a non-failed status. When a
+ * Mailpit container is present (CI integration profile) the
+ * optional probe also asserts SMTP capture.
  */
 
-// Round-13 hotfix — fixme'd until Mailpit fixture lands (B12).
-// Spec also still uses the form-submit signIn helper which needs
-// migration to lib/sign-in-as.ts before the assertions can run.
-test.fixme("§2B: ticket creation enqueues a SPOC notification", async ({ page, request }) => {
-  await signIn(page, "alex@example.test");
+test("§2B: ticket creation enqueues a SPOC notification", async ({
+  page,
+  request,
+}) => {
+  await signInAs(page, PERSONA.ADMIN);
 
-  // Use the quick-create form on /tickets — the seed loads at
-  // least one template.
   await page.goto("/tickets");
-  await expect(page.getByRole("heading", { name: /tickets/i })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /tickets/i }),
+  ).toBeVisible();
 
-  const form = page.locator('form[action*="createTicketFromTemplateAction"]');
-  await form.locator('select[name="templateId"]').selectOption({ index: 1 });
-  await form.locator('select[name="schoolId"]').selectOption({ index: 1 });
+  // Resolve fixture ids via Prisma so the option picks are exact
+  // regardless of display-label formatting.
+  const template = await prisma.ticketTemplate.findUniqueOrThrow({
+    where: { name: "Cracked screen (test)" },
+    select: { id: true },
+  });
+  // TEST-101 carries the seeded SPOC contact; pick it explicitly so
+  // recipient resolution always has someone to address.
+  const school = await prisma.school.findUniqueOrThrow({
+    where: { code: "TEST-101" },
+    select: { id: true },
+  });
+
+  const form = page.getByTestId("quick-create-form");
+  await expect(form).toBeVisible();
+  await form.locator('select[name="templateId"]').selectOption(template.id);
+  await form.locator('select[name="schoolId"]').selectOption(school.id);
   await form.getByRole("button", { name: /create ticket/i }).click();
 
-  // The redirect lands on the new ticket. Capture the INC#.
-  await page.waitForURL(/\/tickets\//);
-  const url = new URL(page.url());
-  const incidentMatch = url.pathname.match(/\/tickets\/(INC[A-Z0-9-]+)/);
-  expect(incidentMatch).not.toBeNull();
-  const incidentNumber = incidentMatch![1];
+  // The redirect lands on /tickets/<LOCAL#> — quick-create mints
+  // LOCAL-prefixed numbers (outside the ServiceNow INC space).
+  await page.waitForURL(/\/tickets\/LOCAL[A-Z0-9]+/, { timeout: 15_000 });
+  const incidentNumber = new URL(page.url()).pathname.split("/").pop()!;
+  expect(incidentNumber).toMatch(/^LOCAL/);
 
-  // Wait up to 5s for the EmailLog row to appear. Polled via the
-  // /admin/email-log page so we exercise the same view operators
-  // see.
-  await signIn(page, "alex@example.test");
+  // The dispatch row appears on the operator-facing email log.
+  // The page renders entries as a list, not a table.
   await page.goto("/admin/email-log");
+  const matchingRow = page.locator("li", { hasText: incidentNumber });
+  await expect(matchingRow.first()).toBeVisible({ timeout: 10_000 });
+  await expect(matchingRow.first()).toContainText(/queued|sent|dispatched/i);
 
-  const matchingRow = page.locator("tr", {
-    has: page.locator(`text=${incidentNumber}`),
-  });
-  await expect(matchingRow).toBeVisible({ timeout: 5000 });
-  await expect(matchingRow).toContainText(/dispatched|queued/i);
-
-  // Sanity check the SMTP capture — Mailpit exposes a JSON API on
-  // :8025 that the test harness probes.
+  // Optional Mailpit probe — present only in the CI integration
+  // profile; skipped silently elsewhere.
   const mailpit = await request
     .get("http://127.0.0.1:8025/api/v1/messages")
     .catch(() => null);
@@ -71,14 +73,3 @@ test.fixme("§2B: ticket creation enqueues a SPOC notification", async ({ page, 
     expect(subjects.some((s) => s.includes(incidentNumber))).toBe(true);
   }
 });
-
-async function signIn(
-  page: import("@playwright/test").Page,
-  email: string,
-) {
-  await page.goto("/signin");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', "test-password");
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.startsWith("/signin"));
-}

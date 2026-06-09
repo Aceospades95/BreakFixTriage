@@ -225,7 +225,7 @@ export function OnboardingTour({
             <button
               type="button"
               onClick={close}
-              className="rounded bg-accent px-4 py-2 text-sm font-semibold hover:bg-accent-strong"
+              className="rounded bg-accent px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-accent-strong"
             >
               Got it
             </button>
@@ -233,7 +233,7 @@ export function OnboardingTour({
             <button
               type="button"
               onClick={() => setStepIdx((i) => i + 1)}
-              className="rounded bg-accent px-4 py-2 text-sm font-semibold hover:bg-accent-strong"
+              className="rounded bg-accent px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-accent-strong"
             >
               Next →
             </button>

@@ -147,7 +147,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ticket state machine", () => {
     expect(audit?.transitionType).toBe("forced");
   });
 
-  it.todo(
-    "transition emits dispatchEmailEvent for notifyOnEnter states — covered by dispatch-email-event.test.ts once the Mailpit fixture (B12) lands",
-  );
+  // "transition emits dispatchEmailEvent for notifyOnEnter states"
+  // is covered end-to-end (rule → render → queue → memory-provider
+  // send) by dispatch-email-event.test.ts — Round-15, B12 option b.
 });

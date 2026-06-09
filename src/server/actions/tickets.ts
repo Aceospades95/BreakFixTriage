@@ -10,6 +10,7 @@ import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { createInAppNotification } from "@/lib/notifications/in-app";
 import { dispatchEmailEvent } from "@/lib/email";
+import { buildTicketEmailVariables } from "@/lib/email/variables";
 import {
   GuardFailedError,
   InvalidTransitionError,
@@ -277,18 +278,31 @@ export async function updateTicketAction(formData: FormData) {
           // Skipped when the operator assigns the ticket to themself
           // because nobody wants an email about their own action.
           try {
-            await dispatchEmailEvent("ticket_assigned", {
-              ticketId: existing.id,
-              schoolId: existing.schoolId,
-              actorUserId: session.userId,
-              variables: {
-                ticketId: existing.id,
-                incidentNumber: existing.incidentNumber,
-                shortDescription: existing.shortDescription,
-                assigneeUserId: after.assignedUserId,
-                fromAssigneeUserId: existing.assignedUserId,
-              },
+            // Round-15 — template interpolates {{ticket.*}},
+            // {{assignee.name}} + {{link}}; the old flat-id payload
+            // failed validation and never sent.
+            const newAssignee = await prisma.user.findUnique({
+              where: { id: after.assignedUserId },
+              select: { name: true, email: true },
             });
+            const variables = await buildTicketEmailVariables(
+              existing.id,
+              prisma,
+              {
+                assignee: {
+                  name: newAssignee?.name ?? "(unknown)",
+                  email: newAssignee?.email ?? "",
+                },
+              },
+            );
+            if (variables) {
+              await dispatchEmailEvent("ticket_assigned", {
+                ticketId: existing.id,
+                schoolId: existing.schoolId,
+                actorUserId: session.userId,
+                variables,
+              });
+            }
           } catch (err) {
             // Audit-only failure — assignment already persisted.
             console.error(

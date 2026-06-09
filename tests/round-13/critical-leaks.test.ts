@@ -14,19 +14,23 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
  *   §1D — /admin/email-rules wraps tokens in <code>
  */
 
-describe("Round-13 §1A — sidebar /people redirect", () => {
-  it("/people page exists and redirects to /scheduling/people", () => {
+describe("Round-13 §1A — /people resolves (graduated R15)", () => {
+  // Round-15 (B11) graduated the R13 redirect into a real directory
+  // page — the R13 decision doc planned exactly this. The §1A
+  // contract that survives is "typing /people resolves to a useful
+  // surface", now pinned against the directory itself.
+  it("/people page exists as a real directory", () => {
     const path = join(ROOT, "src/app/(app)/people/page.tsx");
     expect(existsSync(path)).toBe(true);
     const src = read("src/app/(app)/people/page.tsx");
-    expect(src).toContain('redirect("/scheduling/people")');
-    expect(src).toContain('from "next/navigation"');
+    expect(src).toContain("requireSession");
+    expect(src).toContain("/scheduling/people");
+    expect(src).not.toContain('redirect("/scheduling/people")');
   });
 
-  it("routes manifest includes /people with redirectsTo set", () => {
+  it("routes manifest includes /people as a destination", () => {
     const src = read("src/lib/routes-manifest.ts");
     expect(src).toContain('path: "/people"');
-    expect(src).toContain('redirectsTo: "/scheduling/people"');
   });
 
   it("every sidebar href is in the routes manifest", async () => {

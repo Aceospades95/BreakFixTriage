@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { prisma } from "@/lib/db/prisma";
 import { dispatchEmailEvent } from "@/lib/email";
+import { buildTicketEmailVariables } from "@/lib/email/variables";
+import { formatCents } from "@/lib/format";
 import {
   attachPurchaseOrder,
   cancelQuote,
@@ -191,15 +194,33 @@ export async function sendQuoteAction(formData: FormData) {
     // transaction commits (sendQuote already audited + activity-
     // logged inside the tx; this is the operator-facing email).
     try {
-      await dispatchEmailEvent("quote_sent", {
-        quoteId: parsed.data.quoteId,
-        ticketId: parsed.data.ticketId,
-        actorUserId: session.userId,
-        variables: {
+      // Round-15 — template interpolates {{ticket.*}}, {{quote.*}}
+      // + {{link}}; the old flat-id payload failed validation and
+      // never sent.
+      const quote = await prisma.quote.findUnique({
+        where: { id: parsed.data.quoteId },
+        select: { amountCents: true, holdUntil: true },
+      });
+      const variables = await buildTicketEmailVariables(
+        parsed.data.ticketId,
+        prisma,
+        {
+          quote: {
+            amount: formatCents(quote?.amountCents),
+            holdUntil: quote?.holdUntil
+              ? quote.holdUntil.toISOString().slice(0, 10)
+              : "",
+          },
+        },
+      );
+      if (variables) {
+        await dispatchEmailEvent("quote_sent", {
           quoteId: parsed.data.quoteId,
           ticketId: parsed.data.ticketId,
-        },
-      });
+          actorUserId: session.userId,
+          variables,
+        });
+      }
     } catch (dispatchErr) {
       console.error(
         `[sendQuoteAction] quote_sent dispatch failed for ${parsed.data.quoteId}:`,
@@ -257,16 +278,21 @@ export async function respondQuoteAction(formData: FormData) {
     // "Email SPOC" (Round-6 §3B).
     if (parsed.data.response === "APPROVED") {
       try {
-        await dispatchEmailEvent("quote_approved", {
-          quoteId: parsed.data.quoteId,
-          ticketId: parsed.data.ticketId,
-          actorUserId: session.userId,
-          variables: {
+        // Round-15 — template interpolates {{ticket.*}}, {{link}}
+        // + {{reason}}; flat ids failed validation and never sent.
+        const variables = await buildTicketEmailVariables(
+          parsed.data.ticketId,
+          prisma,
+          { reason: parsed.data.reason ?? "" },
+        );
+        if (variables) {
+          await dispatchEmailEvent("quote_approved", {
             quoteId: parsed.data.quoteId,
             ticketId: parsed.data.ticketId,
-            reason: parsed.data.reason ?? null,
-          },
-        });
+            actorUserId: session.userId,
+            variables,
+          });
+        }
       } catch (dispatchErr) {
         console.error(
           `[respondQuoteAction] quote_approved dispatch failed for ${parsed.data.quoteId}:`,

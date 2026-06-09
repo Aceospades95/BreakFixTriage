@@ -276,7 +276,7 @@ export default async function BenchPage({
                     SYN
                   </span>
                 </div>
-                <div className="text-[10px] tracking-wide text-violet-300/80">
+                <div className="text-[10px] tracking-wide text-violet-200">
                   {/* Round-10 §1C — drop the /duplicates URL from
                       prose; link the words "duplicate queue" via
                       the existing <Link> below instead. */}
@@ -288,7 +288,7 @@ export default async function BenchPage({
               </span>
             </div>
             {unlinked.length === 0 ? (
-              <p className="text-xs text-violet-300/80">empty</p>
+              <p className="text-xs text-violet-200">empty</p>
             ) : (
               <CompactTicketList tickets={unlinked} />
             )}

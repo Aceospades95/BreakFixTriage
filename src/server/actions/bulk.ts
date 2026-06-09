@@ -11,6 +11,7 @@ import { writeAudit } from "@/lib/audit/audit";
 import { transitionTicket } from "@/lib/workflow";
 import { createInAppNotification } from "@/lib/notifications/in-app";
 import { dispatchEmailEvent } from "@/lib/email";
+import { buildTicketEmailVariables } from "@/lib/email/variables";
 import { publish } from "@/lib/events/bus";
 
 /**
@@ -158,22 +159,20 @@ export async function bulkAssignAction(formData: FormData) {
         linkHref: `/tickets/${t.id}`,
       });
       try {
+        // Round-15 — shared builder; the old inline blob used a
+        // relative /tickets/<cuid> link, dead inside a mail client.
+        const variables = await buildTicketEmailVariables(t.id, prisma, {
+          assignee: {
+            name: assignee?.name ?? "(unknown)",
+            email: assignee?.email ?? "",
+          },
+        });
+        if (!variables) continue;
         await dispatchEmailEvent("ticket_assigned", {
           ticketId: t.id,
           schoolId: t.schoolId,
           actorUserId: session.userId,
-          variables: {
-            ticket: {
-              number: t.incidentNumber,
-              summary: t.shortDescription,
-              school: t.school.name,
-            },
-            assignee: {
-              name: assignee?.name ?? "(unknown)",
-              email: assignee?.email ?? "",
-            },
-            link: `/tickets/${t.id}`,
-          },
+          variables,
         });
       } catch (err) {
         // Don't fail the bulk-assign on a downstream email problem.

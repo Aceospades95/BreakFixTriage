@@ -9,6 +9,7 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { dispatchEmailEvent } from "@/lib/email";
+import { buildTicketEmailVariables } from "@/lib/email/variables";
 
 /**
  * Ticket template admin + quick-create.
@@ -152,7 +153,10 @@ export async function createTicketFromTemplateAction(formData: FormData) {
     );
   }
 
-  let createdId: string | null = null;
+  // Round-15 (B19) — redirect with the incident number, not the
+  // cuid: it's the canonical /tickets/<INC#> URL shape and what
+  // operator-facing surfaces (email log, audit) display.
+  let createdNumber: string | null = null;
   try {
     const template = await prisma.ticketTemplate.findUnique({
       where: { id: parsed.data.templateId },
@@ -209,7 +213,7 @@ export async function createTicketFromTemplateAction(formData: FormData) {
       action: "create:from-template",
       after: { templateId: template.id, incidentNumber },
     });
-    createdId = ticket.id;
+    createdNumber = ticket.incidentNumber;
 
     // Round-3 §B: fire ticket_created. Goes through the central
     // dispatcher; if no enabled rule matches `ticket_created` for
@@ -224,16 +228,11 @@ export async function createTicketFromTemplateAction(formData: FormData) {
           ticketId: ticket.id,
           schoolId: school.id,
           actorUserId: session.userId,
-          variables: {
-            ticket: {
-              number: incidentNumber,
-              summary: parsed.data.overrideShortDescription ?? template.shortDescription,
-              school: school.name,
-              priority: template.priority,
-            },
+          // Round-15 — shared builder; the old inline blob used a
+          // relative /tickets/<cuid> link, dead inside a mail client.
+          variables: (await buildTicketEmailVariables(ticket.id, prisma, {
             reporter: { name: session.name, email: session.email },
-            link: `/tickets/${ticket.id}`,
-          },
+          })) ?? { reporter: { name: session.name } },
         },
       );
     } catch (err) {
@@ -253,5 +252,9 @@ export async function createTicketFromTemplateAction(formData: FormData) {
   }
 
   revalidatePath("/tickets");
-  redirect(createdId ? `/tickets/${createdId}?ok=Ticket+created` : "/tickets");
+  redirect(
+    createdNumber
+      ? `/tickets/${createdNumber}?ok=Ticket+created`
+      : "/tickets",
+  );
 }

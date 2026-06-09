@@ -20,7 +20,7 @@
  * Idempotent. Re-running upserts every row.
  */
 
-import { PrismaClient, Role, TicketState } from "@prisma/client";
+import { PrismaClient, Role, TicketState, type Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { seedDefaults } from "./seed-defaults";
 
@@ -35,6 +35,35 @@ const PERSONAS: Array<{ email: string; name: string; role: Role }> = [
   { email: "dante@example.test", name: "Dante Driver", role: Role.DRIVER },
   { email: "ray@example.test", name: "Ray ReadOnly", role: Role.READ_ONLY },
 ];
+
+
+/**
+ * Round-15 — the seed-defaults idempotency invariant requires every
+ * seeded EmailRule to carry a `system_seed` audit row (so a future
+ * audit walk can tell seeded from operator-added rules). Mirror it
+ * for the rules this synthetic seed creates.
+ */
+async function writeSeedAudit(
+  entityType: string,
+  entityId: string,
+  payload: Prisma.InputJsonObject,
+): Promise<void> {
+  const existing = await prisma.auditLog.findFirst({
+    where: { entityType, entityId, action: "system_seed" },
+    select: { id: true },
+  });
+  if (existing) return;
+  await prisma.auditLog.create({
+    data: {
+      actorUserId: null,
+      entityType,
+      entityId,
+      action: "system_seed",
+      after: payload,
+      transitionType: "system_seed",
+    },
+  });
+}
 
 async function main() {
   console.log("[seed-test] Synthetic test fixture…");
@@ -222,6 +251,65 @@ async function main() {
     }
   }
 
+  // Round-15 — quick-create + notification-dispatch fixtures:
+  // a TicketTemplate (the /tickets quick-create form only renders
+  // when one exists), a SPOC contact on TEST-101 opted into ticket
+  // emails, and an enabled GLOBAL ticket_created rule so a UI
+  // ticket creation exercises the full dispatch path.
+  await prisma.ticketTemplate.upsert({
+    where: { name: "Cracked screen (test)" },
+    create: {
+      name: "Cracked screen (test)",
+      shortDescription: "Cracked screen — synthetic fixture",
+      priority: "NORMAL",
+      active: true,
+    },
+    update: { active: true },
+  });
+  const spocSchool = schools[0]!;
+  const spocEmail = "spoc-test101@example.test";
+  const existingSpoc = await prisma.contact.findFirst({
+    where: { schoolId: spocSchool.id, email: spocEmail },
+    select: { id: true },
+  });
+  if (!existingSpoc) {
+    await prisma.contact.create({
+      data: {
+        schoolId: spocSchool.id,
+        name: "Sam Spoc",
+        email: spocEmail,
+        receivesTicketEmails: true,
+      },
+    });
+  }
+  const ticketCreatedTemplate = await prisma.emailTemplate.findFirst({
+    where: { key: "ticket_created" },
+    select: { id: true },
+  });
+  if (ticketCreatedTemplate) {
+    let enabledRule = await prisma.emailRule.findFirst({
+      where: { event: "ticket_created", scope: "GLOBAL", enabled: true },
+      select: { id: true },
+    });
+    if (!enabledRule) {
+      enabledRule = await prisma.emailRule.create({
+        data: {
+          scope: "GLOBAL",
+          event: "ticket_created",
+          recipients: { to: [{ kind: "spoc" }], cc: [], bcc: [] },
+          templateId: ticketCreatedTemplate.id,
+          enabled: true,
+        },
+        select: { id: true },
+      });
+      console.log("[seed-test] ticket_created rule created");
+    }
+    await writeSeedAudit("EmailRule", enabledRule.id, {
+      event: "ticket_created",
+      seed: "seed-test",
+    });
+  }
+
   // An enabled pickup_completed rule so the driver persona walk
   // exercises the dispatchEmailEvent chokepoint (EmailLog row
   // presence is the assertion until the Mailpit fixture lands —
@@ -231,12 +319,12 @@ async function main() {
     select: { id: true },
   });
   if (pickupTemplate) {
-    const existingRule = await prisma.emailRule.findFirst({
+    let pickupRule = await prisma.emailRule.findFirst({
       where: { event: "pickup_completed", scope: "GLOBAL" },
       select: { id: true },
     });
-    if (!existingRule) {
-      await prisma.emailRule.create({
+    if (!pickupRule) {
+      pickupRule = await prisma.emailRule.create({
         data: {
           scope: "GLOBAL",
           event: "pickup_completed",
@@ -244,9 +332,14 @@ async function main() {
           templateId: pickupTemplate.id,
           enabled: true,
         },
+        select: { id: true },
       });
       console.log("[seed-test] pickup_completed rule created");
     }
+    await writeSeedAudit("EmailRule", pickupRule.id, {
+      event: "pickup_completed",
+      seed: "seed-test",
+    });
   }
 
   // 1 quote on an IN_REPAIR ticket (same long-promised fixture).

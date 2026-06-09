@@ -204,6 +204,7 @@ export default async function TicketsPage({
       {canWrite && templates.length > 0 && (
         <form
           action={createTicketFromTemplateAction}
+          data-testid="quick-create-form"
           className="mb-4 flex flex-wrap items-end gap-3 rounded border border-surface-border bg-surface-muted/60 p-3 text-sm"
         >
           <div className="text-[10px] uppercase tracking-wide text-slate-400">
@@ -211,6 +212,7 @@ export default async function TicketsPage({
           </div>
           <select
             name="templateId"
+            aria-label="Ticket template"
             required
             className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
           >
@@ -223,6 +225,7 @@ export default async function TicketsPage({
           </select>
           <select
             name="schoolId"
+            aria-label="School"
             required
             className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
           >
@@ -532,6 +535,7 @@ function TicketTable({
                   type="checkbox"
                   name="ticketIds"
                   value={t.id}
+                  aria-label={`Select ${t.incidentNumber}`}
                   className="h-4 w-4 accent-accent"
                 />
               </td>

@@ -31,7 +31,7 @@ Every signed-in user reaches them.
 | `/notifications` | any | Personal in-app feed |
 | `/profile` | any | Profile + name |
 | `/profile/2fa` | any | Personal 2FA setup |
-| `/people` | any | Round-13 §1A redirect → `/scheduling/people` |
+| `/people` | any | Round-15 (B11) staff directory (was a redirect) |
 | `/forbidden` | any | Round-14 (B8) chromed access-denied page; `requireRole` redirects here |
 
 ## Tickets
@@ -84,6 +84,7 @@ Every signed-in user reaches them.
 |------|-------------|------------|
 | `/admin` | ADMIN | USERS_MANAGE |
 | `/admin/audit` | ADMIN | USERS_MANAGE |
+| `/admin/exceptions` | ADMIN | USERS_MANAGE | Round-15 (B26) failure-mode rollup |
 | `/admin/holidays` | ADMIN | USERS_MANAGE |
 | `/admin/permissions` | ADMIN | USERS_MANAGE |
 | `/admin/settings` | ADMIN | USERS_MANAGE |

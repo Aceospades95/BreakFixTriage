@@ -42,6 +42,7 @@ const ROUTES: Array<{ path: string; lowestRole: string }> = [
   { path: "/profile", lowestRole: "READ_ONLY" },
   { path: "/profile/2fa", lowestRole: "READ_ONLY" },
   { path: "/forbidden", lowestRole: "READ_ONLY" },
+  { path: "/people", lowestRole: "READ_ONLY" },
 
   // Tickets
   { path: "/tickets", lowestRole: "READ_ONLY" },
@@ -73,6 +74,7 @@ const ROUTES: Array<{ path: string; lowestRole: string }> = [
   // Admin
   { path: "/admin", lowestRole: "ADMIN" },
   { path: "/admin/audit", lowestRole: "ADMIN" },
+  { path: "/admin/exceptions", lowestRole: "ADMIN" },
   { path: "/admin/device-models", lowestRole: "ADMIN" },
   { path: "/admin/devices", lowestRole: "ADMIN" },
   { path: "/admin/devices/new", lowestRole: "ADMIN" },

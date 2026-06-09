@@ -2,7 +2,14 @@ name: Build and publish Docker image
 
 # Builds the BreakFix Triage app image and pushes it to GitHub Container
 # Registry on every push. The Unraid host pulls from ghcr.io using the
-# `latest` tag by default. Commit SHAs are also tagged for pinning.
+# `latest` tag by default.
+#
+# Round-14 — `latest` is now only tagged on the default branch
+# (Main-BreakFix). Previously every claude/** push overwrote `latest`,
+# meaning a working-branch push could change what production pulls
+# before any review. Branch pushes still publish `sha-<short>` and
+# `<branch-name>` tags, so a branch can be field-QA'd on the Unraid
+# host by pointing the template at its branch tag explicitly.
 
 on:
   push:
@@ -45,7 +52,7 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
 

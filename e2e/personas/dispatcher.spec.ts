@@ -4,7 +4,7 @@ import { expectBlocked } from "../lib/access";
 
 /**
  * STATUS: Aspirational coverage for Round-13 §2C persona scope.
- * Tests below are marked test.fixme() because the bulk-actions
+ * Tests below are marked test() because the bulk-actions
  * row test hooks, /scheduling/routes/new affordances, and the
  * /admin/users delete-button assertion all assume app surfaces
  * not yet wired on this branch. See docs/round-13-backlog.md
@@ -28,7 +28,7 @@ import { expectBlocked } from "../lib/access";
  */
 
 test.describe("§2C dispatcher persona", () => {
-  test.fixme("bulk-assign + bulk-transition + route build", async ({ page }) => {
+  test("bulk-assign + bulk-transition + route build", async ({ page }) => {
     await signInAs(page, PERSONA.DISPATCHER);
 
     // (1) — Filter to AWAITING_PICKUP.
@@ -49,15 +49,15 @@ test.describe("§2C dispatcher persona", () => {
       ).toContainText(/Bulk actions \(/);
     }
 
-    // (3) — Open /scheduling and assert the New route affordance
-    // is visible (Dana has ROUTES_BUILD).
+    // (3) — Open the routes index and assert the Build route
+    // affordance is visible (Dana has ROUTES_BUILD).
     await page.goto("/scheduling/routes");
     await expect(
-      page.getByRole("link", { name: /new route/i }),
+      page.getByRole("link", { name: /build route/i }),
     ).toBeVisible();
   });
 
-  test.fixme("Dana is blocked from /admin/email-rules (no EMAIL_WRITE)", async ({
+  test("Dana is blocked from /admin/email-rules (no EMAIL_WRITE)", async ({
     page,
   }) => {
     // Dana lacks EMAIL_WRITE (only OPS_MANAGER + ADMIN have it),
@@ -68,7 +68,7 @@ test.describe("§2C dispatcher persona", () => {
     await expectBlocked(page, resp, "/admin/email-rules", "Dispatcher");
   });
 
-  test.fixme("Dana cannot delete users on /admin/users", async ({ page }) => {
+  test("Dana cannot delete users on /admin/users", async ({ page }) => {
     await signInAs(page, PERSONA.DISPATCHER);
     const resp = await page.goto("/admin/users");
     // Either blocked at the page level OR the page renders

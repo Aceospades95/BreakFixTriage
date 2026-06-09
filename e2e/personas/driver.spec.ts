@@ -3,18 +3,6 @@ import { PrismaClient } from "@prisma/client";
 import { signInAs, PERSONA } from "../lib/sign-in-as";
 
 /**
- * STATUS: Aspirational coverage for Round-13 §2A persona scope.
- * Tests below are marked test.fixme() because the underlying app
- * surface, authorization gate, or test data is not yet
- * implemented on this branch. See docs/round-13-backlog.md (B14)
- * for the implementation plan.
- *
- * Do NOT ship code that "fixes" these by mocking out the
- * assertion — unfixme each test only when the real app surface
- * exists end-to-end.
- */
-
-/**
  * Round-13 §2A — Dante Driver persona walk.
  *
  * Full delivery + pickup loop:
@@ -37,11 +25,48 @@ import { signInAs, PERSONA } from "../lib/sign-in-as";
 const prisma = new PrismaClient();
 
 test.describe("§2A driver persona", () => {
+  test.beforeAll(async () => {
+    // Completing the stops below consumes the seeded TEST-VAN-1
+    // route; reset it to PLANNED with SCHEDULED stops + jobs and
+    // the linked tickets back to PICKUP_SCHEDULED so the spec is
+    // re-runnable without reseeding.
+    const route = await prisma.route.findFirst({
+      where: { vehicleRef: "TEST-VAN-1" },
+      include: {
+        stops: {
+          include: { job: { include: { ticketLinks: true } } },
+        },
+      },
+    });
+    if (route) {
+      await prisma.routeStop.updateMany({
+        where: { routeId: route.id },
+        data: { status: "SCHEDULED" },
+      });
+      for (const stop of route.stops) {
+        await prisma.job.update({
+          where: { id: stop.jobId },
+          data: { status: "SCHEDULED" },
+        });
+        for (const link of stop.job.ticketLinks) {
+          await prisma.ticket.update({
+            where: { id: link.ticketId },
+            data: { state: "PICKUP_SCHEDULED", stateEnteredAt: new Date() },
+          });
+        }
+      }
+      await prisma.route.update({
+        where: { id: route.id },
+        data: { status: "PLANNED" },
+      });
+    }
+  });
+
   test.afterAll(async () => {
     await prisma.$disconnect();
   });
 
-  test.fixme("delivery + pickup loop end-to-end", async ({ page }) => {
+  test("delivery + pickup loop end-to-end", async ({ page }) => {
     await signInAs(page, PERSONA.DRIVER);
 
     // (1) — Drivers don't usually create routes themselves; the
@@ -55,10 +80,33 @@ test.describe("§2A driver persona", () => {
     await expect(firstRouteLink).toBeVisible();
     await firstRouteLink.click();
 
-    // (3) — Mark first stop arrived, then completed.
+    // (3) — Walk the stop lifecycle. The controls render as
+    // Start → Arrived → Complete. Each click submits a form that
+    // round-trips through a server action + redirect, so after
+    // every click wait for the reloaded page to reflect the new
+    // state (the clicked button disables) before the next click —
+    // clicking again mid-reload hits the stale, still-enabled
+    // button.
     const firstStop = page.locator('[data-testid="route-stop"]').first();
-    await firstStop.getByRole("button", { name: /^arrived$/i }).click();
-    await firstStop.getByRole("button", { name: /^completed$/i }).click();
+    // Server actions here run a transaction + audit + email
+    // dispatch + revalidate before redirecting; give the disabled
+    // assertions a longer leash than the 5s action default.
+    const settle = { timeout: 15_000 };
+    const startBtn = firstStop.getByRole("button", { name: /^start$/i });
+    if (await startBtn.isEnabled().catch(() => false)) {
+      await startBtn.click();
+      await expect(startBtn).toBeDisabled(settle);
+    }
+    const arrivedBtn = firstStop.getByRole("button", { name: /^arrived$/i });
+    await expect(arrivedBtn).toBeEnabled(settle);
+    await arrivedBtn.click();
+    await expect(arrivedBtn).toBeDisabled(settle);
+    const completeBtn = firstStop.getByRole("button", {
+      name: /^complete$/i,
+    });
+    await expect(completeBtn).toBeEnabled(settle);
+    await completeBtn.click();
+    await expect(completeBtn).toBeDisabled(settle);
 
     // (4) — Confirm ticket transition occurred. The associated
     // ticket(s) should now be IN_WAREHOUSE (pickup) or CLOSED
@@ -80,11 +128,13 @@ test.describe("§2A driver persona", () => {
       where: { email: PERSONA.DRIVER },
       select: { id: true },
     });
+    // The stop audit slug is "status:ARRIVED->COMPLETED" —
+    // uppercase enum halves, case-sensitive in Postgres.
     const recent = await prisma.auditLog.findFirst({
       where: {
         actorUserId: dante!.id,
         entityType: "RouteStop",
-        action: { contains: "completed" },
+        action: { contains: "COMPLETED" },
       },
       orderBy: { createdAt: "desc" },
     });

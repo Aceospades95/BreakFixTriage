@@ -32,21 +32,26 @@ test.describe("§2J chromed not-found", () => {
   });
 
   for (const { path, scope } of NON_EXISTENT_ROUTES) {
-    test.fixme(`${path} → chromed-not-found (${scope} scope)`, async ({ page }) => {
+    test(`${path} → chromed-not-found (${scope} scope)`, async ({ page }) => {
       const resp = await page.goto(path);
-      // 404 status with the chromed page rendered. Either is
-      // acceptable — Next.js notFound() returns 404.
-      expect(resp?.status()).toBe(404);
+      // Unmatched URLs resolve at the root → genuine 404 status.
+      // In-segment notFound() (e.g. a missing ticket) streams
+      // through the (app) loading.tsx boundary, so the status is
+      // already committed as 200 when notFound() throws — the
+      // chromed body is the contract there, not the status code.
+      expect([200, 404]).toContain(resp?.status() ?? 0);
 
-      const html = await page.content();
-      expect(
-        html,
+      // Locator assertions auto-retry — the chromed body streams in
+      // after the shell, so a one-shot page.content() sample races
+      // the flush.
+      await expect(
+        page.getByTestId("chromed-not-found"),
         `${path} did not render the chromed not-found testid`,
-      ).toContain('data-testid="chromed-not-found"');
+      ).toBeVisible();
 
       // Common destinations grid — the safety-net affordance from
       // Round-7 §1B.
-      expect(html).toContain("Common destinations");
+      await expect(page.getByText("Common destinations")).toBeVisible();
 
       // No global error boundary leak.
       await expect(page.getByTestId("global-error-boundary")).toHaveCount(0);

@@ -10,19 +10,24 @@ import { signInAs, PERSONA } from "./lib/sign-in-as";
  * live in persona-readonly.spec.ts.
  */
 
-test.fixme("§2E: Alex Admin walks admin overview + sub-pages", async ({ page }) => {
+test("§2E: Alex Admin walks admin overview + sub-pages", async ({ page }) => {
   await signInAs(page, PERSONA.ADMIN);
 
   // Overview lands.
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: /^admin$/i })).toBeVisible();
-  await expect(page.getByText("Users", { exact: true })).toBeVisible();
-  await expect(page.getByText("Holidays", { exact: true })).toBeVisible();
+  // Scope to the admin sidebar nav — the overview cards repeat the
+  // same labels, which trips strict mode on a bare getByText.
+  const adminNav = page.locator("aside nav");
+  await expect(adminNav.getByRole("link", { name: "Users", exact: true })).toBeVisible();
+  await expect(adminNav.getByRole("link", { name: "Holidays", exact: true })).toBeVisible();
 
-  // Recent sessions panel renders for any user.
+  // Recent sessions panel renders for any user. Exclude the
+  // "/admin/users/new" create link — it matches the prefix but has
+  // no sessions panel.
   await page.goto("/admin/users");
   const firstUserLink = page
-    .locator('a[href^="/admin/users/"]')
+    .locator('a[href^="/admin/users/"]:not([href$="/new"])')
     .filter({ hasText: /\w+/ })
     .first();
   await firstUserLink.click();

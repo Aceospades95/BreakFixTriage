@@ -17,3 +17,5 @@ coverage/
 tmp/
 prisma/*.db
 prisma/*.db-journal
+test-results/
+playwright-report/

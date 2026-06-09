@@ -1,51 +1,28 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signInAs, PERSONA } from "./lib/sign-in-as";
 
 /**
- * STATUS: Aspirational coverage for Round-11 §2C / Round-13
- * read-only enforcement. Tests below are marked test.fixme()
- * because:
- *   - There is no /forbidden route yet (verified by `find src/app
- *     -name "forbidden*"` returning empty).
- *   - middleware.ts does not redirect unauthorized users to
- *     /forbidden — it only handles READ_ONLY_MODE (a separate
- *     env-var kill switch) and the auth-gate matcher.
- *   - The read-only role's permission matrix denies access at
- *     the page level via `requireRole`, which throws
- *     AuthorizationError caught by `(app)/error.tsx` returning
- *     status 200 — the spec expects 401/403.
- *
- * See docs/round-13-backlog.md (B8) for the implementation plan
- * (middleware redirect + /forbidden page + permission matrix
- * normalisation).
- *
- * Round-11 §2C — graduates Round-10 §3E.
+ * Round-11 §2C — graduates Round-10 §3E. Re-activated in Round-14:
+ * the B8 blockers closed (requireRole now redirects to the chromed
+ * /forbidden page instead of throwing into the error boundary, and
+ * the /forbidden route exists).
  *
  * Sign in as Ray ReadOnly and assert that every documented
- * mutation surface returns 403 (or redirects to /forbidden).
+ * mutation surface returns 401/403 (API routes) or redirects to
+ * /forbidden (pages).
  *
  * The list of surfaces lives in docs/permissions.md → "Read-only
- * forbidden surface" → mirroring those entries here so a missed
+ * forbidden surface" — mirroring those entries here so a missed
  * role check anywhere on the surface fails the spec.
- *
- * Server actions are exposed as POST `/_action/<formId>` in
- * Next.js 14, but the canonical way to exercise one from
- * Playwright is via a form submit on the page that hosts the
- * action. The shortcut: navigate to the page, locate the form,
- * submit, assert the response is /forbidden or status 403.
- *
- * For pure API routes the spec POSTs / GETs directly via
- * page.request.
  */
-
-const READONLY_EMAIL = "ray@example.test";
 
 test.describe("§2C: READ_ONLY (Ray) cannot reach mutation surfaces", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, READONLY_EMAIL);
+    await signInAs(page, PERSONA.READ_ONLY);
   });
 
   // -------------------------------------------------------------
-  // API routes — direct GET/POST + assert 401 or 403.
+  // API routes — direct GET + assert 401 or 403.
   // -------------------------------------------------------------
 
   for (const path of [
@@ -55,15 +32,14 @@ test.describe("§2C: READ_ONLY (Ray) cannot reach mutation surfaces", () => {
     "/api/exports/email-log",
     "/api/exports/audit",
   ] as const) {
-    test.fixme(`${path} → 401 for read-only role`, async ({ page }) => {
+    test(`${path} → 401 for read-only role`, async ({ page }) => {
       const resp = await page.request.get(path);
       expect([401, 403]).toContain(resp.status());
     });
   }
 
   // -------------------------------------------------------------
-  // Page-level mutation forms — read-only should be redirected /
-  // forbidden when posting.
+  // Permission-gated pages — read-only must land on /forbidden.
   // -------------------------------------------------------------
 
   const PAGES_GUARDED_BY_PERMISSION = [
@@ -83,24 +59,22 @@ test.describe("§2C: READ_ONLY (Ray) cannot reach mutation surfaces", () => {
   ] as const;
 
   for (const p of PAGES_GUARDED_BY_PERMISSION) {
-    test.fixme(`GET ${p.path} → 403 / redirect to /forbidden (${p.reason})`, async ({ page }) => {
+    test(`GET ${p.path} → 403 / redirect to /forbidden (${p.reason})`, async ({ page }) => {
       const resp = await page.goto(p.path);
       const status = resp?.status() ?? 0;
+      if (status !== 403) {
+        // requireRole redirects via the App Router. Because the
+        // (app) segment has a loading.tsx boundary the response
+        // streams, so the redirect arrives as an in-body client
+        // navigation rather than a 307 — wait for it to land.
+        await page.waitForURL(/\/(forbidden|signin)/, { timeout: 10_000 });
+      }
       const url = page.url();
       const blocked =
         status === 403 ||
         url.includes("/forbidden") ||
-        url.includes("/signin") ||
-        url.includes("/?error=");
+        url.includes("/signin");
       expect(blocked, `${p.path} did not block READ_ONLY`).toBe(true);
     });
   }
 });
-
-async function signIn(page: Page, email: string) {
-  await page.goto("/signin");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', "test-password");
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.startsWith("/signin"));
-}

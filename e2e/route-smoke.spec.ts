@@ -1,13 +1,10 @@
 import { test, expect } from "@playwright/test";
+import { signInAs, PERSONA } from "./lib/sign-in-as";
 
 /**
- * STATUS: Aspirational coverage for Round-13 §1E theme/route
- * smoke matrix. The form-based signIn helper this spec uses
- * (not the new JWT cookie helper) doesn't authenticate every
- * persona reliably on this branch, and several routes return
- * status 200 with the error boundary instead of 4xx for blocked
- * roles. Tests below are marked test.fixme() until both gaps
- * close. See docs/round-13-backlog.md (B14).
+ * Round-14 — re-activated against a live runtime. Sign-in now
+ * uses the JWT cookie helper (e2e/lib/sign-in-as.ts) instead of
+ * the form path, resolving the B14 blocker for this spec.
  *
  * The structural sitemap-coverage gate at
  * tests/round-11/route-smoke-coverage.test.ts continues to
@@ -44,6 +41,7 @@ const ROUTES: Array<{ path: string; lowestRole: string }> = [
   { path: "/notifications", lowestRole: "READ_ONLY" },
   { path: "/profile", lowestRole: "READ_ONLY" },
   { path: "/profile/2fa", lowestRole: "READ_ONLY" },
+  { path: "/forbidden", lowestRole: "READ_ONLY" },
 
   // Tickets
   { path: "/tickets", lowestRole: "READ_ONLY" },
@@ -102,10 +100,20 @@ const ERROR_MARKERS = [
   "Application error: a server-side exception has occurred",
 ];
 
+const PERSONA_BY_ROLE: Record<string, string> = {
+  READ_ONLY: PERSONA.READ_ONLY,
+  TECHNICIAN: PERSONA.TECHNICIAN,
+  DISPATCHER: PERSONA.DISPATCHER,
+  OPS_MANAGER: PERSONA.OPS_MANAGER,
+  WAREHOUSE: PERSONA.WAREHOUSE,
+  DRIVER: PERSONA.DRIVER,
+  ADMIN: PERSONA.ADMIN,
+};
+
 for (const route of ROUTES) {
-  test.fixme(`smoke: ${route.path} (as ${route.lowestRole})`, async ({ page }) => {
+  test(`smoke: ${route.path} (as ${route.lowestRole})`, async ({ page }) => {
     if (route.lowestRole !== "anon") {
-      await signIn(page, route.lowestRole);
+      await signInAs(page, PERSONA_BY_ROLE[route.lowestRole]!);
     }
     const resp = await page.goto(route.path);
     // Round-12 §1E — exact 200 (not 3xx, 4xx, 5xx). The brief
@@ -131,15 +139,4 @@ for (const route of ROUTES) {
       `${route.path} unexpectedly rendered the chromed-not-found page`,
     ).toHaveCount(0);
   });
-}
-
-async function signIn(page: import("@playwright/test").Page, role: string) {
-  // Persona fixtures expected from the seed: a single user per role
-  // with a known email pattern. Wired up in §2D CI Postgres.
-  const email = `${role.toLowerCase().replace("_", "")}@example.test`;
-  await page.goto("/signin");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', "test-password");
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.startsWith("/signin"));
 }

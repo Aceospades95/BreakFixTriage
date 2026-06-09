@@ -4,7 +4,7 @@ import { signInAs, PERSONA } from "../lib/sign-in-as";
 
 /**
  * STATUS: Aspirational coverage for Round-13 §2B persona scope.
- * Tests below are marked test.fixme() because the underlying app
+ * Tests below are marked test() because the underlying app
  * surface (bench pick-up flow + Available Transitions panel test
  * hooks + admin panel hide gate) is not yet wired end-to-end on
  * this branch. See docs/round-13-backlog.md (B14).
@@ -35,7 +35,7 @@ test.describe("§2B technician persona", () => {
     await prisma.$disconnect();
   });
 
-  test.fixme("ticket lifecycle: pick up → triage → diagnosis → repair", async ({
+  test("ticket lifecycle: pick up → triage → diagnosis → repair", async ({
     page,
   }) => {
     await signInAs(page, PERSONA.TECHNICIAN);

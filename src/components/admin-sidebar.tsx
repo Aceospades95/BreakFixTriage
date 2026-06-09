@@ -8,6 +8,9 @@ import { cn } from "@/lib/cn";
 // (OPS_MANAGER) may open; everything else needs USERS_MANAGE.
 const ADMIN_LINKS = [
   { href: "/admin", label: "Overview" },
+  // Round-15 (B26) — failure-mode rollup; kept near the top so an
+  // on-call admin sees it first.
+  { href: "/admin/exceptions", label: "Exceptions" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/districts", label: "Districts" },
   { href: "/admin/schools", label: "Schools" },

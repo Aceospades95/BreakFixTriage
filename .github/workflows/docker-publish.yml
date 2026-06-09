@@ -11,10 +11,14 @@ name: Build and publish Docker image
 # `<branch-name>` tags, so a branch can be field-QA'd on the Unraid
 # host by pointing the template at its branch tag explicitly.
 
+# Round-15 — same bug class as ci.yml: `main` doesn't exist (the
+# default branch is Main-BreakFix), so merges to the default branch
+# never triggered a build and `latest` could never republish after
+# the Round-14 default-branch gate. Main-BreakFix is now covered.
 on:
   push:
     branches:
-      - main
+      - Main-BreakFix
       - "claude/**"
     paths-ignore:
       - "docs/**"

@@ -50,6 +50,34 @@ export interface ReconcileResult {
   unmatchedSynthetics: number;
 }
 
+/**
+ * Round-14 (graduates backlog B16) — idempotency guard. The
+ * reconciler can be re-run for the same batch (importer retry after
+ * a partial failure); the merge path is naturally idempotent
+ * (merged synthetics leave PENDING_PICKUP_UNLINKED), but the
+ * runner-up / cross-school / failed-merge side effects used to
+ * duplicate their comment + audit rows on every pass. The audit row
+ * already carries `importBatchId` in `after`, so its presence for a
+ * given (ticket, action, batch) is the idempotency key.
+ */
+async function hasBatchAuditRow(
+  db: PrismaClient,
+  entityId: string,
+  action: string,
+  importBatchId: string,
+): Promise<boolean> {
+  const existing = await db.auditLog.findFirst({
+    where: {
+      entityType: "Ticket",
+      entityId,
+      action,
+      after: { path: ["importBatchId"], equals: importBatchId },
+    },
+    select: { id: true },
+  });
+  return existing !== null;
+}
+
 export async function reconcileSnowImport(
   importBatchId: string,
   actorUserId: string,
@@ -134,27 +162,45 @@ export async function reconcileSnowImport(
       } catch (err) {
         // The merge can throw if a concurrent operation just merged
         // either side — leave the synthetic open and log so an
-        // operator can resolve manually via /duplicates.
-        await writeAudit(
-          {
-            actorUserId,
-            entityType: "Ticket",
-            entityId: winner.id,
-            action: "snow-merge.failed",
-            after: {
-              targetTicketId: t.id,
-              error: err instanceof Error ? err.message : String(err),
-              importBatchId,
-            },
-            reason: "Auto-merge failed; left for /duplicates resolution.",
-            transitionType: "scheduled",
-          },
+        // operator can resolve manually via /duplicates. B16: one
+        // failure row per (ticket, batch), even across re-runs.
+        const alreadyLogged = await hasBatchAuditRow(
           db,
+          winner.id,
+          "snow-merge.failed",
+          importBatchId,
         );
+        if (!alreadyLogged) {
+          await writeAudit(
+            {
+              actorUserId,
+              entityType: "Ticket",
+              entityId: winner.id,
+              action: "snow-merge.failed",
+              after: {
+                targetTicketId: t.id,
+                error: err instanceof Error ? err.message : String(err),
+                importBatchId,
+              },
+              reason: "Auto-merge failed; left for /duplicates resolution.",
+              transitionType: "scheduled",
+            },
+            db,
+          );
+        }
       }
 
       // Multi-synthetic edge case: post a comment on each loser.
+      // B16: the audit row is the idempotency key for the comment
+      // too — a reconciler re-run for the same batch skips both.
       for (const loser of sameSchool.slice(1)) {
+        const alreadyLogged = await hasBatchAuditRow(
+          db,
+          loser.id,
+          "snow-merge.runner-up",
+          importBatchId,
+        );
+        if (alreadyLogged) continue;
         await db.comment.create({
           data: {
             ticketId: loser.id,
@@ -190,31 +236,41 @@ export async function reconcileSnowImport(
       // INC at school B normally, and the synthetic at school A stays
       // open with a comment so an operator can investigate.
       for (const synth of otherSchool) {
-        await db.comment.create({
-          data: {
-            ticketId: synth.id,
-            authorUserId: actorUserId,
-            body:
-              `Cross-school serial collision: import ${t.incidentNumber} ` +
-              `landed for the same device serial at a different school. ` +
-              `This synthetic stays open. Investigate in /duplicates.`,
-          },
-        });
-        await writeAudit(
-          {
-            actorUserId,
-            entityType: "Ticket",
-            entityId: synth.id,
-            action: "snow-merge.cross-school-collision",
-            after: {
-              importedTicketId: t.id,
-              importBatchId,
-            },
-            reason: "Same serial at different school — manual review.",
-            transitionType: "scheduled",
-          },
+        // B16 — skip the comment + audit pair on a re-run, but keep
+        // counting the collision so the batch stats stay truthful.
+        const alreadyLogged = await hasBatchAuditRow(
           db,
+          synth.id,
+          "snow-merge.cross-school-collision",
+          importBatchId,
         );
+        if (!alreadyLogged) {
+          await db.comment.create({
+            data: {
+              ticketId: synth.id,
+              authorUserId: actorUserId,
+              body:
+                `Cross-school serial collision: import ${t.incidentNumber} ` +
+                `landed for the same device serial at a different school. ` +
+                `This synthetic stays open. Investigate in /duplicates.`,
+            },
+          });
+          await writeAudit(
+            {
+              actorUserId,
+              entityType: "Ticket",
+              entityId: synth.id,
+              action: "snow-merge.cross-school-collision",
+              after: {
+                importedTicketId: t.id,
+                importBatchId,
+              },
+              reason: "Same serial at different school — manual review.",
+              transitionType: "scheduled",
+            },
+            db,
+          );
+        }
         crossSchoolCollisions++;
       }
     }

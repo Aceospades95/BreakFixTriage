@@ -55,18 +55,32 @@ export default async function BenchPage({
   ];
 
   if (scope === "me") {
-    const tickets = await prisma.ticket.findMany({
-      where: {
-        assignedUserId: session.userId,
-        state: { in: activeStates },
-      },
-      orderBy: { stateEnteredAt: "asc" },
-      include: {
-        school: { select: { name: true } },
-        device: { select: { serialNumber: true } },
-      },
-      take: 200,
-    });
+    // Round-14 — techs hold TICKETS_TRANSITION; the unassigned
+    // queue + Pick up affordance (Round-10 §2F) was built for them
+    // but only rendered in the manager-scoped view they can't
+    // reach. Surface it on My bench too.
+    const canPickUp = can(session.role, PERMISSIONS.TICKETS_TRANSITION);
+    const [tickets, unassignedQueue] = await Promise.all([
+      prisma.ticket.findMany({
+        where: {
+          assignedUserId: session.userId,
+          state: { in: activeStates },
+        },
+        orderBy: { stateEnteredAt: "asc" },
+        include: {
+          school: { select: { name: true } },
+          device: { select: { serialNumber: true } },
+        },
+        take: 200,
+      }),
+      canPickUp
+        ? prisma.ticket.findMany({
+            where: { state: { in: activeStates }, assignedUserId: null },
+            orderBy: { stateEnteredAt: "asc" },
+            take: 100,
+          })
+        : Promise.resolve([]),
+    ]);
 
     const breachedCount = tickets.filter((t) => {
       const days = daysInState(t, new Date());
@@ -94,6 +108,17 @@ export default async function BenchPage({
           <EmptyBench />
         ) : (
           <TicketList tickets={tickets} />
+        )}
+
+        {canPickUp && unassignedQueue.length > 0 && (
+          <section className="mt-10">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
+              Unassigned queue ({unassignedQueue.length})
+            </h2>
+            <div className="rounded-lg border border-surface-border bg-surface-muted/40 p-4">
+              <CompactTicketList tickets={unassignedQueue} pickUpEnabled />
+            </div>
+          </section>
         )}
       </>
     );

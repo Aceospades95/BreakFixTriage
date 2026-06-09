@@ -137,6 +137,7 @@ export default async function PeopleSchedulingPage({
               <input
                 type="date"
                 name="date"
+                aria-label="Schedule date"
                 defaultValue={date.toISOString().slice(0, 10)}
                 className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
               />
@@ -227,7 +228,11 @@ export default async function PeopleSchedulingPage({
                             }
                           >
                             <span>{humanise(b.kind)}</span>
-                            <span className="opacity-70">
+                            {/* Round-15 (B9) — was opacity-70, which
+                                dropped the light-remapped chip text
+                                below 4.5:1. Full opacity; hierarchy
+                                comes from the smaller size. */}
+                            <span>
                               {formatMinutes(b.startMinute)}–
                               {formatMinutes(b.endMinute)}
                             </span>

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 
+// `emailOnly: true` marks the links an EMAIL_WRITE-only session
+// (OPS_MANAGER) may open; everything else needs USERS_MANAGE.
 const ADMIN_LINKS = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/users", label: "Users" },
@@ -17,8 +19,8 @@ const ADMIN_LINKS = [
   { href: "/admin/templates", label: "Templates" },
   // Round-3 §A — email + holidays admin pages.
   { href: "/admin/email-rules", label: "Email rules" },
-  { href: "/admin/email-templates", label: "Email templates" },
-  { href: "/admin/email-log", label: "Email log" },
+  { href: "/admin/email-templates", label: "Email templates", emailOnly: true },
+  { href: "/admin/email-log", label: "Email log", emailOnly: true },
   { href: "/admin/holidays", label: "Holidays" },
   // Round-3 §L — bulk close stale (preview + commit).
   { href: "/admin/tools/bulk-close", label: "Bulk close stale" },
@@ -26,12 +28,19 @@ const ADMIN_LINKS = [
   { href: "/admin/audit", label: "Audit log" },
 ] as const;
 
-export function AdminSidebar() {
+export function AdminSidebar({
+  canManageUsers = true,
+}: {
+  canManageUsers?: boolean;
+}) {
   const pathname = usePathname() ?? "";
+  const links = canManageUsers
+    ? ADMIN_LINKS
+    : ADMIN_LINKS.filter((link) => "emailOnly" in link && link.emailOnly);
 
   return (
     <nav className="flex flex-col gap-1 text-sm">
-      {ADMIN_LINKS.map((link) => {
+      {links.map((link) => {
         const active =
           link.href === "/admin"
             ? pathname === "/admin"

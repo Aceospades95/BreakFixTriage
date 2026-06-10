@@ -191,13 +191,17 @@ export async function globalSearch(
       href: `/tickets/${t.incidentNumber}`,
     });
   }
+  // Round-19 — non-admin hrefs must land on pages those roles can
+  // actually open. /schools/<id> and /devices/<id> never existed, so
+  // search results 404'd for every non-admin; route them to the
+  // tickets list filtered to the school / serial instead.
   for (const s of schools) {
     hits.push({
       kind: "school",
       id: s.id,
       title: s.name,
       subtitle: [s.code, s.district.name].filter(Boolean).join(" · "),
-      href: isAdmin ? `/admin/schools/${s.id}` : `/schools/${s.id}`,
+      href: isAdmin ? `/admin/schools/${s.id}` : `/tickets?school=${s.id}`,
     });
   }
   for (const d of devices) {
@@ -209,7 +213,9 @@ export async function globalSearch(
       id: d.id,
       title: d.serialNumber,
       subtitle: [d.assetTag, model, d.school?.name].filter(Boolean).join(" · "),
-      href: isAdmin ? `/admin/devices/${d.id}` : `/devices/${d.id}`,
+      href: isAdmin
+        ? `/admin/devices/${d.id}`
+        : `/tickets?q=${encodeURIComponent(d.serialNumber)}`,
     });
   }
   for (const c of contacts) {
@@ -220,7 +226,12 @@ export async function globalSearch(
       subtitle: [c.email, c.phone, c.school.name]
         .filter(Boolean)
         .join(" · "),
-      href: `/admin/contacts`,
+      // Contacts live on their school's page; /admin/contacts never
+      // existed (Round-19 dead-link fix). Non-admins can't open
+      // /admin/schools, so land them on tickets for that school.
+      href: isAdmin
+        ? `/admin/schools/${c.schoolId}`
+        : `/tickets?school=${c.schoolId}`,
     });
   }
   if (includeUsers) {

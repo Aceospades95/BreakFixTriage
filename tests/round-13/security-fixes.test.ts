@@ -89,8 +89,13 @@ describe("Round-13 §1C — global search tenant scoping", () => {
 
   it("admin URLs are gated for non-admin actors", () => {
     const src = read("src/lib/search.ts");
+    // Round-19 — non-admin branches now land on the tickets list
+    // (the old /schools/<id> and /devices/<id> targets never
+    // existed and 404'd); admins still get the /admin pages.
     expect(src).toContain("isAdmin ? `/admin/schools/");
-    expect(src).toContain("isAdmin ? `/admin/devices/");
+    expect(src).toContain("`/admin/devices/${d.id}`");
+    expect(src).not.toContain("`/schools/${s.id}`");
+    expect(src).not.toContain("`/devices/${d.id}`");
   });
 });
 

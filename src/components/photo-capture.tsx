@@ -124,6 +124,7 @@ function SaveButton({ disabled }: { disabled: boolean }) {
     <button
       type="submit"
       disabled={disabled || pending}
+      title={disabled ? "Photo exceeds the 25 MB size limit" : undefined}
       className="rounded bg-accent px-3 py-1.5 text-xs font-semibold hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
     >
       {pending ? "Saving…" : "Save photo"}

@@ -123,11 +123,15 @@ export function hrefForEntity(
     case "School":
       return `/admin/schools/${entityId}`;
     case "District":
-      return `/admin/districts/${entityId}`;
+      // No per-district page exists; the list is the surface
+      // (Round-19 dead-link fix).
+      return `/admin/districts`;
     case "Device":
       return `/admin/devices/${entityId}`;
     case "EmailRule":
-      return `/admin/email-rules/${entityId}/edit`;
+      // No per-rule edit page exists; rules are edited inline on
+      // the list (Round-19 dead-link fix).
+      return `/admin/email-rules`;
     case "EmailTemplate":
       return `/admin/email-templates/${entityId}`;
     case "Status":

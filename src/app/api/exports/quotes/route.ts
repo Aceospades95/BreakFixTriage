@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { QuoteStatus, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
 import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
 
@@ -14,10 +15,14 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const statusRaw = url.searchParams.get("status");
   const validStatuses = Object.values(QuoteStatus) as string[];
-  const where: Prisma.QuoteWhereInput | undefined =
-    statusRaw && validStatuses.includes(statusRaw)
+  const where: Prisma.QuoteWhereInput = {
+    // Round-16 (B17) — tenant scope per ADR 0014, via the parent
+    // ticket's school district.
+    ticket: ticketWhereForSession(session),
+    ...(statusRaw && validStatuses.includes(statusRaw)
       ? { status: statusRaw as QuoteStatus }
-      : undefined;
+      : {}),
+  };
 
   const quotes = await prisma.quote.findMany({
     where,

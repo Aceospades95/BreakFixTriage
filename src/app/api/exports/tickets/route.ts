@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { TicketState, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
 import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
 
@@ -26,7 +27,10 @@ export async function GET(request: Request) {
       : undefined;
   const query = url.searchParams.get("q")?.trim() ?? "";
 
+  // Round-16 (B17) — tenant scope per ADR 0014: non-admin exports
+  // only contain tickets from the actor's districts.
   const where: Prisma.TicketWhereInput = {
+    ...ticketWhereForSession(session),
     ...(stateFilter ? { state: stateFilter } : {}),
     ...(query
       ? {

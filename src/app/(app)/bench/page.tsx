@@ -6,6 +6,7 @@ import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 import { formatRole } from "@/lib/format";
 import {
   daysInState,
@@ -60,9 +61,13 @@ export default async function BenchPage({
     // but only rendered in the manager-scoped view they can't
     // reach. Surface it on My bench too.
     const canPickUp = can(session.role, PERMISSIONS.TICKETS_TRANSITION);
+    // Round-16 (B17) — tenant scope per ADR 0014 on every bench
+    // query; ADMIN scope is `{}` so admin benches are unchanged.
+    const tenantScope = ticketWhereForSession(session);
     const [tickets, unassignedQueue] = await Promise.all([
       prisma.ticket.findMany({
         where: {
+          ...tenantScope,
           assignedUserId: session.userId,
           state: { in: activeStates },
         },
@@ -75,7 +80,7 @@ export default async function BenchPage({
       }),
       canPickUp
         ? prisma.ticket.findMany({
-            where: { state: { in: activeStates }, assignedUserId: null },
+            where: { ...tenantScope, state: { in: activeStates }, assignedUserId: null },
             orderBy: { stateEnteredAt: "asc" },
             take: 100,
           })
@@ -125,9 +130,12 @@ export default async function BenchPage({
   }
 
   // All benches (manager view).
+  // Round-16 (B17) — tenant scope per ADR 0014.
+  const allScope = ticketWhereForSession(session);
   const [ticketsByUserRaw, unassigned, unlinked] = await Promise.all([
     prisma.ticket.findMany({
       where: {
+        ...allScope,
         state: { in: activeStates },
         assignedUserId: { not: null },
       },
@@ -138,7 +146,7 @@ export default async function BenchPage({
       },
     }),
     prisma.ticket.findMany({
-      where: { state: { in: activeStates }, assignedUserId: null },
+      where: { ...allScope, state: { in: activeStates }, assignedUserId: null },
       orderBy: { stateEnteredAt: "asc" },
       include: {
         school: { select: { name: true } },
@@ -147,7 +155,7 @@ export default async function BenchPage({
       take: 100,
     }),
     prisma.ticket.findMany({
-      where: { state: TicketState.PENDING_PICKUP_UNLINKED },
+      where: { ...allScope, state: TicketState.PENDING_PICKUP_UNLINKED },
       orderBy: { reportedAt: "desc" },
       include: {
         school: { select: { name: true } },

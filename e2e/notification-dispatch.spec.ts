@@ -12,14 +12,11 @@ const prisma = new PrismaClient();
  *
  * Sign in as Alex Admin → create a ticket via the /tickets
  * quick-create form → assert /admin/email-log shows the dispatch
- * row for the new incident with a non-failed status. When a
- * Mailpit container is present (CI integration profile) the
- * optional probe also asserts SMTP capture.
+ * row for the new incident with a non-failed status.
  */
 
 test("§2B: ticket creation enqueues a SPOC notification", async ({
   page,
-  request,
 }) => {
   await signInAs(page, PERSONA.ADMIN);
 
@@ -60,16 +57,8 @@ test("§2B: ticket creation enqueues a SPOC notification", async ({
   await expect(matchingRow.first()).toBeVisible({ timeout: 10_000 });
   await expect(matchingRow.first()).toContainText(/queued|sent|dispatched/i);
 
-  // Optional Mailpit probe — present only in the CI integration
-  // profile; skipped silently elsewhere.
-  const mailpit = await request
-    .get("http://127.0.0.1:8025/api/v1/messages")
-    .catch(() => null);
-  if (mailpit && mailpit.ok()) {
-    const body = await mailpit.json();
-    const subjects = (
-      (body as { messages?: { Subject?: string }[] }).messages ?? []
-    ).map((m) => m.Subject ?? "");
-    expect(subjects.some((s) => s.includes(incidentNumber))).toBe(true);
-  }
+  // True-SMTP delivery (worker → nodemailer → Mailpit) is covered
+  // by tests/integration/smtp-mailpit.test.ts (D1). This spec's app
+  // profile only queues — no worker runs — so probing Mailpit here
+  // would assert a delivery that can never happen.
 });

@@ -136,6 +136,7 @@ export default async function PrintRoutePage({
                       <li key={tl.ticket.id} className="flex items-start gap-2">
                         <input
                           type="checkbox"
+                          aria-label={`Check off ${tl.ticket.incidentNumber}`}
                           className="mt-0.5 h-4 w-4"
                           readOnly
                         />

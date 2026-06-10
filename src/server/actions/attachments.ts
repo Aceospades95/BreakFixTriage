@@ -9,6 +9,7 @@ import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { deleteStoredFile, storeFile } from "@/lib/attachments/storage";
 import { MAX_ATTACHMENT_BYTES } from "@/lib/attachments/validation";
+import { withFeedback } from "@/lib/url";
 
 /**
  * Upload an attachment. Gated on TICKETS_WRITE for ticket attachments
@@ -60,16 +61,16 @@ export async function uploadAttachmentAction(formData: FormData) {
       bytes = Buffer.from(b64, "base64");
     } catch {
       redirect(
-        `${returnTo}?error=${encodeURIComponent("Invalid signature payload")}`,
+        withFeedback(returnTo, "error", "Invalid signature payload"),
       );
     }
     if (bytes.length === 0) {
       redirect(
-        `${returnTo}?error=${encodeURIComponent("Signature is empty — please sign before submitting")}`,
+        withFeedback(returnTo, "error", "Signature is empty — please sign before submitting"),
       );
     }
     if (bytes.length > MAX_ATTACHMENT_BYTES) {
-      redirect(`${returnTo}?error=${encodeURIComponent("Signature too large")}`);
+      redirect(withFeedback(returnTo, "error", "Signature too large"));
     }
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     filename = `signature-${stamp}.png`;
@@ -78,14 +79,14 @@ export async function uploadAttachmentAction(formData: FormData) {
     const upload = file;
     if (upload.size > MAX_ATTACHMENT_BYTES) {
       redirect(
-        `${returnTo}?error=${encodeURIComponent("File is too large")}`,
+        withFeedback(returnTo, "error", "File is too large"),
       );
     }
     bytes = Buffer.from(await upload.arrayBuffer());
     filename = upload.name;
     mimeType = upload.type || "application/octet-stream";
   } else {
-    redirect(`${returnTo}?error=${encodeURIComponent("No file uploaded")}`);
+    redirect(withFeedback(returnTo, "error", "No file uploaded"));
   }
 
   let errorMessage: string | null = null;
@@ -127,7 +128,7 @@ export async function uploadAttachmentAction(formData: FormData) {
   }
 
   if (errorMessage) {
-    redirect(`${returnTo}?error=${encodeURIComponent(errorMessage)}`);
+    redirect(withFeedback(returnTo, "error", errorMessage));
   }
 
   revalidatePath(returnTo);
@@ -146,7 +147,7 @@ export async function deleteAttachmentAction(formData: FormData) {
   const attachmentId = formData.get("attachmentId")?.toString();
   const returnTo = formData.get("returnTo")?.toString() || "/";
   if (!attachmentId) {
-    redirect(`${returnTo}?error=${encodeURIComponent("Missing attachment id")}`);
+    redirect(withFeedback(returnTo, "error", "Missing attachment id"));
   }
 
   let errorMessage: string | null = null;
@@ -175,7 +176,7 @@ export async function deleteAttachmentAction(formData: FormData) {
   }
 
   if (errorMessage) {
-    redirect(`${returnTo}?error=${encodeURIComponent(errorMessage)}`);
+    redirect(withFeedback(returnTo, "error", errorMessage));
   }
 
   revalidatePath(returnTo);

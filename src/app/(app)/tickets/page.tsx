@@ -165,7 +165,8 @@ export default async function TicketsPage({
     ...(assigneeFilter ? { assignee: assigneeFilter } : {}),
     ...(page > 1 ? { page: String(page) } : {}),
   };
-  const returnTo = `/tickets?${new URLSearchParams(activeFilters).toString()}`;
+  const activeQs = new URLSearchParams(activeFilters).toString();
+  const returnTo = activeQs ? `/tickets?${activeQs}` : "/tickets";
 
   return (
     <>

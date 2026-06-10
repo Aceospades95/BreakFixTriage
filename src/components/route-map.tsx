@@ -1,5 +1,7 @@
 "use client";
 
+import { LeafletMap } from "@/components/leaflet-map";
+
 /**
  * Route map renderer.
  *
@@ -8,10 +10,11 @@
  *      `process.env.NEXT_PUBLIC_MAPBOX_TOKEN`), render a Mapbox
  *      static-tile image with numbered pins and a leg breakdown
  *      below. Single image request — no client-side JS bundle.
- *   2. When the token is missing, render the SVG fallback (a
- *      normalised lat/lng grid with pins + polyline) and a small
- *      banner noting the configuration gap. Acceptance per brief
- *      §2.3: token-less environments still get a usable preview.
+ *   2. Otherwise (the default), render an interactive Leaflet map
+ *      on OpenStreetMap tiles — token-free, so a fresh deployment
+ *      gets a real map with zero configuration. Round-18 replaced
+ *      the old SVG fallback + "Mapbox token not configured" warning
+ *      here: a missing optional token is not an error condition.
  *
  * No coordinates → "Add lat/lng to school addresses" empty state.
  */
@@ -29,17 +32,10 @@ export function RouteMap({
   stops,
   title = "Route map",
   mapboxToken,
-  isAdmin = false,
 }: {
   stops: Point[];
   title?: string;
   mapboxToken?: string | null;
-  /**
-   * Round-6 §2C — when true, the SVG fallback panel reveals the env
-   * var name behind a "Why am I seeing the SVG fallback?" disclosure.
-   * Non-admins only see the first sentence.
-   */
-  isAdmin?: boolean;
 }) {
   const withCoords = stops.filter(
     (s): s is Point & { latitude: number; longitude: number } =>
@@ -58,30 +54,6 @@ export function RouteMap({
     );
   }
 
-  // Normalize lat/lng onto a 0..100 box. Note: lat flips (north = top).
-  const lats = withCoords.map((s) => s.latitude);
-  const lngs = withCoords.map((s) => s.longitude);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-
-  // Pad a bit so pins don't touch the edges.
-  const padLat = Math.max((maxLat - minLat) * 0.1, 0.001);
-  const padLng = Math.max((maxLng - minLng) * 0.1, 0.001);
-  const loLat = minLat - padLat;
-  const hiLat = maxLat + padLat;
-  const loLng = minLng - padLng;
-  const hiLng = maxLng + padLng;
-
-  function project(lat: number, lng: number): { x: number; y: number } {
-    const x = ((lng - loLng) / (hiLng - loLng)) * 100;
-    const y = 100 - ((lat - loLat) / (hiLat - loLat)) * 100;
-    return { x, y };
-  }
-
-  const points = withCoords.map((s) => ({ ...s, ...project(s.latitude, s.longitude) }));
-
   // Compute total distance across visits (in order).
   let totalKm = 0;
   for (let i = 1; i < withCoords.length; i++) {
@@ -89,8 +61,6 @@ export function RouteMap({
     const b = withCoords[i]!;
     totalKm += haversineKm(a.latitude, a.longitude, b.latitude, b.longitude);
   }
-
-  const path = points.map((p) => `${p.x},${p.y}`).join(" ");
 
   const mapboxUrl = mapboxToken
     ? buildMapboxStaticUrl(withCoords, mapboxToken)
@@ -114,25 +84,6 @@ export function RouteMap({
           </span>
         </div>
       </div>
-      {!mapboxUrl && (
-        <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-[10px] text-amber-200/80">
-          Mapbox token not configured — showing built-in SVG preview.
-          {isAdmin && (
-            <details className="mt-1 inline-block">
-              <summary className="cursor-pointer text-amber-200 underline-offset-2 hover:underline">
-                Why am I seeing the SVG fallback?
-              </summary>
-              <span className="mt-1 block text-amber-200/80">
-                Set{" "}
-                <code className="rounded bg-surface px-1">
-                  NEXT_PUBLIC_MAPBOX_TOKEN
-                </code>{" "}
-                in your environment to enable tile maps.
-              </span>
-            </details>
-          )}
-        </div>
-      )}
       {mapboxUrl ? (
         <div
           className="relative overflow-hidden rounded border border-border bg-background"
@@ -147,74 +98,15 @@ export function RouteMap({
           />
         </div>
       ) : (
-      <div
-        className="relative overflow-hidden rounded border border-border bg-background"
-        style={{ aspectRatio: "2 / 1" }}
-      >
-        <svg
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          className="absolute inset-0 h-full w-full"
-        >
-          {/* Subtle grid */}
-          {Array.from({ length: 9 }).map((_, i) => (
-            <g key={i} stroke="currentColor" className="text-border/30">
-              <line
-                x1={((i + 1) * 10).toString()}
-                y1="0"
-                x2={((i + 1) * 10).toString()}
-                y2="100"
-                strokeWidth="0.1"
-              />
-              <line
-                x1="0"
-                y1={((i + 1) * 10).toString()}
-                x2="100"
-                y2={((i + 1) * 10).toString()}
-                strokeWidth="0.1"
-              />
-            </g>
-          ))}
-
-          {/* Path */}
-          {points.length > 1 && (
-            <polyline
-              points={path}
-              fill="none"
-              stroke="rgb(var(--color-primary))"
-              strokeWidth="0.5"
-              strokeDasharray="1 1"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-
-          {/* Pins */}
-          {points.map((p) => (
-            <g key={p.id}>
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r="2.2"
-                fill="rgb(var(--color-primary))"
-                stroke="white"
-                strokeWidth="0.4"
-                vectorEffect="non-scaling-stroke"
-              />
-              <text
-                x={p.x}
-                y={p.y + 0.8}
-                textAnchor="middle"
-                className="fill-white"
-                style={{ fontSize: "2.6px", fontWeight: 700 }}
-              >
-                {p.sequence}
-              </text>
-            </g>
-          ))}
-        </svg>
-      </div>
+        <LeafletMap
+          stops={withCoords.map((s) => ({
+            id: s.id,
+            sequence: s.sequence,
+            label: s.label,
+            latitude: s.latitude,
+            longitude: s.longitude,
+          }))}
+        />
       )}
 
       {/* Leg breakdown */}

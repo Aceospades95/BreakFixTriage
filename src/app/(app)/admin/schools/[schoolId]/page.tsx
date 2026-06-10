@@ -12,8 +12,11 @@ import {
 } from "@/server/actions/admin";
 import {
   createPortalTokenAction,
+  regeneratePortalTokenAction,
   revokePortalTokenAction,
 } from "@/server/actions/portal";
+import { CopyButton } from "@/components/copy-button";
+import { appBaseUrl } from "@/lib/email/variables";
 
 export const dynamic = "force-dynamic";
 
@@ -86,12 +89,17 @@ export default async function SchoolProfilePage({
             Copy this link now — you won't see it again
           </h3>
           <p className="text-xs text-amber-200/80">
-            This is the only time the full URL is shown. Once you
-            navigate away, only the prefix (first eight characters)
-            remains visible. Revoke and reissue if you lose it.
+            This is the only time the full URL is shown. If you lose
+            it, use the Regenerate button on the token row below to
+            issue a fresh link (the old one stops working).
           </p>
-          <div className="overflow-auto rounded bg-amber-950/40 px-2 py-1 font-medium tracking-tight text-xs text-amber-100">
-            /portal/{searchParams.newToken}
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="min-w-0 flex-1 overflow-auto whitespace-nowrap rounded bg-amber-950/40 px-2 py-1.5 font-medium tracking-tight text-xs text-amber-100">
+              {`${appBaseUrl()}/portal/${searchParams.newToken}`}
+            </code>
+            <CopyButton
+              value={`${appBaseUrl()}/portal/${searchParams.newToken}`}
+            />
           </div>
         </div>
       )}
@@ -404,26 +412,52 @@ export default async function SchoolProfilePage({
                         </span>
                       )}
                       {active && (
-                        <form action={revokePortalTokenAction}>
-                          <input type="hidden" name="tokenId" value={t.id} />
-                          <input
-                            type="hidden"
-                            name="schoolId"
-                            value={school.id}
-                          />
-                          <button
-                            type="submit"
-                            className="text-[10px] text-slate-400 hover:text-red-200"
-                          >
-                            revoke
-                          </button>
-                        </form>
+                        <>
+                          {/* Round-18 — the field report: operators
+                              copied a prefix rendered to look like
+                              the link and got a 404. Regenerate is
+                              the recovery path for lost plaintexts. */}
+                          <form action={regeneratePortalTokenAction}>
+                            <input type="hidden" name="tokenId" value={t.id} />
+                            <input
+                              type="hidden"
+                              name="schoolId"
+                              value={school.id}
+                            />
+                            <button
+                              type="submit"
+                              className="rounded border border-surface-border px-2 py-0.5 text-[10px] text-slate-300 hover:border-accent"
+                              title="Issue a fresh link; the old one stops working"
+                            >
+                              Regenerate link
+                            </button>
+                          </form>
+                          <form action={revokePortalTokenAction}>
+                            <input type="hidden" name="tokenId" value={t.id} />
+                            <input
+                              type="hidden"
+                              name="schoolId"
+                              value={school.id}
+                            />
+                            <button
+                              type="submit"
+                              className="text-[10px] text-slate-400 hover:text-red-200"
+                            >
+                              revoke
+                            </button>
+                          </form>
+                        </>
                       )}
                     </div>
                   </div>
                   {active && (
-                    <div className="mt-2 overflow-auto rounded bg-surface-muted px-2 py-1 font-medium tracking-tight text-[10px] text-slate-300">
-                      /portal/{t.tokenPrefix ?? "????????"}…
+                    <div className="mt-2 text-[10px] text-slate-400">
+                      Link starts with{" "}
+                      <code className="rounded bg-surface-muted px-1 text-slate-300">
+                        {t.tokenPrefix ?? "????????"}
+                      </code>{" "}
+                      — the full link was shown once at creation.
+                      Use Regenerate if it was lost.
                     </div>
                   )}
                 </li>

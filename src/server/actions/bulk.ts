@@ -13,6 +13,8 @@ import { createInAppNotification } from "@/lib/notifications/in-app";
 import { dispatchEmailEvent } from "@/lib/email";
 import { buildTicketEmailVariables } from "@/lib/email/variables";
 import { publish } from "@/lib/events/bus";
+import { humanise } from "@/lib/format";
+import { withFeedback } from "@/lib/url";
 
 /**
  * Bulk operations on the ticket list.
@@ -54,7 +56,7 @@ export async function bulkTransitionAction(formData: FormData) {
   });
   if (!parsed.success) {
     redirect(
-      `${returnTo}?error=${encodeURIComponent(parsed.error.issues.map((i) => i.message).join("; "))}`,
+      withFeedback(returnTo, "error", parsed.error.issues.map((i) => i.message).join("; ")),
     );
   }
 
@@ -92,8 +94,14 @@ export async function bulkTransitionAction(formData: FormData) {
   // transitionTicket, but subscribers listening on just the bulk
   // topic get a single notification instead of N.
   publish({ topic: "tickets.bulk-changed", reason: "bulk-transition" });
-  const summary = `Moved ${success}/${parsed.data.ticketIds.length} to ${parsed.data.to}${skipped > 0 ? ` (${skipped} skipped)` : ""}`;
-  redirect(`${returnTo}?ok=${encodeURIComponent(summary)}`);
+  // Round-18 — operator-facing copy: humanised state, and when
+  // everything was skipped say WHY instead of a bare "0/2 moved".
+  const target = humanise(parsed.data.to);
+  const summary =
+    success === 0
+      ? `No tickets moved — ${skipped} selected ticket${skipped === 1 ? " is" : "s are"} not allowed to go to ${target} from their current state.`
+      : `Moved ${success}/${parsed.data.ticketIds.length} to ${target}${skipped > 0 ? ` — ${skipped} skipped (transition not allowed from their current state)` : ""}`;
+  redirect(withFeedback(returnTo, success === 0 ? "error" : "ok", summary));
 }
 
 const bulkAssignSchema = z.object({
@@ -121,7 +129,7 @@ export async function bulkAssignAction(formData: FormData) {
   });
   if (!parsed.success) {
     redirect(
-      `${returnTo}?error=${encodeURIComponent("Invalid bulk assign")}`,
+      withFeedback(returnTo, "error", "Invalid bulk assign"),
     );
   }
 
@@ -206,5 +214,5 @@ export async function bulkAssignAction(formData: FormData) {
   const summary = parsed.data.assigneeUserId
     ? `Assigned ${result.count} tickets`
     : `Unassigned ${result.count} tickets`;
-  redirect(`${returnTo}?ok=${encodeURIComponent(summary)}`);
+  redirect(withFeedback(returnTo, "ok", summary));
 }

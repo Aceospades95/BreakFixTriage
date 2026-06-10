@@ -128,6 +128,10 @@ jobs:
       NEXTAUTH_SECRET: "ci-test-secret-do-not-use-in-prod-32chars"
       NEXTAUTH_URL: "http://127.0.0.1:3000"
       PLAYWRIGHT_BASE_URL: "http://127.0.0.1:3000"
+      # storeFile() defaults to /app/data/attachments (the Docker
+      # volume path), which isn't writable on a GitHub runner — the
+      # photo-capture spec uploads a real file (Round-18 §4).
+      ATTACHMENTS_DIR: "/tmp/breakfix-attachments"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

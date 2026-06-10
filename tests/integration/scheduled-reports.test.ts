@@ -57,7 +57,9 @@ describe("weekStartOf", () => {
   });
 });
 
-describe("report builders (integration)", () => {
+// DB-backed cases skip in the bare Vitest CI job (no DATABASE_URL);
+// the Integration job runs them against the Postgres service.
+describe.skipIf(!process.env.DATABASE_URL)("report builders (integration)", () => {
   it("operations report renders every section", async () => {
     const { range, lines } = await buildOperationsReport("weekly", prisma);
     expect(range.periodLabel).toBe("Weekly");

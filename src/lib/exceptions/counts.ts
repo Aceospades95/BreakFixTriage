@@ -1,0 +1,87 @@
+import type { PrismaClient } from "@prisma/client";
+import { prisma as defaultPrisma } from "@/lib/db/prisma";
+
+export const STUCK_IMPORT_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+export const TOKEN_EXPIRY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+export const SEVERITY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+export interface ExceptionCounts {
+  failedEmails: number;
+  deadJobs: number;
+  failedMerges: number;
+  orphanStopDevices: number;
+  stuckImports: number;
+  expiringTokens: number;
+  severeAudits: number;
+  total: number;
+}
+
+/**
+ * Round-16 (D2) — single source of the exception-section
+ * definitions, shared by /admin/exceptions and the topbar badge's
+ * count endpoint so the badge can never disagree with the page.
+ */
+export async function getExceptionCounts(
+  db: PrismaClient = defaultPrisma,
+): Promise<ExceptionCounts> {
+  const now = Date.now();
+  const [
+    failedEmails,
+    deadJobs,
+    failedMerges,
+    orphanStopDevices,
+    stuckImports,
+    expiringTokens,
+    severeAudits,
+  ] = await Promise.all([
+    db.emailLog.count({ where: { status: "failed" } }),
+    db.emailJob.count({ where: { status: "failed" } }),
+    db.auditLog.count({
+      where: {
+        action: {
+          in: ["snow-merge.failed", "snow-merge.cross-school-collision"],
+        },
+      },
+    }),
+    db.stopDevice.count({ where: { ticketId: null, removedAt: null } }),
+    db.importBatch.count({
+      where: {
+        status: { in: ["PENDING", "VALIDATING", "COMMITTING"] },
+        createdAt: { lt: new Date(now - STUCK_IMPORT_THRESHOLD_MS) },
+      },
+    }),
+    db.portalToken.count({
+      where: {
+        revokedAt: null,
+        expiresAt: {
+          not: null,
+          lt: new Date(now + TOKEN_EXPIRY_WINDOW_MS),
+        },
+      },
+    }),
+    db.auditLog.count({
+      where: {
+        severity: { in: ["warn", "critical"] },
+        createdAt: { gte: new Date(now - SEVERITY_WINDOW_MS) },
+      },
+    }),
+  ]);
+
+  return {
+    failedEmails,
+    deadJobs,
+    failedMerges,
+    orphanStopDevices,
+    stuckImports,
+    expiringTokens,
+    severeAudits,
+    total:
+      failedEmails +
+      deadJobs +
+      failedMerges +
+      orphanStopDevices +
+      stuckImports +
+      expiringTokens +
+      severeAudits,
+  };
+}

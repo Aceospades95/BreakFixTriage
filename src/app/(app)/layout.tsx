@@ -11,6 +11,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ToastHost } from "@/components/toast-host";
 import { CommandPalette } from "@/components/command-palette";
+import { ExceptionsBadge } from "@/components/exceptions-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { touchSession } from "@/lib/auth/sessions";
@@ -75,6 +76,9 @@ export default async function AppLayout({
           <span className="hidden sm:inline">Scan</span>
         </Link>
         <ThemeToggle />
+        {/* Round-16 (D2) — failure-mode count for admins; renders
+            nothing when everything monitored is clear. */}
+        {isAdmin && <ExceptionsBadge />}
         <NotificationBell notifications={notifications} />
         <HelpMenu />
         <Link

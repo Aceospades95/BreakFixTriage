@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { dispatchEmailEvent, processEmailJob } from "@/lib/email/send";
 import { resetEmailProviderCache } from "@/lib/email/provider";
-import { claim } from "@/lib/email/queue";
+import { ensureIntegrationDistrict } from "./helpers";
 
 /**
  * Round-16 (D1) — true-SMTP verification against Mailpit.
@@ -18,6 +18,37 @@ import { claim } from "@/lib/email/queue";
  */
 
 const prisma = new PrismaClient();
+
+/**
+ * Process exactly the jobs a dispatch returned. The open-ended
+ * claim() loop used previously could steal jobs enqueued by OTHER
+ * integration files running in parallel workers — and process them
+ * with this file's provider (memory messages leaking into Mailpit
+ * and vice versa).
+ */
+async function processDispatched(
+  dispatched: Array<{ jobId: string }>,
+): Promise<number> {
+  let sent = 0;
+  for (const d of dispatched) {
+    const row = await prisma.emailJob.findUniqueOrThrow({
+      where: { id: d.jobId },
+    });
+    await processEmailJob(
+      {
+        id: row.id,
+        templateKey: row.templateKey,
+        payload: row.payload as Record<string, unknown>,
+        emailLogId: row.emailLogId,
+        attempts: row.attempts,
+      },
+      prisma,
+    );
+    sent++;
+  }
+  return sent;
+}
+
 
 const TAG = `smtp${Date.now().toString(36)}`;
 const RECIPIENT = `mailpit-${TAG}@example.test`;
@@ -41,15 +72,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.SMTP_HOST)(
       }
       resetEmailProviderCache();
 
-      const district = await prisma.district.upsert({
-        where: { code: "IT-DIST" },
-        create: {
-          code: "IT-DIST",
-          name: "Integration District",
-          region: "NYC",
-        },
-        update: {},
-      });
+      const district = await ensureIntegrationDistrict(prisma);
       const school = await prisma.school.create({
         data: {
           code: `IT-${TAG}`,
@@ -104,7 +127,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.SMTP_HOST)(
         },
       });
 
-      await dispatchEmailEvent(
+      const dispatched = await dispatchEmailEvent(
         "ticket_created",
         {
           ticketId,
@@ -122,12 +145,8 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.SMTP_HOST)(
         },
         prisma,
       );
-
-      let job = await claim(`smtp-worker-${TAG}`, prisma);
-      while (job) {
-        await processEmailJob(job, prisma);
-        job = await claim(`smtp-worker-${TAG}`, prisma);
-      }
+      expect(dispatched.length).toBeGreaterThanOrEqual(1);
+      await processDispatched(dispatched);
 
       const log = await prisma.emailLog.findFirstOrThrow({
         where: { ruleId: rule.id },

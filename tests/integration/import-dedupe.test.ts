@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { runImport } from "@/lib/import/pipeline";
+import { ensureIntegrationDistrict } from "./helpers";
 
 /**
  * Round-11 §2D — import dedupe integration. Implemented in
@@ -40,11 +41,7 @@ function csv(rows: Array<Record<string, string>>): Buffer {
 
 describe.skipIf(!process.env.DATABASE_URL)("import dedupe", () => {
   beforeAll(async () => {
-    const district = await prisma.district.upsert({
-      where: { code: "IT-DIST" },
-      create: { code: "IT-DIST", name: "Integration District", region: "NYC" },
-      update: {},
-    });
+    const district = await ensureIntegrationDistrict(prisma);
     const school = await prisma.school.create({
       data: {
         code: SCHOOL_CODE,

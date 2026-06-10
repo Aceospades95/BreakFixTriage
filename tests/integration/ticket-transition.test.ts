@@ -5,6 +5,7 @@ import {
   GuardFailedError,
   InvalidTransitionError,
 } from "@/lib/workflow/errors";
+import { ensureIntegrationDistrict } from "./helpers";
 
 /**
  * Round-11 §2D — ticket state-machine integration. Implemented in
@@ -26,11 +27,7 @@ const prisma = new PrismaClient();
 const RUN_TAG = `it-${Date.now()}`;
 
 async function createFixtureTicket(state: "IMPORTED" | "AWAITING_PICKUP") {
-  const district = await prisma.district.upsert({
-    where: { code: "IT-DIST" },
-    create: { code: "IT-DIST", name: "Integration District", region: "NYC" },
-    update: {},
-  });
+  const district = await ensureIntegrationDistrict(prisma);
   const school = await prisma.school.upsert({
     where: { code: "IT-SCH-1" },
     create: {

@@ -27,10 +27,21 @@ const createJobSchema = z.object({
 
 /**
  * Create a single job covering one school + N tickets. Called from the
- * quick "Create pickup job" forms on the scheduling dashboard.
+ * quick "Create pickup job" forms on the scheduling dashboard and the
+ * inline ready-ticket groups on the route builder.
+ *
+ * Round-17 — `returnTo=builder` sends the operator to
+ * /scheduling/routes/new after creation. The field QA finding was
+ * that creating a job from /scheduling bounced back to the same page
+ * with nothing visibly different, so operators concluded the button
+ * did nothing; the builder is where the flow continues.
  */
 export async function createJobAction(formData: FormData) {
   const session = await requireRole(PERMISSIONS.SCHEDULING_WRITE);
+  const returnTo =
+    formData.get("returnTo")?.toString() === "builder"
+      ? "/scheduling/routes/new"
+      : "/scheduling";
 
   const ticketIds = formData
     .getAll("ticketIds")
@@ -66,12 +77,16 @@ export async function createJobAction(formData: FormData) {
   }
 
   if (errorMessage) {
-    redirect(`/scheduling?error=${encodeURIComponent(errorMessage)}`);
+    redirect(`${returnTo}?error=${encodeURIComponent(errorMessage)}`);
   }
 
   revalidatePath("/scheduling");
   revalidatePath("/scheduling/routes/new");
-  redirect("/scheduling");
+  redirect(
+    `${returnTo}?ok=${encodeURIComponent(
+      "Job created — pick a driver below and save to finish the route.",
+    )}`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +201,11 @@ export async function buildRouteAction(formData: FormData) {
   revalidatePath("/scheduling/routes/new");
   revalidatePath("/");
   if (newRouteId) {
-    redirect(`/scheduling/routes/${newRouteId}`);
+    redirect(
+      `/scheduling/routes/${newRouteId}?ok=${encodeURIComponent(
+        "Route created. Stops are sequenced below — print the run sheet or hand it to the driver.",
+      )}`,
+    );
   }
   redirect("/scheduling");
 }

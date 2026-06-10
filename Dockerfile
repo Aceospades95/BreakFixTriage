@@ -25,6 +25,12 @@ RUN npm run build
 
 # ---------- runner ----------
 FROM node:20-alpine AS runner
+
+# Round-17 — build stamp. docker-publish passes the commit sha so
+# /api/health reports exactly which build a host is running ("did
+# my box actually update?" stops being guesswork).
+ARG GIT_SHA=""
+ENV GIT_SHA=$GIT_SHA
 RUN apk add --no-cache libc6-compat openssl tini
 WORKDIR /app
 ENV NODE_ENV=production

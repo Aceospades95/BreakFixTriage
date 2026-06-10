@@ -24,6 +24,8 @@ import { signInAs, PERSONA } from "../lib/sign-in-as";
 
 const prisma = new PrismaClient();
 
+let fixtureRouteId: string;
+
 test.describe("§2A driver persona", () => {
   test.beforeAll(async () => {
     // Completing the stops below consumes the seeded TEST-VAN-1
@@ -59,6 +61,7 @@ test.describe("§2A driver persona", () => {
         where: { id: route.id },
         data: { status: "PLANNED" },
       });
+      fixtureRouteId = route.id;
     }
   });
 
@@ -71,14 +74,11 @@ test.describe("§2A driver persona", () => {
 
     // (1) — Drivers don't usually create routes themselves; the
     // scheduling action gate requires DISPATCHER+. The driver
-    // walks an EXISTING route. Route fixture comes from the
-    // synthetic seed; adapt selector to first-route-on-page.
-    await page.goto("/scheduling/routes");
-    const firstRouteLink = page
-      .locator('a[href^="/scheduling/routes/"]')
-      .first();
-    await expect(firstRouteLink).toBeVisible();
-    await firstRouteLink.click();
+    // walks the seeded TEST-VAN-1 route directly — other specs
+    // create routes of their own, so "first link on the index"
+    // is not deterministic.
+    expect(fixtureRouteId, "TEST-VAN-1 fixture route missing").toBeTruthy();
+    await page.goto(`/scheduling/routes/${fixtureRouteId}`);
 
     // (3) — Walk the stop lifecycle. The controls render as
     // Start → Arrived → Complete. Each click submits a form that

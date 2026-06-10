@@ -7,6 +7,10 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
+import {
+  groupReadyTicketsBySchool,
+  type ReadyTicketGroup,
+} from "@/lib/scheduling/ready-groups";
 import { createJobAction } from "@/server/actions/scheduling";
 
 export const dynamic = "force-dynamic";
@@ -55,9 +59,9 @@ export default async function SchedulingPage({
       },
     }),
     prisma.job.count({ where: { status: JobStatus.UNSCHEDULED } }),
-    groupTicketsBySchool("AWAITING_PICKUP", JobType.PICKUP),
-    groupTicketsBySchool("PENDING_DELIVERY", JobType.DELIVERY),
-    groupTicketsBySchool("AWAITING_ONSITE", JobType.ONSITE_REPAIR),
+    groupReadyTicketsBySchool("AWAITING_PICKUP", JobType.PICKUP),
+    groupReadyTicketsBySchool("PENDING_DELIVERY", JobType.DELIVERY),
+    groupReadyTicketsBySchool("AWAITING_ONSITE", JobType.ONSITE_REPAIR),
   ]);
 
   return (
@@ -228,63 +232,6 @@ export default async function SchedulingPage({
 // Helpers
 // ---------------------------------------------------------------------------
 
-interface TicketGroup {
-  schoolId: string;
-  schoolName: string;
-  schoolCode: string | null;
-  tickets: {
-    id: string;
-    incidentNumber: string;
-    shortDescription: string;
-  }[];
-}
-
-/**
- * Group tickets in the given state by school, excluding any tickets that
- * are already linked to an unscheduled job of the matching type.
- */
-async function groupTicketsBySchool(
-  state: TicketState,
-  jobType: JobType,
-): Promise<TicketGroup[]> {
-  const tickets = await prisma.ticket.findMany({
-    where: {
-      state,
-      jobLinks: {
-        none: {
-          job: { type: jobType, status: JobStatus.UNSCHEDULED },
-        },
-      },
-    },
-    include: { school: { select: { id: true, name: true, code: true } } },
-    orderBy: { reportedAt: "asc" },
-    take: 200,
-  });
-
-  const byId = new Map<string, TicketGroup>();
-  for (const t of tickets) {
-    const key = t.schoolId;
-    let g = byId.get(key);
-    if (!g) {
-      g = {
-        schoolId: t.school.id,
-        schoolName: t.school.name,
-        schoolCode: t.school.code,
-        tickets: [],
-      };
-      byId.set(key, g);
-    }
-    g.tickets.push({
-      id: t.id,
-      incidentNumber: t.incidentNumber,
-      shortDescription: t.shortDescription,
-    });
-  }
-  return Array.from(byId.values()).sort((a, b) =>
-    a.schoolName.localeCompare(b.schoolName),
-  );
-}
-
 function JobCandidateColumn({
   title,
   jobType,
@@ -295,7 +242,7 @@ function JobCandidateColumn({
   title: string;
   jobType: JobType;
   ticketState: TicketState;
-  groups: TicketGroup[];
+  groups: ReadyTicketGroup[];
   canWrite: boolean;
 }) {
   const total = groups.reduce((a, g) => a + g.tickets.length, 0);
@@ -345,6 +292,11 @@ function JobCandidateColumn({
                 <form action={createJobAction} className="mt-2 flex gap-2">
                   <input type="hidden" name="type" value={jobType} />
                   <input type="hidden" name="schoolId" value={g.schoolId} />
+                  {/* Round-17 — land on the route builder, not back
+                      here: field QA found operators clicked this,
+                      saw the same page again, and concluded the
+                      button did nothing. */}
+                  <input type="hidden" name="returnTo" value="builder" />
                   {g.tickets.map((t) => (
                     <input
                       key={t.id}
@@ -357,7 +309,7 @@ function JobCandidateColumn({
                     type="submit"
                     className="rounded bg-accent px-2 py-1 text-[11px] font-semibold hover:bg-accent-strong"
                   >
-                    Create {jobType.toLowerCase()} job ({g.tickets.length})
+                    Schedule {g.tickets.length} → build route
                   </button>
                 </form>
               )}

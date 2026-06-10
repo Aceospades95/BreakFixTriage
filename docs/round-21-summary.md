@@ -118,6 +118,29 @@ server (correctly) skipped every row.
   interactively). Added `.eslintrc.json` (next/core-web-vitals)
   and fixed the 23 pre-existing violations it surfaced.
 
+## Second pass (same round)
+
+- **Structured failure reason.** `RouteStop.failureReason` column
+  (migration `20260610210000_route_stop_failure_reason`), stamped by
+  `updateStopStatus` from the driver's required reason pick, shown
+  as a red chip on the stop summary row and on the home-page driver
+  card — dispatch triages reschedules from the card instead of the
+  audit log. Integration-tested (stamp + ticket reverting to the
+  reschedule queue).
+- **CSV export honors every list filter.** `/api/exports/tickets`
+  previously dropped school/manufacturer silently and never knew
+  about assignee / `state=open` / `slaHealth=breached`; a filtered
+  export contained more rows than the operator was looking at. The
+  breached clause is shared (`lib/reports/sla-filter.ts`) so the
+  list, the export, and the home queue agree on the definition; the
+  Export CSV link now passes the full active filter set.
+- **Proof nudge at completion.** When a stop has no photo/signature
+  attached, the completion panel shows an amber "no proof attached
+  yet" note and the confirmation line changes to an explicit "I'm
+  completing this stop without attached proof." Still a nudge, not
+  a hard gate — F2's enforced version stays paired with the offline
+  design.
+
 ## Tests
 
 - Unit: 904 passing (2 structural specs updated for the new
@@ -131,11 +154,6 @@ server (correctly) skipped every row.
 
 - **F2 (R18 backlog)** — hard server-side "proof attached" gate on
   stop completion. Stays deferred pending the offline-tolerance
-  design (F3); today's gate is the per-device check-off + explicit
-  confirmation line.
-- Failure reason is in audit/ticket history but not yet a column on
-  the stop card; surfacing `RouteStop.failureReason` structurally
-  would help dispatch triage reschedules at a glance.
-- CSV export carries state/q/school/manufacturer but not the new
-  slaHealth/assignee filters.
+  design (F3); today's gate is the per-device check-off + the
+  explicit completing-without-proof acknowledgement (second pass).
 - G1–G6 (R20 backlog) unchanged.

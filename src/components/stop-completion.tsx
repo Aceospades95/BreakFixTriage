@@ -26,6 +26,7 @@ export function StopCompletion({
   items,
   enabled,
   disabledHint,
+  proofCount,
 }: {
   action: (formData: FormData) => Promise<void> | void;
   stopId: string;
@@ -39,6 +40,14 @@ export function StopCompletion({
   /** False until the stop status allows completing (en route / arrived). */
   enabled: boolean;
   disabledHint?: string;
+  /**
+   * Photos + signatures already attached to this stop. Zero turns
+   * the confirmation into an explicit "completing without proof"
+   * acknowledgement — a nudge, not a hard gate, because drivers in
+   * dead zones must still be able to close out (backlog F2 tracks
+   * the enforced version pending the offline design).
+   */
+  proofCount?: number;
 }) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [confirmed, setConfirmed] = useState(false);
@@ -89,6 +98,12 @@ export function StopCompletion({
           </li>
         ))}
       </ul>
+      {enabled && proofCount === 0 && (
+        <p className="mt-3 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+          No photo or signature is attached to this stop yet — capture
+          proof above before completing if this visit requires it.
+        </p>
+      )}
       <label className="mt-3 flex items-start gap-2 border-t border-surface-border pt-3 text-sm font-medium text-slate-100">
         <input
           type="checkbox"
@@ -98,8 +113,9 @@ export function StopCompletion({
           className="mt-0.5 h-4 w-4 accent-[rgb(var(--color-primary))]"
         />
         <span>
-          I confirm the work above is done and proof is attached where
-          required.
+          {proofCount === 0
+            ? "I confirm the work above is done — I'm completing this stop without attached proof."
+            : "I confirm the work above is done and proof is attached where required."}
         </span>
       </label>
       <div className="mt-3">

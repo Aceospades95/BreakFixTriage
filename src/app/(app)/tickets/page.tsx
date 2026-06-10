@@ -10,6 +10,7 @@ import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
 import { ALLOWED_TRANSITIONS } from "@/lib/workflow";
 import { getSlaThresholds } from "@/lib/settings/settings";
+import { slaBreachedWhere } from "@/lib/reports/sla-filter";
 import { TicketsBulkActions } from "@/components/tickets-bulk-actions";
 import {
   bulkAssignAction,
@@ -96,27 +97,11 @@ export default async function TicketsPage({
   const manufacturerFilter = searchParams?.manufacturer || undefined;
   const assigneeFilter = searchParams?.assignee || undefined;
 
-  // Per-state SLA cutoffs for the breached filter. daysInState >= T
-  // ⇔ anchor <= now - T days, where the anchor is stateEnteredAt
-  // falling back to reportedAt (mirrors lib/reports/sla.ts).
-  let slaBreachedClause: Prisma.TicketWhereInput | null = null;
-  if (slaBreachedOnly) {
-    const thresholds = await getSlaThresholds();
-    const now = Date.now();
-    const perState = (Object.entries(thresholds) as [
-      TicketState,
-      number | null,
-    ][])
-      .filter(([, t]) => t != null)
-      .map(
-        ([state, t]) =>
-          ({
-            state,
-            stateEnteredAt: { lte: new Date(now - t! * 24 * 60 * 60 * 1000) },
-          }) satisfies Prisma.TicketWhereInput,
-      );
-    slaBreachedClause = { OR: perState };
-  }
+  // Shared with /api/exports/tickets so "what you see" and "what you
+  // download" agree on the breached definition.
+  const slaBreachedClause = slaBreachedOnly
+    ? slaBreachedWhere(await getSlaThresholds())
+    : null;
 
   const where: Prisma.TicketWhereInput = {
     ...(stateFilter ? { state: stateFilter } : {}),
@@ -453,12 +438,14 @@ export default async function TicketsPage({
           )}
           <div className="ml-auto">
             <a
-              href={`/api/exports/tickets?${new URLSearchParams({
-                ...(stateFilter ? { state: stateFilter } : {}),
-                ...(query ? { q: query } : {}),
-                ...(schoolFilter ? { school: schoolFilter } : {}),
-                ...(manufacturerFilter ? { manufacturer: manufacturerFilter } : {}),
-              }).toString()}`}
+              href={(() => {
+                // Every active filter, no paging — the download is
+                // the full matching set, exactly what's on screen.
+                const sp = new URLSearchParams(activeFilters);
+                sp.delete("page");
+                const qs = sp.toString();
+                return `/api/exports/tickets${qs ? `?${qs}` : ""}`;
+              })()}
               className="rounded border border-surface-border px-3 py-1 text-sm transition hover:border-accent"
               title="Download matching tickets as CSV"
             >

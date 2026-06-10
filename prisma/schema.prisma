@@ -668,6 +668,12 @@ model RouteStop {
   delayNote    String?
   delayedAt    DateTime?
 
+  /// Round-21 — why the stop FAILED ("Device not found — reschedule
+  /// required", "School closed", …). Stamped by updateStopStatus
+  /// from the driver's reason picker so dispatch can triage
+  /// reschedules from the stop card instead of the audit log.
+  failureReason String?
+
   route       Route        @relation(fields: [routeId], references: [id], onDelete: Cascade)
   job         Job          @relation(fields: [jobId], references: [id])
   attachments Attachment[]

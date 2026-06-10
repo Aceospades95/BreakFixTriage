@@ -406,7 +406,15 @@ export default async function HomePage() {
                               ))}
                             </ul>
                           </div>
-                          <StopStatusPill status={stop.status} />
+                          <div className="flex flex-col items-end gap-1">
+                            <StopStatusPill status={stop.status} />
+                            {stop.status === JobStatus.FAILED &&
+                              stop.failureReason && (
+                                <span className="max-w-44 text-right text-[10px] text-red-300">
+                                  {stop.failureReason}
+                                </span>
+                              )}
+                          </div>
                         </div>
 
                         {canUpdateStop && (

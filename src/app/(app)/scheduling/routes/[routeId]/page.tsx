@@ -452,6 +452,14 @@ function StopSummary({ stop, muted = false }: { stop: StopRow; muted?: boolean }
           {stop.delayMinutes ? ` (+${stop.delayMinutes}m)` : ""}
         </span>
       )}
+      {stop.status === JobStatus.FAILED && stop.failureReason && (
+        <span
+          className="rounded border border-red-500/50 bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-200"
+          title="Reason the driver recorded when failing this stop"
+        >
+          {stop.failureReason}
+        </span>
+      )}
       <span className="ml-auto">
         <StopStatusPill status={stop.status} />
       </span>
@@ -1101,6 +1109,7 @@ function StopBody({
             stop.status === JobStatus.ARRIVED
           }
           disabledHint="Tap Start when you head to this stop, then Arrived on site — completing unlocks once you're moving."
+          proofCount={stop.attachments.length}
         />
       )}
     </div>

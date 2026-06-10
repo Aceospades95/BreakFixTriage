@@ -13,6 +13,7 @@ import { writeAudit } from "@/lib/audit/audit";
 import { buildRoute, createJob } from "@/lib/scheduling/jobs";
 import { cancelRoute, reorderRoute } from "@/lib/scheduling/routes";
 import { updateStopStatus } from "@/lib/scheduling/stops";
+import { withFeedback } from "@/lib/url";
 
 // ---------------------------------------------------------------------------
 // createJobAction
@@ -77,15 +78,15 @@ export async function createJobAction(formData: FormData) {
   }
 
   if (errorMessage) {
-    redirect(`${returnTo}?error=${encodeURIComponent(errorMessage)}`);
+    redirect(withFeedback(returnTo, "error", errorMessage));
   }
 
   revalidatePath("/scheduling");
   revalidatePath("/scheduling/routes/new");
   redirect(
-    `${returnTo}?ok=${encodeURIComponent(
+    withFeedback(returnTo, "ok", 
       "Job created — pick a driver below and save to finish the route.",
-    )}`,
+    ),
   );
 }
 
@@ -357,7 +358,7 @@ export async function updateStopStatusAction(formData: FormData) {
   }
 
   if (errorMessage) {
-    redirect(`${fallbackPath}?error=${encodeURIComponent(errorMessage)}`);
+    redirect(withFeedback(fallbackPath, "error", errorMessage));
   }
 
   revalidatePath(fallbackPath);

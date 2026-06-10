@@ -114,14 +114,49 @@ async function main() {
     skipDuplicates: true,
   });
 
-  const schoolSlugs = ["TEST-101", "TEST-102", "TEST-201", "TEST-301", "TEST-401"];
+  // Round-18 — schools get real Bronx coordinates so the route map
+  // (Leaflet/OSM) renders in e2e instead of the "no coordinates"
+  // empty state, and so stop cards can show a street address.
+  const schoolSeeds: Array<{
+    code: string;
+    line1: string;
+    postalCode: string;
+    lat: number;
+    lng: number;
+  }> = [
+    { code: "TEST-101", line1: "101 Test Ave", postalCode: "10451", lat: 40.8201, lng: -73.9263 },
+    { code: "TEST-102", line1: "102 Test Ave", postalCode: "10452", lat: 40.8372, lng: -73.9234 },
+    { code: "TEST-201", line1: "201 Test Blvd", postalCode: "10453", lat: 40.8523, lng: -73.9121 },
+    { code: "TEST-301", line1: "301 Test St", postalCode: "10458", lat: 40.8623, lng: -73.8889 },
+    { code: "TEST-401", line1: "401 Test Rd", postalCode: "10462", lat: 40.8434, lng: -73.8601 },
+  ];
   const schools = [];
-  for (const code of schoolSlugs) {
-    const s = await prisma.school.upsert({
-      where: { code },
-      create: { code, name: `Test School ${code}`, districtId: district.id },
+  for (const seed of schoolSeeds) {
+    let s = await prisma.school.upsert({
+      where: { code: seed.code },
+      create: {
+        code: seed.code,
+        name: `Test School ${seed.code}`,
+        districtId: district.id,
+      },
       update: {},
     });
+    if (!s.addressId) {
+      const address = await prisma.address.create({
+        data: {
+          line1: seed.line1,
+          city: "Bronx",
+          state: "NY",
+          postalCode: seed.postalCode,
+          latitude: seed.lat,
+          longitude: seed.lng,
+        },
+      });
+      s = await prisma.school.update({
+        where: { id: s.id },
+        data: { addressId: address.id },
+      });
+    }
     schools.push(s);
   }
 

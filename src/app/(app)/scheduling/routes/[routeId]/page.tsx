@@ -208,7 +208,6 @@ export default async function RouteDetailPage({
               }))}
               title="Route map · auto-optimized by nearest-neighbor haversine distance"
               mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? null}
-              isAdmin={session.role === "ADMIN"}
             />
           </div>
           <ol className="space-y-3">

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { createPortalToken, revokePortalToken } from "@/lib/portal/tokens";
+import { prisma } from "@/lib/db/prisma";
 
 const createSchema = z.object({
   schoolId: z.string().min(1),
@@ -89,4 +90,58 @@ export async function revokePortalTokenAction(formData: FormData) {
   }
   revalidatePath(`/admin/schools/${parsed.data.schoolId}`);
   redirect(`/admin/schools/${parsed.data.schoolId}?ok=Portal+link+revoked`);
+}
+
+const regenerateSchema = z.object({
+  tokenId: z.string().min(1),
+  schoolId: z.string().min(1),
+});
+
+/**
+ * Round-18 — regenerate a portal link in one step. The plaintext is
+ * only ever shown at creation; when it's lost (the field report:
+ * operators copied the prefix shown in the token list and got a 404)
+ * the only recovery is revoke + reissue. This action does both,
+ * carrying the old token's label/scope forward, and lands back on
+ * the school page with the one-shot banner showing the new link.
+ */
+export async function regeneratePortalTokenAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.DISTRICTS_MANAGE);
+  const parsed = regenerateSchema.safeParse({
+    tokenId: formData.get("tokenId"),
+    schoolId: formData.get("schoolId"),
+  });
+  if (!parsed.success) {
+    redirect("/admin/schools?error=Invalid+regenerate+request");
+  }
+
+  try {
+    const old = await prisma.portalToken.findUnique({
+      where: { id: parsed.data.tokenId },
+      select: { label: true, expiresAt: true, dataScope: true },
+    });
+    await revokePortalToken({
+      tokenId: parsed.data.tokenId,
+      actorUserId: session.userId,
+    });
+    const result = await createPortalToken({
+      schoolId: parsed.data.schoolId,
+      label: old?.label ?? null,
+      expiresAt: old?.expiresAt ?? null,
+      dataScope:
+        old?.dataScope === "MINIMAL" ? "MINIMAL" : "STANDARD",
+      actorUserId: session.userId,
+    });
+    revalidatePath(`/admin/schools/${parsed.data.schoolId}`);
+    redirect(
+      `/admin/schools/${parsed.data.schoolId}?ok=${encodeURIComponent("Link regenerated — the old link no longer works")}&newToken=${encodeURIComponent(result.plaintext)}`,
+    );
+  } catch (err) {
+    if (err && typeof err === "object" && "digest" in err) {
+      throw err;
+    }
+    redirect(
+      `/admin/schools/${parsed.data.schoolId}?error=${encodeURIComponent(err instanceof Error ? err.message : "Regenerate failed")}`,
+    );
+  }
 }

@@ -10,6 +10,7 @@
  */
 
 import { prisma } from "../src/lib/db/prisma";
+import { dispatchEmailEvent } from "../src/lib/email/send";
 import { buildDigestReport, renderDigestText } from "../src/lib/reports/digest";
 import { getDigestRecipients } from "../src/lib/settings/settings";
 import { dispatchNotification } from "../src/lib/notifications";
@@ -20,6 +21,41 @@ async function main() {
     getDigestRecipients(),
   ]);
   const body = renderDigestText(report);
+
+  // Round-16 (D3) — when an enabled daily_digest EmailRule exists,
+  // route through the dispatchEmailEvent chokepoint (EmailLog +
+  // queue + worker + audit) like every other email. The legacy
+  // settings-recipients path below stays as the fallback so
+  // existing deployments keep working until a rule is configured.
+  const digestRule = await prisma.emailRule.findFirst({
+    where: { event: "daily_digest", enabled: true },
+    select: { id: true },
+  });
+  if (digestRule) {
+    const dispatched = await dispatchEmailEvent("daily_digest", {
+      variables: {
+        date: report.asOf.toISOString().slice(0, 10),
+        counts: {
+          open: report.openTicketCount,
+          breached: report.breachedSlaCount,
+          quotesPending: report.quoteSentCount,
+        },
+        bodyText: body,
+      },
+    });
+    console.log(
+      JSON.stringify(
+        {
+          via: "email-rules",
+          rules: dispatched.length,
+          asOf: report.asOf.toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
 
   if (recipients.length === 0) {
     console.log(

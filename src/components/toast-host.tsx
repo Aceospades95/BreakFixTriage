@@ -91,12 +91,15 @@ export function ToastHost() {
       });
     }
     if (error) {
+      // Errors stay until dismissed: they explain why an action
+      // didn't take (e.g. which bulk rows were skipped), and a 4s
+      // flash is not enough to read that in the field.
       next.push({
         id: now + 1,
         kind: "error",
         message: error,
         fading: false,
-        expiresAt: now + showMs,
+        expiresAt: null,
       });
     }
     setToasts((prev) => [...prev, ...next]);
@@ -121,6 +124,20 @@ export function ToastHost() {
   // `paused`, every visible toast keeps its current `expiresAt`
   // and we don't schedule a fade timer. On unpause, each toast
   // computes its remaining time and re-arms.
+  //
+  // Round-21 fix: the removal timer must NOT be registered in
+  // `handles`. Setting `fading: true` changes `toasts`, which
+  // re-runs this effect — whose cleanup used to clearTimeout the
+  // just-scheduled removal, leaving every toast as a permanent
+  // opacity-0 zombie in the DOM. The removal is tracked separately
+  // and only cancelled on unmount.
+  const removalHandles = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  useEffect(() => {
+    const removals = removalHandles.current;
+    return () => {
+      for (const h of removals) clearTimeout(h);
+    };
+  }, []);
   useEffect(() => {
     if (paused) return;
     const handles: ReturnType<typeof setTimeout>[] = [];
@@ -134,11 +151,11 @@ export function ToastHost() {
           setToasts((prev) =>
             prev.map((x) => (x.id === t.id ? { ...x, fading: true } : x)),
           );
-          handles.push(
-            setTimeout(() => {
-              setToasts((prev) => prev.filter((x) => x.id !== t.id));
-            }, FADE_MS),
-          );
+          const removal = setTimeout(() => {
+            removalHandles.current.delete(removal);
+            setToasts((prev) => prev.filter((x) => x.id !== t.id));
+          }, FADE_MS);
+          removalHandles.current.add(removal);
         }, ms),
       );
     }

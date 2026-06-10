@@ -48,9 +48,9 @@ export default async function EmailTemplatesPage() {
               No templates configured yet
             </h2>
             <p className="mt-1 text-xs text-amber-200/80">
-              Click "Seed default templates" to add the standard set
+              Click &quot;Seed default templates&quot; to add the standard set
               (ticket created, ticket assigned, status changed, daily
-              digest, etc.). You can edit any of them after they're
+              digest, etc.). You can edit any of them after they&apos;re
               seeded.
             </p>
           </div>

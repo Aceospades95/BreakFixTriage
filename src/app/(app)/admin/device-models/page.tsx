@@ -73,7 +73,7 @@ export default async function AdminDeviceModelsPage() {
                   colSpan={7}
                   className="px-3 py-8 text-center text-slate-400"
                 >
-                  No device models yet. They're created automatically when
+                  No device models yet. They&apos;re created automatically when
                   you import a ticket with manufacturer + model, or when
                   you add a device manually.
                 </td>

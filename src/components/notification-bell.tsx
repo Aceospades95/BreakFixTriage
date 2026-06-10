@@ -69,7 +69,7 @@ export function NotificationBell({
       </div>
       {count === 0 ? (
         <div className="p-4 text-center text-xs text-slate-400">
-          You're all caught up.
+          You&apos;re all caught up.
         </div>
       ) : (
         <ul className="max-h-[60vh] divide-y divide-surface-border overflow-auto">

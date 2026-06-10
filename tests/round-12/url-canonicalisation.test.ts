@@ -25,7 +25,13 @@ describe("Round-12 §1B — URL canonicalisation", () => {
   it("ticket detail page detects cuid params and 308-redirects to canonical incidentNumber", () => {
     const src = read("src/app/(app)/tickets/[ticketId]/page.tsx");
     expect(src).toContain("isCuidParam");
-    expect(src).toMatch(/permanentRedirect\(`\/tickets\/\$\{byId\.incidentNumber\}`\)/);
+    // Round-21 — the redirect now carries the query string along
+    // (server actions land back here with ?ok/?error feedback that
+    // the bare-path redirect used to eat), so match the canonical
+    // target + suffix interpolation.
+    expect(src).toMatch(
+      /permanentRedirect\(\s*`\/tickets\/\$\{byId\.incidentNumber\}\$\{suffix \? `\?\$\{suffix\}` : ""\}`,?\s*\)/,
+    );
   });
 
   it("ticket detail page accepts incidentNumber lookups directly", () => {

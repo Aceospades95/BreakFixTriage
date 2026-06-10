@@ -94,8 +94,8 @@ export default async function EmailRulesPage() {
               No rules configured yet
             </h2>
             <p className="mt-1 text-xs text-amber-200/80">
-              Click "Seed example rule" to start with a sensible
-              default — every new ticket emails its school's SPOC
+              Click &quot;Seed example rule&quot; to start with a sensible
+              default — every new ticket emails its school&apos;s SPOC
               contacts. Manage templates at{" "}
               <Link
                 href="/admin/email-templates"

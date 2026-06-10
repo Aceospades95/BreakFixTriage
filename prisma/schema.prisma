@@ -951,6 +951,13 @@ model Attachment {
   storedPath       String
   mimeType         String
   sizeBytes        Int
+  /// Printed name of the person who signed, for signature
+  /// attachments captured via the SignaturePad ("who signed for
+  /// this pickup/delivery"). Null for ordinary file uploads.
+  signerName       String?
+  /// Optional free-text context captured with the proof ("left with
+  /// front desk", "custodian signed, AP unavailable", …).
+  note             String?
   createdAt        DateTime       @default(now())
 
   ticket     Ticket?    @relation(fields: [ticketId], references: [id], onDelete: Cascade)

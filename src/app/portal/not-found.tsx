@@ -14,7 +14,7 @@ export default function PortalNotFound() {
       className="mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center px-6 py-10 text-center"
     >
       <h1 className="text-2xl font-semibold text-slate-100">
-        That page isn't available
+        That page isn&apos;t available
       </h1>
       <p className="mt-3 max-w-prose text-sm text-slate-300">
         The portal link you followed has either expired or never existed.

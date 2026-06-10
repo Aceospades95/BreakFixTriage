@@ -20,7 +20,21 @@ spreadsheet-based operational workflow with:
 - a **Next.js 14** web UI for operations staff
 
 See `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, `docs/MIGRATION_PLAN.md`, and
-`docs/ASSUMPTIONS.md` for the full design.
+`docs/ASSUMPTIONS.md` for the full design. Maps, photo proof, and
+signature capture (what's zero-config vs optional) are documented in
+`docs/maps-and-field-capture.md`.
+
+## Round-21 field-ops usability review (June 2026)
+
+Root-caused the "every button does nothing" class to the CSP
+(dev-mode hydration death + map tiles blocked in all modes), fixed a
+credential-leaking sign-in fallback, made bulk transitions
+selection-aware with confirmation and sticky error feedback, gave
+signatures attributable signer metadata, required reasons on failed
+stops, and repaired several fake affordances (SLA-breached deep
+link, pagination dropping filters, feedback eaten by the cuid
+redirect). Full detail in `docs/round-21-summary.md`; maps/photo/
+signature setup in `docs/maps-and-field-capture.md`.
 
 ## Round-14 live-runtime review (June 2026)
 

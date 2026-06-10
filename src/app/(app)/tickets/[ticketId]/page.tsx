@@ -6,6 +6,7 @@ import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList } from "@/components/attachment-list";
+import { PhotoCapture } from "@/components/photo-capture";
 import { ForceChangeForm } from "@/components/force-change-form";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
@@ -17,6 +18,7 @@ import {
   transitionTicketAction,
   updateTicketAction,
 } from "@/server/actions/tickets";
+import { uploadAttachmentAction } from "@/server/actions/attachments";
 import {
   cancelQuoteAction,
   createQuoteAction,
@@ -47,7 +49,10 @@ export default async function TicketDetailPage({
   searchParams,
 }: {
   params: { ticketId: string };
-  searchParams?: { error?: string; view?: string };
+  searchParams?: { error?: string; ok?: string; view?: string } & Record<
+    string,
+    string | string[] | undefined
+  >;
 }) {
   const session = await requireRole(PERMISSIONS.TICKETS_READ);
   const canTransition = can(session.role, PERMISSIONS.TICKETS_TRANSITION);
@@ -75,7 +80,19 @@ export default async function TicketDetailPage({
     });
     if (!byId) notFound();
     if (byId.incidentNumber) {
-      permanentRedirect(`/tickets/${byId.incidentNumber}`);
+      // Preserve the query string across the canonicalization —
+      // server actions redirect back here with ?ok/?error feedback,
+      // and dropping it ate the toast (the action ran, the operator
+      // saw nothing).
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(searchParams ?? {})) {
+        if (typeof v === "string") qs.set(k, v);
+        else if (Array.isArray(v)) for (const item of v) qs.append(k, item);
+      }
+      const suffix = qs.toString();
+      permanentRedirect(
+        `/tickets/${byId.incidentNumber}${suffix ? `?${suffix}` : ""}`,
+      );
     }
     // Fall through with the cuid in place if the row has no
     // incident number (legacy data).
@@ -242,7 +259,9 @@ export default async function TicketDetailPage({
   void siblingTickets;
 
   const nextStates = allowedNextStates(ticket.state);
-  const returnTo = `/tickets/${ticket.id}`;
+  // Canonical slug so post-action redirects land here directly
+  // instead of bouncing through the cuid → incidentNumber 308.
+  const returnTo = `/tickets/${ticket.incidentNumber ?? ticket.id}`;
   const spocCount = ticket.school.contacts.length;
 
   // Load admin status config for the "Change status" dropdown. Labels
@@ -562,6 +581,16 @@ export default async function TicketDetailPage({
               returnTo={returnTo}
               canWrite={canWrite}
             />
+            {canWrite && (
+              <div className="mt-3">
+                <PhotoCapture
+                  action={uploadAttachmentAction}
+                  ownerKind="TICKET"
+                  ownerId={ticket.id}
+                  returnTo={returnTo}
+                />
+              </div>
+            )}
           </Card>
 
           <Card title={`Time logged (${formatHours(totalMinutes)})`}>

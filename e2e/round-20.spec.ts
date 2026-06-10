@@ -48,7 +48,7 @@ test("§1 team note banners for everyone until acknowledged", async ({
   await page.goto("/team-notes");
   await page.locator('input[name="body"]').fill(body);
   await page.getByRole("button", { name: "Post note" }).click();
-  await expect(page.getByText(/Note posted/i)).toBeVisible({
+  await expect(page.getByText(/Note posted/i).first()).toBeVisible({
     timeout: 15_000,
   });
 
@@ -83,7 +83,9 @@ test("§1 team note banners for everyone until acknowledged", async ({
   // Retire it so it doesn't pollute later specs.
   page.once("dialog", (d) => void d.accept());
   await row.getByRole("button", { name: "Retire" }).click();
-  await expect(page.getByText(/Note retired/i)).toBeVisible({
+  // .first(): the success message renders as both the page banner
+  // and the toast until the toast strips the query param.
+  await expect(page.getByText(/Note retired/i).first()).toBeVisible({
     timeout: 15_000,
   });
 });
@@ -136,9 +138,13 @@ test("§2 reporting a delay chips the stop and emails the SPOC", async ({
     .getByRole("button", { name: /record delay & notify school/i })
     .click();
 
-  await expect(page.getByText(/Delay recorded — Weather/i)).toBeVisible({
-    timeout: 15_000,
-  });
+  // .first(): the success message renders as both the page banner
+  // and the toast until the toast strips the query param.
+  await expect(page.getByText(/Delay recorded — Weather/i).first()).toBeVisible(
+    {
+      timeout: 15_000,
+    },
+  );
   // Amber chip on the stop summary.
   await expect(
     page.locator(`[data-stop-id="${stop.id}"]`).getByText(/Delayed — Weather/i),
@@ -174,7 +180,7 @@ test("§3 expense lifecycle: submit → review → CSV", async ({ page }) => {
     .locator('input[name="description"]')
     .fill(`Bx12 bus ${STAMP}`);
   await page.getByRole("button", { name: "Submit", exact: true }).click();
-  await expect(page.getByText(/Expense submitted/i)).toBeVisible({
+  await expect(page.getByText(/Expense submitted/i).first()).toBeVisible({
     timeout: 15_000,
   });
   const myRow = page
@@ -191,7 +197,7 @@ test("§3 expense lifecycle: submit → review → CSV", async ({ page }) => {
     .first();
   const line = section.locator("li", { hasText: `Bx12 bus ${STAMP}` });
   await line.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText(/Expense approved/i)).toBeVisible({
+  await expect(page.getByText(/Expense approved/i).first()).toBeVisible({
     timeout: 15_000,
   });
 

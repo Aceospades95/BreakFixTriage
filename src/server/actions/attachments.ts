@@ -71,11 +71,29 @@ export async function uploadAttachmentAction(formData: FormData) {
   const file = formData.get("file");
   const signatureDataUrl = formData.get("signatureDataUrl")?.toString() ?? "";
 
+  // Optional proof metadata. `signerName` is required for signature
+  // submissions (a signature nobody can attribute is useless as
+  // proof); `note` is free-text context on either shape.
+  const signerName =
+    formData.get("signerName")?.toString().trim().slice(0, 120) || null;
+  const note = formData.get("note")?.toString().trim().slice(0, 500) || null;
+
   let bytes: Buffer;
   let filename: string;
   let mimeType: string;
+  let isSignature = false;
 
   if (signatureDataUrl && signatureDataUrl.startsWith("data:image/png;base64,")) {
+    isSignature = true;
+    if (!signerName) {
+      redirect(
+        withFeedback(
+          returnTo,
+          "error",
+          "Enter the printed name of the person signing — the signature needs to be attributable.",
+        ),
+      );
+    }
     const b64 = signatureDataUrl.slice("data:image/png;base64,".length);
     try {
       bytes = Buffer.from(b64, "base64");
@@ -105,6 +123,15 @@ export async function uploadAttachmentAction(formData: FormData) {
     bytes = Buffer.from(await upload.arrayBuffer());
     filename = upload.name;
     mimeType = upload.type || "application/octet-stream";
+  } else if (formData.has("signatureDataUrl")) {
+    // A signature form posted with an untouched canvas.
+    redirect(
+      withFeedback(
+        returnTo,
+        "error",
+        "Signature is empty — please sign before submitting",
+      ),
+    );
   } else {
     redirect(withFeedback(returnTo, "error", "No file uploaded"));
   }
@@ -128,17 +155,21 @@ export async function uploadAttachmentAction(formData: FormData) {
         storedPath: stored.storedPath,
         mimeType: stored.mimeType,
         sizeBytes: stored.sizeBytes,
+        signerName,
+        note,
       },
     });
     await writeAudit({
       actorUserId: session.userId,
       entityType: "Attachment",
       entityId: row.id,
-      action: "upload",
+      action: isSignature ? "signature-captured" : "upload",
       after: {
         kind,
         filename: stored.filename,
         sizeBytes: stored.sizeBytes,
+        signerName,
+        note,
         ticketId,
         routeStopId,
         quoteId,
@@ -154,7 +185,15 @@ export async function uploadAttachmentAction(formData: FormData) {
   }
 
   revalidatePath(returnTo);
-  redirect(returnTo);
+  redirect(
+    withFeedback(
+      returnTo,
+      "ok",
+      isSignature
+        ? `Signature captured${signerName ? ` — signed by ${signerName}` : ""}.`
+        : `Saved ${filename}.`,
+    ),
+  );
 }
 
 /**
@@ -202,5 +241,5 @@ export async function deleteAttachmentAction(formData: FormData) {
   }
 
   revalidatePath(returnTo);
-  redirect(returnTo);
+  redirect(withFeedback(returnTo, "ok", "Attachment deleted."));
 }

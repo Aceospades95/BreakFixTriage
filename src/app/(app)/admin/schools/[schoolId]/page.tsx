@@ -86,7 +86,7 @@ export default async function SchoolProfilePage({
           className="mb-4 space-y-2 rounded border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100"
         >
           <h3 className="text-sm font-semibold">
-            Copy this link now — you won't see it again
+            Copy this link now — you won&apos;t see it again
           </h3>
           <p className="text-xs text-amber-200/80">
             This is the only time the full URL is shown. If you lose
@@ -361,7 +361,7 @@ export default async function SchoolProfilePage({
           Status portal links
         </h2>
         <p className="mb-3 text-xs text-slate-400">
-          Generate a magic link that lets this school's IT lead view
+          Generate a magic link that lets this school&apos;s IT lead view
           their open and recently-closed tickets without signing in.
           Each link can be revoked at any time.
         </p>

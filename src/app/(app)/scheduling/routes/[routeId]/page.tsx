@@ -991,7 +991,7 @@ function StopBody({
                     <p className="text-[10px] text-slate-500">
                       Every device line gets a ticket. Type a known INC#
                       to attach an existing ticket; leave blank to mint a
-                      synthetic ticket in "Pending pickup (unlinked)" —
+                      synthetic ticket in &quot;Pending pickup (unlinked)&quot; —
                       link it later from{" "}
                       <Link
                         href="/duplicates"
@@ -1015,7 +1015,8 @@ function StopBody({
       {(stop.attachments.length > 0 || canUpdateStop) && (
         <div className="border-t border-surface-border pt-3">
           <div className="mb-2 text-[10px] uppercase tracking-wide text-slate-400">
-            Photos & proof ({stop.attachments.length})
+            Photos & proof for stop {stop.sequence} · {school.name} (
+            {stop.attachments.length})
           </div>
           <AttachmentList
             attachments={stop.attachments}
@@ -1044,14 +1045,45 @@ function StopBody({
               <input type="hidden" name="returnTo" value={returnTo} />
               <SignaturePad
                 name="signatureDataUrl"
-                label="School contact signature"
+                label={`Sign-off for ${school.name}`}
               />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                    Signer&apos;s printed name (required)
+                  </span>
+                  <input
+                    type="text"
+                    name="signerName"
+                    required
+                    maxLength={120}
+                    placeholder={contact?.name ?? "e.g. front-desk staff name"}
+                    className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                    Note (optional)
+                  </span>
+                  <input
+                    type="text"
+                    name="note"
+                    maxLength={500}
+                    placeholder="e.g. left with main office"
+                    className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                  />
+                </label>
+              </div>
               <button
                 type="submit"
                 className="rounded bg-accent px-3 py-1.5 text-xs font-semibold hover:bg-accent-strong"
               >
                 Save signature
               </button>
+              <p className="text-[10px] text-slate-500">
+                The signature, name, and timestamp attach to this stop and
+                stay visible in the work record.
+              </p>
             </form>
           )}
         </div>
@@ -1134,13 +1166,38 @@ function StopStatusControls({
           </button>
         </form>
       ))}
-      <form action={updateStopStatusAction}>
+      <form action={updateStopStatusAction} className="flex items-center gap-1">
         <input type="hidden" name="stopId" value={stopId} />
         <input type="hidden" name="status" value={JobStatus.FAILED} />
         <input type="hidden" name="routeId" value={routeId} />
         <input type="hidden" name="returnTo" value="route" />
+        {/* The reason travels into the ticket transition + audit row,
+            so "device not found — reschedule required" is traceable
+            later, matching the legacy workflow's explicit status. */}
+        <select
+          name="reason"
+          required
+          defaultValue=""
+          title="Why couldn't this stop be completed?"
+          className="rounded border border-surface-border bg-surface px-1.5 py-1 text-[11px] focus:border-accent focus:outline-none"
+        >
+          <option value="" disabled>
+            why failed…
+          </option>
+          <option value="Device not found — reschedule required">
+            Device not found
+          </option>
+          <option value="School closed">School closed</option>
+          <option value="Contact unavailable — nobody could sign">
+            Contact unavailable
+          </option>
+          <option value="Access denied / turned away">
+            Access denied
+          </option>
+          <option value="Other — see stop notes">Other</option>
+        </select>
         <ConfirmButton
-          message="Mark this stop as failed? Use this when the school was closed, nobody could sign, or the visit couldn't happen."
+          message="Mark this stop as failed? The tickets go back to the reschedule queue (Awaiting pickup / Pending delivery) and dispatch sees the reason you picked."
           disabled={
             current === JobStatus.COMPLETED ||
             current === JobStatus.FAILED ||

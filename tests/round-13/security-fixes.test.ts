@@ -211,7 +211,8 @@ describe("Round-13 §1I — portal token hashing", () => {
     );
     expect(src).toContain("portal-token-once");
     expect(src).toContain("Copy this link now");
-    expect(src).toContain("won't see it again");
+    // Apostrophe is JSX-escaped (react/no-unescaped-entities).
+    expect(src).toContain("won&apos;t see it again");
   });
 });
 

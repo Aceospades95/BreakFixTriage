@@ -332,6 +332,26 @@ async function main() {
       },
     });
   }
+  // Round-20 — TEST-102 hosts the TEST-VAN-1 route stops; its SPOC
+  // opts into delivery emails so pickup_scheduled / stop_delayed
+  // dispatches resolve a real recipient in e2e.
+  const deliverySpocEmail = "spoc-test102@example.test";
+  const test102 = schools[1]!;
+  const existingDeliverySpoc = await prisma.contact.findFirst({
+    where: { schoolId: test102.id, email: deliverySpocEmail },
+    select: { id: true },
+  });
+  if (!existingDeliverySpoc) {
+    await prisma.contact.create({
+      data: {
+        schoolId: test102.id,
+        name: "Dora Delivery-Spoc",
+        email: deliverySpocEmail,
+        receivesTicketEmails: true,
+        receivesDeliveryReceipts: true,
+      },
+    });
+  }
   const ticketCreatedTemplate = await prisma.emailTemplate.findFirst({
     where: { key: "ticket_created" },
     select: { id: true },

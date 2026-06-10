@@ -184,7 +184,7 @@ describe("Round-13 §1I — portal token hashing", () => {
   it("PortalToken schema has tokenPrefix + dataScope", () => {
     const schema = read("prisma/schema.prisma");
     expect(schema).toContain("tokenPrefix String?");
-    expect(schema).toContain("dataScope  String");
+    expect(schema).toMatch(/dataScope\s+String/);
   });
 
   it("createPortalToken hashes the plaintext", () => {
@@ -218,10 +218,10 @@ describe("Round-13 §1I — portal token hashing", () => {
 describe("Round-13 §1J — audit column promotion", () => {
   it("AuditLog schema declares the four new columns", () => {
     const schema = read("prisma/schema.prisma");
-    expect(schema).toContain("reason      String?");
-    expect(schema).toContain("transitionType String?");
-    expect(schema).toContain("requestId   String?");
-    expect(schema).toContain("severity    String?");
+    expect(schema).toMatch(/reason\s+String\?/);
+    expect(schema).toMatch(/transitionType\s+String\?/);
+    expect(schema).toMatch(/requestId\s+String\?/);
+    expect(schema).toMatch(/severity\s+String\?/);
   });
 
   it("writeAudit writes to the new columns directly", () => {

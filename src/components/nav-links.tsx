@@ -21,6 +21,8 @@ function buildGroups(isAdmin: boolean, isManager: boolean): NavLink[][] {
       { href: "/tickets", label: "Tickets" },
       { href: "/bench", label: "Bench" },
       { href: "/scheduling", label: "Scheduling" },
+      // Round-20 — urgent team-notes management (ops + dispatch).
+      ...(isManager ? [{ href: "/team-notes", label: "Team notes" }] : []),
     ],
   ];
 

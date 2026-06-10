@@ -21,9 +21,11 @@ import { humanise } from "@/lib/format";
 import {
   cancelRouteAction,
   reorderRouteAction,
+  reportStopDelayAction,
   updateRouteVehicleAction,
   updateStopStatusAction,
 } from "@/server/actions/scheduling";
+import { StopDelayReason } from "@prisma/client";
 import {
   addDeviceToStopAction,
   removeDeviceFromStopAction,
@@ -441,6 +443,15 @@ function StopSummary({ stop, muted = false }: { stop: StopRow; muted?: boolean }
       <span className="text-xs text-slate-400">
         {activeDevices.length} device{activeDevices.length === 1 ? "" : "s"}
       </span>
+      {stop.delayedAt && (
+        <span
+          className="rounded border border-amber-500/50 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200"
+          title={stop.delayNote ?? undefined}
+        >
+          Delayed — {stop.delayReason ? humanise(stop.delayReason) : "see note"}
+          {stop.delayMinutes ? ` (+${stop.delayMinutes}m)` : ""}
+        </span>
+      )}
       <span className="ml-auto">
         <StopStatusPill status={stop.status} />
       </span>
@@ -485,6 +496,10 @@ function StopBody({
     activeDevices.length > 0
       ? activeDevices.map((sd) => ({
           id: sd.id,
+          // Round-20 — real check-off: each line submits its
+          // StopDevice id as confirmedDeviceIds; the server refuses
+          // completion until every active line is confirmed.
+          deviceId: sd.id,
           label: `${sd.purpose === "DELIVERY" ? "Deliver" : "Pick up"} ${
             sd.device.assetTag ?? sd.device.serialNumber
           }${
@@ -496,6 +511,7 @@ function StopBody({
       : [
           {
             id: "work-done",
+            deviceId: null,
             label: `${humanise(stop.job.type)} work at ${school.name} is done`,
           },
         ];
@@ -616,6 +632,15 @@ function StopBody({
                 Arrived <LocalTime date={stop.arrivedAt} mode="datetime" />
               </div>
             )}
+            {stop.delayedAt && (
+              <div className="text-amber-300">
+                Running about {stop.delayMinutes ?? "?"} min late —{" "}
+                {stop.delayReason ? humanise(stop.delayReason) : "see note"}
+                {stop.delayNote && (
+                  <span className="text-amber-200/80"> · {stop.delayNote}</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div>
@@ -690,6 +715,78 @@ function StopBody({
             />
           )}
         </div>
+      )}
+
+      {/* ------------------------------------------------ Delay (Round-20) */}
+      {canUpdateStop && routeOpen && !terminal && (
+        <details
+          className="rounded border border-amber-500/30 bg-amber-500/5 p-2 text-xs"
+          data-testid="report-delay"
+        >
+          <summary className="cursor-pointer select-none font-semibold text-amber-200">
+            Running late? Report a delay
+          </summary>
+          <form
+            action={reportStopDelayAction}
+            className="mt-3 flex flex-wrap items-end gap-2"
+          >
+            <input type="hidden" name="stopId" value={stop.id} />
+            <input type="hidden" name="routeId" value={routeId} />
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                Reason
+              </span>
+              <select
+                name="reason"
+                required
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-xs focus:border-accent focus:outline-none"
+              >
+                {Object.values(StopDelayReason).map((r) => (
+                  <option key={r} value={r}>
+                    {humanise(r)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                Late by (min)
+              </span>
+              <input
+                type="number"
+                name="minutes"
+                min={5}
+                max={480}
+                defaultValue={30}
+                required
+                className="w-20 rounded border border-surface-border bg-surface px-2 py-1 text-xs focus:border-accent focus:outline-none"
+              />
+            </label>
+            <label className="flex min-w-40 flex-1 flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                Note (optional)
+              </span>
+              <input
+                type="text"
+                name="note"
+                maxLength={500}
+                placeholder="e.g. bridge closed on Fordham Rd"
+                className="rounded border border-surface-border bg-surface px-2 py-1 text-xs focus:border-accent focus:outline-none"
+              />
+            </label>
+            <button
+              type="submit"
+              className="rounded border border-amber-500/60 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/30"
+            >
+              Record delay & notify school
+            </button>
+          </form>
+          <p className="mt-2 text-[11px] text-slate-500">
+            The arrival estimate moves by the minutes entered and the
+            school&apos;s contact gets an email when the delay rule is
+            enabled in Admin → Email rules.
+          </p>
+        </details>
       )}
 
       {/* ------------------------------------------------ Devices */}

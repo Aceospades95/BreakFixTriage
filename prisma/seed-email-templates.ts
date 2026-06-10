@@ -383,6 +383,85 @@ const TEMPLATE_SEEDS: TemplateSeed[] = [
       },
     },
   },
+  // Round-20 — NY team batch.
+  {
+    key: "pickup_scheduled",
+    subject: "Pickup scheduled for {{ticket.number}} on {{stop.window}}",
+    bodyHtml:
+      "<p>Pickup for ticket <strong>{{ticket.number}}</strong> ({{ticket.school}}) is scheduled.</p>" +
+      "<p>Window: {{stop.window}}<br>Driver: {{driver.name}}</p>" +
+      "<p>Please have the device(s) ready at the main office.</p>",
+    bodyText:
+      "Pickup for ticket {{ticket.number}} ({{ticket.school}}) is scheduled.\n" +
+      "Window: {{stop.window}}\nDriver: {{driver.name}}\n\n" +
+      "Please have the device(s) ready at the main office.",
+    variables: {
+      type: "object",
+      required: ["ticket", "stop"],
+      properties: {
+        ticket: { type: "object" },
+        stop: { type: "object" },
+        driver: { type: "object" },
+      },
+    },
+  },
+  {
+    key: "stop_delayed",
+    subject:
+      "{{visit.kind}} for {{ticket.number}} is running late — {{delay.reason}}",
+    bodyHtml:
+      "<p>The scheduled {{visit.kind}} for ticket <strong>{{ticket.number}}</strong> ({{ticket.school}}) is delayed.</p>" +
+      "<p>Reason: {{delay.reason}}<br>New estimate: about {{delay.minutes}} minutes later than planned.</p>" +
+      "{{#delay.note}}<p>Note from the team: {{delay.note}}</p>{{/delay.note}}" +
+      "<p>We apologise for the inconvenience — the driver is still on the way.</p>",
+    bodyText:
+      "The scheduled {{visit.kind}} for ticket {{ticket.number}} ({{ticket.school}}) is delayed.\n" +
+      "Reason: {{delay.reason}}\n" +
+      "New estimate: about {{delay.minutes}} minutes later than planned.\n" +
+      "{{#delay.note}}Note from the team: {{delay.note}}\n{{/delay.note}}" +
+      "\nWe apologise for the inconvenience — the driver is still on the way.",
+    variables: {
+      type: "object",
+      required: ["ticket", "delay", "visit"],
+      properties: {
+        ticket: { type: "object" },
+        delay: { type: "object" },
+        visit: { type: "object" },
+      },
+    },
+  },
+  {
+    key: "report_operations",
+    subject: "{{report.periodLabel}} operations report — {{report.rangeLabel}}",
+    bodyHtml:
+      "<p>{{report.periodLabel}} operations summary for {{report.rangeLabel}}.</p>" +
+      "<pre style=\"font-family:monospace;white-space:pre-wrap\">{{report.lines}}</pre>",
+    bodyText:
+      "{{report.periodLabel}} operations summary for {{report.rangeLabel}}.\n\n{{report.lines}}",
+    variables: {
+      type: "object",
+      required: ["report"],
+      properties: {
+        report: { type: "object" },
+      },
+    },
+  },
+  {
+    key: "report_finance",
+    subject: "{{report.periodLabel}} finance report — {{report.rangeLabel}}",
+    bodyHtml:
+      "<p>{{report.periodLabel}} finance summary for {{report.rangeLabel}}.</p>" +
+      "<pre style=\"font-family:monospace;white-space:pre-wrap\">{{report.lines}}</pre>",
+    bodyText:
+      "{{report.periodLabel}} finance summary for {{report.rangeLabel}}.\n\n{{report.lines}}",
+    variables: {
+      type: "object",
+      required: ["report"],
+      properties: {
+        report: { type: "object" },
+      },
+    },
+  },
 ];
 
 /**

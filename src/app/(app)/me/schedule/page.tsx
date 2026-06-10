@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { StaffScheduleKind } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { RouteStatusPill } from "@/components/route-status-pill";
 import { ConfirmButton } from "@/components/confirm-button";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
@@ -38,13 +40,36 @@ export default async function MyScheduleePage({
   start.setUTCHours(0, 0, 0, 0);
   const end = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-  const blocks = await prisma.staffSchedule.findMany({
-    where: {
-      userId: session.userId,
-      date: { gte: start, lt: end },
-    },
-    orderBy: [{ date: "asc" }, { startMinute: "asc" }],
-  });
+  const [blocks, myRoutes] = await Promise.all([
+    prisma.staffSchedule.findMany({
+      where: {
+        userId: session.userId,
+        date: { gte: start, lt: end },
+      },
+      orderBy: [{ date: "asc" }, { startMinute: "asc" }],
+    }),
+    // Round-20 — NY team: "View technicians expected schedule/
+    // route." Routes assigned to me in the window, with the stop
+    // schools so the day is readable at a glance.
+    prisma.route.findMany({
+      where: {
+        assigneeUserId: session.userId,
+        date: { gte: start, lt: end },
+        status: { in: ["DRAFT", "PLANNED", "IN_PROGRESS"] },
+      },
+      orderBy: { date: "asc" },
+      include: {
+        stops: {
+          orderBy: { sequence: "asc" },
+          select: {
+            id: true,
+            status: true,
+            job: { select: { school: { select: { name: true } } } },
+          },
+        },
+      },
+    }),
+  ]);
 
   return (
     <>
@@ -63,6 +88,42 @@ export default async function MyScheduleePage({
           {searchParams.ok}
         </div>
       )}
+
+      <section className="mb-6 rounded-lg border border-surface-border bg-surface-muted/40 p-4">
+        <h2 className="mb-3 text-sm font-semibold tracking-wide text-slate-300">
+          My upcoming routes
+        </h2>
+        {myRoutes.length === 0 ? (
+          <p className="text-sm text-slate-400">
+            No routes assigned to you in the next 30 days.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {myRoutes.map((r) => (
+              <li
+                key={r.id}
+                data-testid="my-route-row"
+                className="flex flex-wrap items-center gap-3 rounded border border-surface-border bg-surface px-3 py-2 text-sm"
+              >
+                <span className="w-24 font-medium text-slate-200">
+                  {r.date.toISOString().slice(0, 10)}
+                </span>
+                <RouteStatusPill status={r.status} />
+                <span className="min-w-0 flex-1 truncate text-xs text-slate-400">
+                  {r.stops.length} stop{r.stops.length === 1 ? "" : "s"}:{" "}
+                  {r.stops.map((st) => st.job.school.name).join(" → ")}
+                </span>
+                <Link
+                  href={`/scheduling/routes/${r.id}`}
+                  className="rounded border border-surface-border px-2 py-1 text-xs text-accent transition hover:border-accent"
+                >
+                  Open route
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="mb-6 rounded-lg border border-surface-border bg-surface-muted/40 p-4">
         <h2 className="mb-3 text-sm font-semibold tracking-wide text-slate-300">

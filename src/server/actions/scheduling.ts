@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { JobStatus, JobType } from "@prisma/client";
+import { JobStatus, JobType, StopDelayReason } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
@@ -14,6 +14,7 @@ import { buildRoute, createJob } from "@/lib/scheduling/jobs";
 import { cancelRoute, reorderRoute } from "@/lib/scheduling/routes";
 import { updateStopStatus } from "@/lib/scheduling/stops";
 import { withFeedback } from "@/lib/url";
+import { humanise } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
 // createJobAction
@@ -140,16 +141,18 @@ export async function buildRouteAction(formData: FormData) {
     });
     newRouteId = route.id;
 
-    // Round-7 §3B — fire delivery_scheduled for every DELIVERY job
-    // on the new route, once per attached ticket. dispatchEmailEvent
-    // is the chokepoint; an admin EmailRule with notifyOnEnter=true
+    // Round-7 §3B + Round-20 — fire delivery_scheduled /
+    // pickup_scheduled for every job on the new route, once per
+    // attached ticket, so the SPOC hears we're coming either way.
+    // dispatchEmailEvent is the chokepoint; an admin EmailRule
     // delivers the email.
     try {
-      const deliveryStops = await prisma.routeStop.findMany({
-        where: { routeId: route.id, job: { type: JobType.DELIVERY } },
+      const allStops = await prisma.routeStop.findMany({
+        where: { routeId: route.id },
         include: {
           job: {
             select: {
+              type: true,
               ticketLinks: { select: { ticketId: true } },
               schoolId: true,
             },
@@ -159,7 +162,11 @@ export async function buildRouteAction(formData: FormData) {
           },
         },
       });
-      for (const stop of deliveryStops) {
+      for (const stop of allStops) {
+        const event =
+          stop.job.type === JobType.DELIVERY
+            ? ("delivery_scheduled" as const)
+            : ("pickup_scheduled" as const);
         for (const link of stop.job.ticketLinks) {
           // Round-15 — the template interpolates {{ticket.*}},
           // {{stop.window}} and {{driver.name}}; the old flat-id
@@ -173,7 +180,7 @@ export async function buildRouteAction(formData: FormData) {
             },
           );
           if (!variables) continue;
-          await dispatchEmailEvent("delivery_scheduled", {
+          await dispatchEmailEvent(event, {
             ticketId: link.ticketId,
             schoolId: stop.job.schoolId,
             routeId: route.id,
@@ -184,7 +191,7 @@ export async function buildRouteAction(formData: FormData) {
       }
     } catch (dispatchErr) {
       console.error(
-        `[buildRouteAction] delivery_scheduled dispatch failed for route ${route.id}:`,
+        `[buildRouteAction] scheduled-visit dispatch failed for route ${route.id}:`,
         dispatchErr,
       );
     }
@@ -303,6 +310,48 @@ export async function updateStopStatusAction(formData: FormData) {
       : parsed.data.routeId
         ? `/scheduling/routes/${parsed.data.routeId}`
         : "/scheduling";
+
+  // Round-20 — NY team: "we should have to select what we are
+  // picking up." Completing a stop requires every ACTIVE device
+  // line to be explicitly confirmed; the confirmation is stamped
+  // on the StopDevice row as the durable field check-off.
+  if (parsed.data.status === JobStatus.COMPLETED) {
+    const confirmedIds = new Set(
+      formData.getAll("confirmedDeviceIds").map((v) => v.toString()),
+    );
+    const activeLines = await prisma.stopDevice.findMany({
+      where: { stopId: parsed.data.stopId, removedAt: null },
+      select: {
+        id: true,
+        purpose: true,
+        device: { select: { assetTag: true, serialNumber: true } },
+      },
+    });
+    const missing = activeLines.filter((l) => !confirmedIds.has(l.id));
+    if (missing.length > 0) {
+      const label = missing
+        .map((l) => l.device.assetTag ?? l.device.serialNumber)
+        .slice(0, 3)
+        .join(", ");
+      redirect(
+        withFeedback(
+          fallbackPath,
+          "error",
+          `Confirm every device before completing the stop — ${missing.length} unconfirmed (${label}${missing.length > 3 ? ", …" : ""}). Check each line off, or remove it from the stop with a reason.`,
+        ),
+      );
+    }
+    if (activeLines.length > 0) {
+      await prisma.stopDevice.updateMany({
+        where: {
+          stopId: parsed.data.stopId,
+          removedAt: null,
+          confirmedAt: null,
+        },
+        data: { confirmedAt: new Date(), confirmedByUserId: session.userId },
+      });
+    }
+  }
 
   let errorMessage: string | null = null;
   try {
@@ -469,5 +518,146 @@ export async function updateRouteVehicleAction(formData: FormData) {
   revalidatePath(`/scheduling/routes/${parsed.data.routeId}`);
   redirect(
     `/scheduling/routes/${parsed.data.routeId}?ok=${encodeURIComponent("Vehicle updated")}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// reportStopDelayAction (Round-20 — NY team)
+// ---------------------------------------------------------------------------
+
+const reportStopDelaySchema = z.object({
+  stopId: z.string().min(1),
+  routeId: z.string().min(1),
+  reason: z.nativeEnum(StopDelayReason),
+  minutes: z.coerce.number().int().min(5).max(8 * 60),
+  note: z.string().max(500).optional(),
+});
+
+/**
+ * "Have a section where we mark if the delivery or pick up will be
+ * delayed due to unexpected circumstances: Construction, Weather,
+ * Vehicle Emergency, Delay from previous delivery, etc. Have this
+ * information update the schedule and also provide an email to the
+ * SPOC."
+ *
+ * Records the delay on the stop, pushes the arrival estimate by the
+ * given minutes (when one exists), audits, and fires `stop_delayed`
+ * through the email chokepoint for every ticket on the stop.
+ */
+export async function reportStopDelayAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.STOPS_UPDATE);
+
+  const parsed = reportStopDelaySchema.safeParse({
+    stopId: formData.get("stopId"),
+    routeId: formData.get("routeId"),
+    reason: formData.get("reason"),
+    minutes: formData.get("minutes"),
+    note: formData.get("note")?.toString().trim() || undefined,
+  });
+  const fallbackPath = `/scheduling/routes/${formData.get("routeId")?.toString() ?? ""}`;
+  if (!parsed.success) {
+    redirect(
+      withFeedback(
+        fallbackPath,
+        "error",
+        parsed.error.issues.map((i) => i.message).join("; "),
+      ),
+    );
+  }
+  const routePath = `/scheduling/routes/${parsed.data.routeId}`;
+
+  const stop = await prisma.routeStop.findUnique({
+    where: { id: parsed.data.stopId },
+    include: {
+      job: {
+        select: {
+          type: true,
+          schoolId: true,
+          ticketLinks: { select: { ticketId: true } },
+        },
+      },
+    },
+  });
+  if (!stop || stop.routeId !== parsed.data.routeId) {
+    redirect(withFeedback(routePath, "error", "Stop not found on this route"));
+  }
+  if (
+    stop.status === JobStatus.COMPLETED ||
+    stop.status === JobStatus.FAILED ||
+    stop.status === JobStatus.CANCELLED
+  ) {
+    redirect(
+      withFeedback(routePath, "error", "This stop is already wrapped up — no delay to report."),
+    );
+  }
+
+  await prisma.routeStop.update({
+    where: { id: stop.id },
+    data: {
+      delayReason: parsed.data.reason,
+      delayMinutes: parsed.data.minutes,
+      delayNote: parsed.data.note ?? null,
+      delayedAt: new Date(),
+      arrivalEstimate: stop.arrivalEstimate
+        ? new Date(stop.arrivalEstimate.getTime() + parsed.data.minutes * 60_000)
+        : undefined,
+    },
+  });
+
+  await writeAudit({
+    actorUserId: session.userId,
+    entityType: "RouteStop",
+    entityId: stop.id,
+    action: "delay-reported",
+    after: {
+      reason: parsed.data.reason,
+      minutes: parsed.data.minutes,
+      note: parsed.data.note ?? null,
+      routeId: parsed.data.routeId,
+    },
+  });
+
+  // SPOC notification per ticket on the stop. Failure to send must
+  // not undo the recorded delay; failures land on the email log /
+  // exceptions dashboard.
+  let dispatched = 0;
+  try {
+    for (const link of stop.job.ticketLinks) {
+      const variables = await buildTicketEmailVariables(link.ticketId, prisma, {
+        delay: {
+          reason: humanise(parsed.data.reason),
+          minutes: parsed.data.minutes,
+          note: parsed.data.note ?? "",
+        },
+        visit: {
+          kind: stop.job.type === JobType.DELIVERY ? "delivery" : "pickup",
+        },
+      });
+      if (!variables) continue;
+      const sent = await dispatchEmailEvent("stop_delayed", {
+        ticketId: link.ticketId,
+        schoolId: stop.job.schoolId,
+        routeId: parsed.data.routeId,
+        actorUserId: session.userId,
+        variables,
+      });
+      dispatched += sent.length;
+    }
+  } catch (dispatchErr) {
+    console.error(
+      `[reportStopDelayAction] stop_delayed dispatch failed for ${stop.id}:`,
+      dispatchErr,
+    );
+  }
+
+  revalidatePath(routePath);
+  revalidatePath("/scheduling");
+  revalidatePath("/");
+  redirect(
+    withFeedback(
+      routePath,
+      "ok",
+      `Delay recorded — ${humanise(parsed.data.reason)}, about ${parsed.data.minutes} minutes.${dispatched > 0 ? " The school contact has been emailed." : " No SPOC email rule is enabled, so nothing was sent."}`,
+    ),
   );
 }

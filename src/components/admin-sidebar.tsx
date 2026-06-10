@@ -17,6 +17,7 @@ const ADMIN_LINKS = [
   { href: "/admin/devices", label: "Devices" },
   { href: "/admin/device-models", label: "Device models" },
   { href: "/admin/parts", label: "Parts" },
+  { href: "/admin/expenses", label: "Expenses" },
   { href: "/admin/permissions", label: "Permissions" },
   { href: "/admin/statuses", label: "Statuses" },
   { href: "/admin/templates", label: "Templates" },

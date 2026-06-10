@@ -24,12 +24,26 @@ export default async function ProfilePage({
         title="Your profile"
         subtitle="Change your password and review your role assignment."
         actions={
-          <Link
-            href="/me/preferences"
-            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-          >
-            Preferences →
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/me/expenses"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              My expenses
+            </Link>
+            <Link
+              href="/me/schedule"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              My schedule
+            </Link>
+            <Link
+              href="/me/preferences"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              Preferences →
+            </Link>
+          </div>
         }
       />
 

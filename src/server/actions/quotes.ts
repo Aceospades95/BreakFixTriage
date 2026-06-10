@@ -486,3 +486,81 @@ export async function markPoInvoicedAction(formData: FormData) {
   revalidatePath("/invoices");
   redirect("/invoices");
 }
+
+// ---------------------------------------------------------------------------
+// generatePurchaseOrderAction (Round-20 — NY team)
+// ---------------------------------------------------------------------------
+
+const generatePoSchema = z.object({
+  quoteId: z.string().min(1),
+  ticketId: z.string().min(1),
+});
+
+/**
+ * "Triage can generate POs for customer." One click on an APPROVED
+ * quote: mints the next PO-<year>-<seq> number, records the PO via
+ * the existing attachPurchaseOrder domain function (audit +
+ * invoice-required default), and lands on the printable customer
+ * PO sheet.
+ */
+export async function generatePurchaseOrderAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.QUOTES_WRITE);
+
+  const parsed = generatePoSchema.safeParse({
+    quoteId: formData.get("quoteId"),
+    ticketId: formData.get("ticketId"),
+  });
+  if (!parsed.success) {
+    flashError("/quotes", "Invalid PO request");
+  }
+
+  const quote = await prisma.quote.findUnique({
+    where: { id: parsed.data.quoteId },
+    include: { purchaseOrder: true },
+  });
+  if (!quote) {
+    flashError(`/tickets/${parsed.data.ticketId}`, "Quote not found");
+  }
+  // Already numbered → just go print it.
+  if (quote.purchaseOrder) {
+    redirect(`/quotes/${quote.id}/po`);
+  }
+  if (quote.amountCents == null) {
+    flashError(
+      `/tickets/${parsed.data.ticketId}`,
+      "Set an amount on the quote before generating a PO",
+    );
+  }
+
+  const year = new Date().getUTCFullYear();
+  let errorMessage: string | null = null;
+  // Sequence = POs issued this year + 1; retry a few times in case
+  // two operators generate simultaneously (poNumber is unique).
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const issuedThisYear = await prisma.purchaseOrder.count({
+      where: { poNumber: { startsWith: `PO-${year}-` } },
+    });
+    const poNumber = `PO-${year}-${String(issuedThisYear + 1 + attempt).padStart(4, "0")}`;
+    try {
+      await attachPurchaseOrder({
+        quoteId: quote.id,
+        poNumber,
+        amountCents: quote.amountCents,
+        invoiceRequired: true,
+        actorUserId: session.userId,
+      });
+      errorMessage = null;
+      break;
+    } catch (err) {
+      errorMessage = err instanceof Error ? err.message : "PO generation failed";
+      if (!errorMessage.toLowerCase().includes("unique")) break;
+    }
+  }
+  if (errorMessage) {
+    flashError(`/tickets/${parsed.data.ticketId}`, errorMessage);
+  }
+
+  revalidatePath(`/tickets/${parsed.data.ticketId}`);
+  revalidatePath("/invoices");
+  redirect(`/quotes/${parsed.data.quoteId}/po`);
+}

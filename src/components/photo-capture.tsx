@@ -23,7 +23,7 @@ export function PhotoCapture({
   returnTo,
 }: {
   action: (formData: FormData) => Promise<void> | void;
-  ownerKind: "TICKET" | "ROUTE_STOP" | "QUOTE";
+  ownerKind: "TICKET" | "ROUTE_STOP" | "QUOTE" | "EXPENSE";
   ownerId: string;
   returnTo: string;
 }) {
@@ -37,7 +37,9 @@ export function PhotoCapture({
       ? "ticketId"
       : ownerKind === "ROUTE_STOP"
         ? "routeStopId"
-        : "quoteId";
+        : ownerKind === "EXPENSE"
+          ? "expenseId"
+          : "quoteId";
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

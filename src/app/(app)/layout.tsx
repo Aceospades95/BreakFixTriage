@@ -12,9 +12,11 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { ToastHost } from "@/components/toast-host";
 import { CommandPalette } from "@/components/command-palette";
 import { ExceptionsBadge } from "@/components/exceptions-badge";
+import { TeamNoteBanner } from "@/components/team-note-banner";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { touchSession } from "@/lib/auth/sessions";
+import { can, PERMISSIONS } from "@/lib/auth/rbac";
 import { formatRole } from "@/lib/format";
 
 const MANAGER_ROLES: Role[] = ["ADMIN", "OPS_MANAGER", "DISPATCHER"];
@@ -120,6 +122,11 @@ export default async function AppLayout({
         isManager={isManager}
         headerContent={headerContent}
       >
+        {/* Round-20 — urgent team notes everyone must acknowledge. */}
+        <TeamNoteBanner
+          userId={session.userId}
+          canManage={can(session.role, PERMISSIONS.TEAM_NOTES_MANAGE)}
+        />
         {children}
       </AppShell>
       <Suspense fallback={null}>

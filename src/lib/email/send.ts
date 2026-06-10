@@ -78,6 +78,12 @@ const FAMILY_BY_EVENT: Record<EmailEvent, RecipientContext["family"]> = {
   // Round-7 §3B — quote approval + pickup completion.
   quote_approved: "quote",
   pickup_completed: "delivery",
+  // Round-20 — NY team batch: SPOC hears about scheduled pickups
+  // and delays; the scheduled reports go to internal lists.
+  pickup_scheduled: "delivery",
+  stop_delayed: "delivery",
+  report_operations: "internal",
+  report_finance: "internal",
 };
 
 interface DispatchedRule {

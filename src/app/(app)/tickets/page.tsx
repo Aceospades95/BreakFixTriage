@@ -57,7 +57,9 @@ export default async function TicketsPage({
     | "priority"
     | "incidentNumber"
     | "stateEnteredAt"
-    | "shortDescription";
+    | "shortDescription"
+    | "schoolName"
+    | "schoolCode";
   const validSortKeys: SortKey[] = [
     "reportedAt",
     "state",
@@ -65,6 +67,10 @@ export default async function TicketsPage({
     "incidentNumber",
     "stateEnteredAt",
     "shortDescription",
+    // Round-20 — NY team: sort the Location column alphabetically
+    // (school name) or numerically (DBN code).
+    "schoolName",
+    "schoolCode",
   ];
   const sortParam = searchParams?.sort;
   const sortKey: SortKey = (
@@ -116,7 +122,12 @@ export default async function TicketsPage({
       where,
       take: PAGE_SIZE,
       skip: (page - 1) * PAGE_SIZE,
-      orderBy: { [sortKey]: sortDir },
+      orderBy:
+        sortKey === "schoolName"
+          ? { school: { name: sortDir } }
+          : sortKey === "schoolCode"
+            ? { school: { code: sortDir } }
+            : { [sortKey]: sortDir },
       include: {
         school: true,
         device: true,
@@ -503,7 +514,24 @@ function TicketTable({
             </Link>
           </th>
           <th className="px-3 py-2 font-medium">Assignee</th>
-          <th className="px-3 py-2 font-medium">School</th>
+          <th className="px-3 py-2 font-medium">
+            <Link
+              href={sortHref("schoolName")}
+              className="hover:text-white"
+              scroll={false}
+              title="Sort by school name (A–Z)"
+            >
+              School{sortIndicator("schoolName")}
+            </Link>{" "}
+            <Link
+              href={sortHref("schoolCode")}
+              className="text-[10px] text-slate-500 hover:text-white"
+              scroll={false}
+              title="Sort by DBN code (numeric)"
+            >
+              #{sortIndicator("schoolCode")}
+            </Link>
+          </th>
           <th className="px-3 py-2 font-medium">Device</th>
           <th className="px-3 py-2 font-medium">
             <Link

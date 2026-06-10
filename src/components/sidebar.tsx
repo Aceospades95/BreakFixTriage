@@ -217,6 +217,10 @@ function buildGroups(isAdmin: boolean, isManager: boolean): NavGroup[] {
         { href: "/scheduling", label: "Scheduling", icon: IconCalendar },
         // Round-4 §N2: people scheduling page.
         { href: "/scheduling/people", label: "People", icon: IconCalendar },
+        // Round-20 — urgent team-notes management (ops + dispatch).
+        ...(isManager
+          ? [{ href: "/team-notes", label: "Team notes", icon: IconQuote }]
+          : []),
       ],
     },
   ];

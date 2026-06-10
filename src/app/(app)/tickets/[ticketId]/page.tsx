@@ -20,6 +20,7 @@ import {
 import {
   cancelQuoteAction,
   createQuoteAction,
+  generatePurchaseOrderAction,
   respondQuoteAction,
   sendQuoteAction,
   updateDraftQuoteAction,
@@ -777,8 +778,15 @@ export default async function TicketDetailPage({
                     )}
                     {q.purchaseOrder && (
                       <div className="mt-2 rounded border border-surface-border bg-surface-muted/40 p-2 text-xs">
-                        <div className="font-medium tracking-tight">
+                        <div className="flex items-center gap-2 font-medium tracking-tight">
                           PO {q.purchaseOrder.poNumber}
+                          <Link
+                            href={`/quotes/${q.id}/po`}
+                            target="_blank"
+                            className="rounded border border-surface-border px-1.5 py-0.5 text-[10px] text-accent hover:border-accent"
+                          >
+                            Print PO
+                          </Link>
                         </div>
                         <div className="tabular-nums text-slate-400">
                           {formatCents(q.purchaseOrder.amountCents)}
@@ -799,6 +807,7 @@ export default async function TicketDetailPage({
                         ticketId={ticket.id}
                         quoteId={q.id}
                         status={q.status}
+                        hasPo={q.purchaseOrder != null}
                       />
                     )}
                   </li>
@@ -1258,11 +1267,32 @@ function QuoteActions({
   ticketId,
   quoteId,
   status,
+  hasPo = false,
 }: {
   ticketId: string;
   quoteId: string;
   status: QuoteStatus;
+  hasPo?: boolean;
 }) {
+  // Round-20 — NY team: one-click customer PO off an approved
+  // quote. Auto-numbers PO-<year>-<seq> and lands on the printable
+  // sheet.
+  if (status === "APPROVED" && !hasPo) {
+    return (
+      <div className="mt-3 border-t border-surface-border pt-2">
+        <form action={generatePurchaseOrderAction}>
+          <input type="hidden" name="quoteId" value={quoteId} />
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <button
+            type="submit"
+            className="rounded bg-accent px-2 py-1 text-xs font-semibold hover:bg-accent-strong"
+          >
+            Generate PO for customer
+          </button>
+        </form>
+      </div>
+    );
+  }
   if (status === "DRAFT") {
     return (
       <div className="mt-3 space-y-2 border-t border-surface-border pt-2">

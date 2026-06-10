@@ -46,7 +46,10 @@ describe("Round-11 §1E — first-run auto-seed", () => {
   it("seedDefaults rule check uses findFirst + create (idempotent)", () => {
     const src = read("prisma/seed-defaults.ts");
     expect(src).toContain("prisma.emailRule.findFirst");
-    expect(src).toContain("if (!existingRule)");
+    // Round-20 — the single ticket_created block became a RULE_SEEDS
+    // loop; idempotency is now "existing row → continue".
+    expect(src).toContain("if (existingRule)");
+    expect(src).toContain("continue;");
   });
 
   it("seedDefaults holiday loop uses findFirst + create (idempotent)", () => {

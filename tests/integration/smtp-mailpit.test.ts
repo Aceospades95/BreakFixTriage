@@ -135,20 +135,24 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.SMTP_HOST)(
       });
       expect(log.status).toBe("sent");
 
-      // Poll the Mailpit JSON API for the delivered message.
+      // Poll the Mailpit JSON API for the delivered message. The
+      // plain messages list (not /search) is deliberate: search
+      // tokenization varies across Mailpit versions — the first CI
+      // run found nothing for a subject the list endpoint shows.
       let found = false;
+      let lastSeen = "";
       for (let i = 0; i < 20 && !found; i++) {
         try {
-          const res = await fetch(
-            `${MAILPIT_API}/api/v1/search?query=${encodeURIComponent(incident)}`,
-          );
+          const res = await fetch(`${MAILPIT_API}/api/v1/messages?limit=50`);
           if (res.ok) {
             const body = (await res.json()) as {
               messages?: { Subject?: string }[];
             };
-            found = (body.messages ?? []).some((m) =>
-              (m.Subject ?? "").includes(incident),
+            const subjects = (body.messages ?? []).map(
+              (m) => m.Subject ?? "",
             );
+            lastSeen = subjects.join(" | ");
+            found = subjects.some((s) => s.includes(incident));
           }
         } catch {
           // Mailpit may still be warming; retry.
@@ -157,7 +161,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.SMTP_HOST)(
       }
       expect(
         found,
-        `Mailpit never showed a message with subject containing ${incident}`,
+        `Mailpit never showed a message with subject containing ${incident}; saw: ${lastSeen || "(none)"}`,
       ).toBe(true);
     }, 30_000);
   },

@@ -6,7 +6,7 @@ import {
   getMemoryInbox,
   resetEmailProviderCache,
 } from "@/lib/email/provider";
-import { claim } from "@/lib/email/queue";
+import { ensureIntegrationDistrict } from "./helpers";
 
 /**
  * Round-11 §2D — dispatchEmailEvent integration. Implemented in
@@ -23,6 +23,37 @@ import { claim } from "@/lib/email/queue";
 
 const prisma = new PrismaClient();
 
+/**
+ * Process exactly the jobs a dispatch returned. The open-ended
+ * claim() loop used previously could steal jobs enqueued by OTHER
+ * integration files running in parallel workers — and process them
+ * with this file's provider (memory messages leaking into Mailpit
+ * and vice versa).
+ */
+async function processDispatched(
+  dispatched: Array<{ jobId: string }>,
+): Promise<number> {
+  let sent = 0;
+  for (const d of dispatched) {
+    const row = await prisma.emailJob.findUniqueOrThrow({
+      where: { id: d.jobId },
+    });
+    await processEmailJob(
+      {
+        id: row.id,
+        templateKey: row.templateKey,
+        payload: row.payload as Record<string, unknown>,
+        emailLogId: row.emailLogId,
+        attempts: row.attempts,
+      },
+      prisma,
+    );
+    sent++;
+  }
+  return sent;
+}
+
+
 const TAG = `dee${Date.now().toString(36)}`;
 const RECIPIENT = `spoc-${TAG}@example.test`;
 
@@ -35,11 +66,7 @@ describe.skipIf(!process.env.DATABASE_URL)("dispatchEmailEvent", () => {
     process.env.EMAIL_PROVIDER = "memory";
     resetEmailProviderCache();
 
-    const district = await prisma.district.upsert({
-      where: { code: "IT-DIST" },
-      create: { code: "IT-DIST", name: "Integration District", region: "NYC" },
-      update: {},
-    });
+    const district = await ensureIntegrationDistrict(prisma);
     const school = await prisma.school.create({
       data: {
         code: `IT-${TAG}`,
@@ -147,20 +174,13 @@ describe.skipIf(!process.env.DATABASE_URL)("dispatchEmailEvent", () => {
 
   it("worker send delivers the rendered subject to the provider inbox", async () => {
     const rule = await createRule(true);
-    await dispatchEmailEvent(
+    const dispatched = await dispatchEmailEvent(
       "ticket_created",
       { ticketId, schoolId, variables: VARIABLES },
       prisma,
     );
 
-    // Drain the queue the way the worker does.
-    let job = await claim(`it-worker-${TAG}`, prisma);
-    let sent = 0;
-    while (job) {
-      await processEmailJob(job, prisma);
-      sent++;
-      job = await claim(`it-worker-${TAG}`, prisma);
-    }
+    const sent = await processDispatched(dispatched);
     expect(sent).toBeGreaterThanOrEqual(1);
 
     const inbox = getMemoryInbox();
@@ -237,11 +257,18 @@ describe.skipIf(!process.env.DATABASE_URL)("dispatchEmailEvent", () => {
     try {
       await transitionTicket(t.id, "IN_REPAIR", {}, prisma);
 
-      let job = await claim(`it-worker-${TAG}-t`, prisma);
-      while (job) {
-        await processEmailJob(job, prisma);
-        job = await claim(`it-worker-${TAG}-t`, prisma);
-      }
+      // Resolve this rule's job via its EmailLog (the transition
+      // dispatch happens inside transitionTicket, so we don't get
+      // the jobId back directly) and process exactly that job.
+      const queuedLog = await prisma.emailLog.findFirstOrThrow({
+        where: { ruleId: rule.id },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      const jobRow = await prisma.emailJob.findFirstOrThrow({
+        where: { emailLogId: queuedLog.id },
+      });
+      await processDispatched([{ jobId: jobRow.id }]);
 
       const log = await prisma.emailLog.findFirstOrThrow({
         where: { ruleId: rule.id },

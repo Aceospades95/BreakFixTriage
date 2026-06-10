@@ -19,6 +19,9 @@ import {
 } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
+import { dispatchEmailEvent } from "@/lib/email/send";
+import { buildTicketEmailVariables } from "@/lib/email/variables";
+import { humanise } from "@/lib/format";
 import { daysInState, slaHealth } from "@/lib/reports/sla";
 import { getEscalationMultiplier, getSlaThresholds } from "@/lib/settings/settings";
 
@@ -26,6 +29,8 @@ export interface EscalationReport {
   scanned: number;
   escalated: number;
   notificationsCreated: number;
+  /** Round-16 (D3) — sla_breach_warning / sla_breached dispatches. */
+  emailsDispatched: number;
   errors: { ticketId: string; message: string }[];
 }
 
@@ -83,6 +88,7 @@ export async function sweepEscalations(
       stateEnteredAt: true,
       assignedUserId: true,
       meta: true,
+      schoolId: true,
       school: { select: { name: true } },
     },
   });
@@ -99,6 +105,7 @@ export async function sweepEscalations(
     scanned: tickets.length,
     escalated: 0,
     notificationsCreated: 0,
+    emailsDispatched: 0,
     errors: [],
   };
 
@@ -121,7 +128,8 @@ export async function sweepEscalations(
       const body = `${t.school.name} · ${days} days in ${t.state}${
         health === "breached" ? " (breached)" : ""
       }`;
-      const linkHref = `/tickets/${t.id}`;
+      // Round-16 (B19) — incident-number URL, not the cuid.
+      const linkHref = `/tickets/${t.incidentNumber}`;
 
       const recipients = new Set<string>();
       if (t.assignedUserId) recipients.add(t.assignedUserId);
@@ -173,6 +181,44 @@ export async function sweepEscalations(
       });
 
       report.escalated += 1;
+
+      // Round-16 (D3) — the sla_breach templates existed since R2
+      // but nothing ever dispatched them; the sweep only wrote
+      // in-app rows. Fire the matching event through the chokepoint
+      // (post-transaction, like every other dispatch site). A
+      // missing or disabled rule makes this a clean no-op.
+      try {
+        const event =
+          health === "breached" ? "sla_breached" : "sla_breach_warning";
+        const baseVars = await buildTicketEmailVariables(t.id, db);
+        if (baseVars) {
+          const dispatched = await dispatchEmailEvent(
+            event,
+            {
+              ticketId: t.id,
+              schoolId: t.schoolId,
+              actorUserId: input.actorUserId ?? null,
+              variables: {
+                ...baseVars,
+                ticket: { ...baseVars.ticket, daysInState: days },
+                status: {
+                  label: humanise(t.state),
+                  slaThreshold: threshold,
+                },
+              },
+            },
+            db,
+          );
+          report.emailsDispatched += dispatched.length;
+        }
+      } catch (emailErr) {
+        // Email failure must not fail the sweep; the EmailLog row
+        // carries the detail and /admin/exceptions surfaces it.
+        console.error(
+          `[escalation] email dispatch failed for ${t.incidentNumber}:`,
+          emailErr,
+        );
+      }
     } catch (err) {
       report.errors.push({
         ticketId: t.id,

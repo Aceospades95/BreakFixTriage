@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
+import { deviceWhereForSession } from "@/lib/data/forSession";
 import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
 import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
 
@@ -14,6 +15,8 @@ export async function GET() {
   }
 
   const devices = await prisma.device.findMany({
+    // Round-16 (B17) — tenant scope per ADR 0014.
+    where: deviceWhereForSession(session),
     orderBy: { serialNumber: "asc" },
     include: {
       model: { select: { manufacturer: true, modelName: true } },

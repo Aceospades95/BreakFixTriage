@@ -4,12 +4,15 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
+import {
+  getExceptionCounts,
+  STUCK_IMPORT_THRESHOLD_MS,
+  TOKEN_EXPIRY_WINDOW_MS,
+  SEVERITY_WINDOW_MS,
+} from "@/lib/exceptions/counts";
+import { requeueDeadLetteredEmailJobAction } from "@/server/actions/email-admin";
 
 export const dynamic = "force-dynamic";
-
-const STUCK_IMPORT_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
-const TOKEN_EXPIRY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const SEVERITY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 /**
  * Round-15 — Ops Exceptions dashboard (graduates backlog B26).
@@ -23,30 +26,39 @@ const SEVERITY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
  * Section definitions are deliberately conservative — every row
  * here is actionable, not informational.
  */
-export default async function ExceptionsPage() {
+export default async function ExceptionsPage({
+  searchParams,
+}: {
+  searchParams?: { ok?: string; error?: string };
+}) {
   await requireRole(PERMISSIONS.USERS_MANAGE);
 
   const now = Date.now();
+  // Counts come from the shared module (also the topbar badge's
+  // source — D2) so the two surfaces can never disagree; the detail
+  // queries below only fetch the visible top-8 rows per section.
   const [
+    counts,
     failedEmails,
-    failedEmailCount,
-    deadJobCount,
+    deadJobs,
     failedMerges,
-    failedMergeCount,
     orphanStopDevices,
-    orphanCount,
     stuckImports,
     expiringTokens,
     severeAudits,
   ] = await Promise.all([
+    getExceptionCounts(),
     prisma.emailLog.findMany({
       where: { status: "failed" },
       orderBy: { createdAt: "desc" },
       take: 8,
       include: { ticket: { select: { incidentNumber: true } } },
     }),
-    prisma.emailLog.count({ where: { status: "failed" } }),
-    prisma.emailJob.count({ where: { status: "failed" } }),
+    prisma.emailJob.findMany({
+      where: { status: "failed" },
+      orderBy: { updatedAt: "desc" },
+      take: 8,
+    }),
     prisma.auditLog.findMany({
       where: {
         action: {
@@ -55,13 +67,6 @@ export default async function ExceptionsPage() {
       },
       orderBy: { createdAt: "desc" },
       take: 8,
-    }),
-    prisma.auditLog.count({
-      where: {
-        action: {
-          in: ["snow-merge.failed", "snow-merge.cross-school-collision"],
-        },
-      },
     }),
     prisma.stopDevice.findMany({
       // Removed rows stay for audit and aren't orphans to act on.
@@ -73,7 +78,6 @@ export default async function ExceptionsPage() {
         stop: { select: { routeId: true } },
       },
     }),
-    prisma.stopDevice.count({ where: { ticketId: null, removedAt: null } }),
     prisma.importBatch.findMany({
       where: {
         status: { in: ["PENDING", "VALIDATING", "COMMITTING"] },
@@ -104,14 +108,11 @@ export default async function ExceptionsPage() {
     }),
   ]);
 
-  const totalExceptions =
-    failedEmailCount +
-    deadJobCount +
-    failedMergeCount +
-    orphanCount +
-    stuckImports.length +
-    expiringTokens.length +
-    severeAudits.length;
+  const failedEmailCount = counts.failedEmails;
+  const deadJobCount = counts.deadJobs;
+  const failedMergeCount = counts.failedMerges;
+  const orphanCount = counts.orphanStopDevices;
+  const totalExceptions = counts.total;
 
   return (
     <>
@@ -123,6 +124,17 @@ export default async function ExceptionsPage() {
             : `${totalExceptions} item${totalExceptions === 1 ? "" : "s"} across the monitored failure modes below.`
         }
       />
+
+      {searchParams?.error && (
+        <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          {searchParams.error}
+        </div>
+      )}
+      {searchParams?.ok && (
+        <div className="mb-4 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+          {searchParams.ok}
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Section
@@ -152,6 +164,32 @@ export default async function ExceptionsPage() {
               <span className="truncate text-slate-300">
                 {e.error ?? e.subject}
               </span>
+            </li>
+          ))}
+          {/* Round-16 (D4) — dead-lettered jobs get a per-job
+              requeue affordance; the worker picks them up on its
+              next pass. */}
+          {deadJobs.map((j) => (
+            <li
+              key={j.id}
+              data-testid="dead-job-row"
+              className="flex flex-wrap items-center gap-x-2 text-xs"
+            >
+              <code className="rounded bg-surface-muted px-1 text-[10px]">
+                {j.templateKey}
+              </code>
+              <span className="truncate text-slate-400">
+                {j.lastError ?? "send failed"}
+              </span>
+              <form action={requeueDeadLetteredEmailJobAction}>
+                <input type="hidden" name="jobId" value={j.id} />
+                <button
+                  type="submit"
+                  className="rounded border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200 hover:bg-amber-500/20"
+                >
+                  Requeue
+                </button>
+              </form>
             </li>
           ))}
         </Section>
@@ -201,7 +239,7 @@ export default async function ExceptionsPage() {
 
         <Section
           title="Stuck imports"
-          count={stuckImports.length}
+          count={counts.stuckImports}
           href="/imports"
           linkLabel="Imports"
         >
@@ -223,7 +261,7 @@ export default async function ExceptionsPage() {
 
         <Section
           title="Portal tokens expiring within 30 days"
-          count={expiringTokens.length}
+          count={counts.expiringTokens}
           href="/admin/schools"
           linkLabel="Schools"
         >
@@ -253,7 +291,7 @@ export default async function ExceptionsPage() {
 
         <Section
           title="High-severity audit events (7 days)"
-          count={severeAudits.length}
+          count={counts.severeAudits}
           href="/admin/audit"
           linkLabel="Audit log"
         >

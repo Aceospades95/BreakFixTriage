@@ -153,3 +153,64 @@ export async function seedExampleRuleAction(): Promise<void> {
     )}`,
   );
 }
+
+/**
+ * Round-16 (D4) — re-enqueue a dead-lettered EmailJob from
+ * /admin/exceptions. Resets the attempt counter and backoff so the
+ * worker picks it up on its next pass; the linked EmailLog row (if
+ * any) returns to `queued` so the operator-facing log reflects the
+ * retry. EMAIL_WRITE-gated like the rest of the email admin
+ * surface; every requeue writes an audit row.
+ */
+export async function requeueDeadLetteredEmailJobAction(
+  formData: FormData,
+) {
+  const session = await requireRole(PERMISSIONS.EMAIL_WRITE);
+  const jobId = formData.get("jobId")?.toString();
+  if (!jobId) {
+    redirect("/admin/exceptions?error=Missing+job+id");
+  }
+
+  const job = await prisma.emailJob.findUnique({ where: { id: jobId } });
+  if (!job) {
+    redirect("/admin/exceptions?error=Job+not+found");
+  }
+  if (job.status !== "failed") {
+    redirect(
+      `/admin/exceptions?error=${encodeURIComponent(
+        "Only dead-lettered jobs can be requeued.",
+      )}`,
+    );
+  }
+
+  await prisma.emailJob.update({
+    where: { id: job.id },
+    data: {
+      status: "pending",
+      attempts: 0,
+      nextRunAt: new Date(),
+      lockedAt: null,
+      lockedBy: null,
+      lastError: null,
+    },
+  });
+  if (job.emailLogId) {
+    await prisma.emailLog.updateMany({
+      where: { id: job.emailLogId, status: "failed" },
+      data: { status: "queued", error: null },
+    });
+  }
+
+  await writeAudit({
+    actorUserId: session.userId,
+    entityType: "EmailJob",
+    entityId: job.id,
+    action: "email.job.requeued",
+    before: { status: "failed", attempts: job.attempts },
+    after: { status: "pending", attempts: 0 },
+    reason: job.lastError ?? undefined,
+  });
+
+  revalidatePath("/admin/exceptions");
+  redirect("/admin/exceptions?ok=Job+requeued");
+}

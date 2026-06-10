@@ -99,6 +99,21 @@ async function main() {
     create: { code: "BX-TEST", name: "Test District", region: "NYC" },
     update: {},
   });
+  // Round-16 (B17) — every persona belongs to the test district so
+  // tenant-scoped queries (ticketWhereForSession and friends) match
+  // the fixture data for non-admin roles.
+  const personaRows = await prisma.user.findMany({
+    where: { email: { in: PERSONAS.map((p) => p.email) } },
+    select: { id: true },
+  });
+  await prisma.districtUser.createMany({
+    data: personaRows.map((u) => ({
+      districtId: district.id,
+      userId: u.id,
+    })),
+    skipDuplicates: true,
+  });
+
   const schoolSlugs = ["TEST-101", "TEST-102", "TEST-201", "TEST-301", "TEST-401"];
   const schools = [];
   for (const code of schoolSlugs) {

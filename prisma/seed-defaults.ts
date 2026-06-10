@@ -87,40 +87,96 @@ export async function seedDefaults(
   }
 
   // ----- EmailRule -----
+  // Disabled GLOBAL starter rules so admins flip a switch instead
+  // of assembling recipients from scratch. Round-20 fixed the
+  // recipient kind here: the old seed said "school_spoc", which is
+  // not a valid Recipient kind — isRecipientSet() rejected it and
+  // dispatch silently skipped the rule when enabled. The valid
+  // kind is "spoc".
   let ruleCreated = false;
-  const ticketCreated = await prisma.emailTemplate.findUnique({
-    where: { key: "ticket_created" },
-  });
-  if (ticketCreated) {
+  const RULE_SEEDS: Array<{
+    event: string;
+    recipients: object;
+  }> = [
+    {
+      event: "ticket_created",
+      recipients: {
+        to: [{ kind: "spoc" }, { kind: "ticket_reporter" }],
+        cc: [{ kind: "wynndalco_team" }],
+        bcc: [],
+      },
+    },
+    // Round-20 — NY team: SPOC hears about scheduled visits + delays.
+    {
+      event: "pickup_scheduled",
+      recipients: { to: [{ kind: "spoc" }], cc: [], bcc: [] },
+    },
+    {
+      event: "delivery_scheduled",
+      recipients: { to: [{ kind: "spoc" }], cc: [], bcc: [] },
+    },
+    {
+      event: "stop_delayed",
+      recipients: { to: [{ kind: "spoc" }], cc: [], bcc: [] },
+    },
+    // Scheduled reports go to the internal team list by default;
+    // admins add customer/finance literals on the rule.
+    {
+      event: "report_operations",
+      recipients: { to: [{ kind: "wynndalco_team" }], cc: [], bcc: [] },
+    },
+    {
+      event: "report_finance",
+      recipients: { to: [{ kind: "wynndalco_team" }], cc: [], bcc: [] },
+    },
+  ];
+  for (const seed of RULE_SEEDS) {
+    const template = await prisma.emailTemplate.findUnique({
+      where: { key: seed.event },
+    });
+    if (!template) continue;
     const existingRule = await prisma.emailRule.findFirst({
       where: {
         scope: "GLOBAL",
-        event: "ticket_created",
-        templateId: ticketCreated.id,
+        event: seed.event as never,
+        templateId: template.id,
       },
     });
-    if (!existingRule) {
-      const created = await prisma.emailRule.create({
-        data: {
-          scope: "GLOBAL",
-          scopeId: null,
-          event: "ticket_created",
-          templateId: ticketCreated.id,
-          enabled: false,
-          recipients: {
-            to: [{ kind: "school_spoc" }, { kind: "ticket_reporter" }],
-            cc: [{ kind: "wynndalco_team" }],
-            bcc: [],
-          } as unknown as object,
-        },
-      });
-      ruleCreated = true;
-      const wrote = await writeSeedAudit(prisma, "EmailRule", created.id, {
-        event: "ticket_created",
-        scope: "GLOBAL",
-      });
-      if (wrote) auditsWritten++;
+    if (existingRule) {
+      // Repair the malformed kind on already-seeded rows so
+      // enabling them actually sends (idempotent).
+      const rec = existingRule.recipients as { to?: Array<{ kind?: string }> } | null;
+      if (rec?.to?.some((r) => r.kind === "school_spoc")) {
+        await prisma.emailRule.update({
+          where: { id: existingRule.id },
+          data: {
+            recipients: JSON.parse(
+              JSON.stringify(existingRule.recipients).replaceAll(
+                '"school_spoc"',
+                '"spoc"',
+              ),
+            ) as object,
+          },
+        });
+      }
+      continue;
     }
+    const created = await prisma.emailRule.create({
+      data: {
+        scope: "GLOBAL",
+        scopeId: null,
+        event: seed.event as never,
+        templateId: template.id,
+        enabled: false,
+        recipients: seed.recipients as unknown as object,
+      },
+    });
+    ruleCreated = true;
+    const wrote = await writeSeedAudit(prisma, "EmailRule", created.id, {
+      event: seed.event,
+      scope: "GLOBAL",
+    });
+    if (wrote) auditsWritten++;
   }
 
   // ----- Holiday — current year + next two years -----

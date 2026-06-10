@@ -136,7 +136,15 @@ describe("Round-7 §3B: notification trigger smoke (next 4 events)", () => {
     for (const file of candidates) {
       const src = readFileSync(file, "utf8");
       for (const event of R7_EVENTS) {
-        if (src.includes(`dispatchEmailEvent("${event}"`)) {
+        // Round-20 — buildRouteAction dispatches a computed event
+        // (`("delivery_scheduled" as const)` vs pickup_scheduled),
+        // so count the event-literal form too, as long as the file
+        // actually calls dispatchEmailEvent.
+        if (
+          src.includes(`dispatchEmailEvent("${event}"`) ||
+          (src.includes("dispatchEmailEvent(") &&
+            src.includes(`("${event}" as const)`))
+        ) {
           callSitesByEvent[event]!.push(file);
         }
       }

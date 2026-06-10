@@ -49,9 +49,22 @@ const EXTRAS_BY_EVENT: Record<string, Record<string, unknown>> = {
   ticket_update_to_spoc: { body: "b", customSubject: "" },
   sla_breach_warning: { status: { label: "l", slaThreshold: 5 } },
   sla_breached: { status: { label: "l", slaThreshold: 5 } },
+  // Round-20 — mirrors buildRouteAction (scheduled visits) and
+  // reportStopDelayAction.
+  pickup_scheduled: { stop: { window: "2026-01-01" }, driver: { name: "n" } },
+  stop_delayed: {
+    delay: { reason: "Weather", minutes: 45, note: "" },
+    visit: { kind: "pickup" },
+  },
 };
 
-const NON_TICKET_TEMPLATES = new Set(["daily_digest"]);
+// Templates that never go through buildTicketEmailVariables — the
+// scripts/cron call sites supply the whole payload.
+const NON_TICKET_TEMPLATES = new Set([
+  "daily_digest",
+  "report_operations",
+  "report_finance",
+]);
 
 describe("Round-15 — email variable contract", () => {
   for (const seed of TEMPLATE_SEEDS) {

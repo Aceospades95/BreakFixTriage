@@ -187,6 +187,18 @@ export async function attachmentForSession(
     });
     return quote ? att : null;
   }
+  // Round-20 — expense receipts aren't district-scoped: visible to
+  // the submitting tech and to expense reviewers.
+  if (att.expenseId) {
+    const expense = await db.expense.findUnique({
+      where: { id: att.expenseId },
+      select: { techUserId: true },
+    });
+    if (!expense) return null;
+    if (expense.techUserId === session.userId) return att;
+    const reviewer = await canAsync(session.role, PERMISSIONS.EXPENSES_REVIEW);
+    return reviewer ? att : null;
+  }
   // Attachment without any parent — admin-only view by default.
   return null;
 }

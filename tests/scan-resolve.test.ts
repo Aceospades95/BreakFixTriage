@@ -35,3 +35,72 @@ describe("normalizeScan", () => {
     expect(normalizeScan("!@#$%")).toBe("!@#$%");
   });
 });
+
+// Round-19 — tenant scoping on resolveScan (ADR 0014). A mock db
+// captures the where clauses so we can assert the session's
+// district filter is composed in for non-admins and absent for
+// admins, without a live database.
+import { resolveScan } from "@/lib/scan/resolve";
+import type { BreakFixSession } from "@/lib/auth/session";
+
+function mockDb() {
+  const captured: Record<string, unknown> = {};
+  const table = (name: string) => ({
+    findFirst: async (args: { where: unknown }) => {
+      captured[name] = args.where;
+      return null;
+    },
+  });
+  return {
+    captured,
+    db: {
+      ticket: table("ticket"),
+      device: table("device"),
+      part: table("part"),
+      school: table("school"),
+    } as never,
+  };
+}
+
+describe("resolveScan tenant scoping", () => {
+  const dispatcher = {
+    userId: "u1",
+    role: "DISPATCHER",
+    districtIds: ["d1", "d2"],
+  } as unknown as BreakFixSession;
+  const admin = {
+    userId: "u2",
+    role: "ADMIN",
+    districtIds: [],
+  } as unknown as BreakFixSession;
+
+  it("constrains ticket/device/school lookups to the session districts", async () => {
+    const { captured, db } = mockDb();
+    await resolveScan("SN-0001", db, dispatcher);
+    const districts = { in: ["d1", "d2"] };
+    expect(captured.ticket).toMatchObject({
+      AND: [{ school: { districtId: districts } }, expect.anything()],
+    });
+    expect(captured.device).toMatchObject({
+      AND: [{ school: { districtId: districts } }, expect.anything()],
+    });
+    expect(captured.school).toMatchObject({
+      AND: [{ districtId: districts }, expect.anything()],
+    });
+    // Parts are global inventory — no district constraint.
+    expect(JSON.stringify(captured.part)).not.toContain("districtId");
+  });
+
+  it("admin sessions stay unscoped", async () => {
+    const { captured, db } = mockDb();
+    await resolveScan("SN-0001", db, admin);
+    expect(JSON.stringify(captured.ticket)).not.toContain("districtId");
+    expect(JSON.stringify(captured.school)).not.toContain("districtId");
+  });
+
+  it("no session (internal callers) stays unscoped", async () => {
+    const { captured, db } = mockDb();
+    await resolveScan("SN-0001", db);
+    expect(JSON.stringify(captured.ticket)).not.toContain("districtId");
+  });
+});

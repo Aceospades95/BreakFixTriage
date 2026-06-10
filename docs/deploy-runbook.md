@@ -113,3 +113,29 @@ section in its summary doc:
 Run the verification walk for the latest round after every
 deploy. The walks accumulate; an R12 deploy should pass R10 +
 R11 + R12 walks.
+
+## Scheduled jobs (cron on the Docker host)
+
+Round-20 — these npm scripts are designed for host cron (or an
+Unraid User Script on a schedule). All of them are safe to run
+before their email rules are enabled: when no enabled rule exists
+they no-op with a console note.
+
+```cron
+# Email queue worker — drains EmailJob every minute.
+* * * * *   docker exec breakfix npm run email:worker
+
+# SLA escalation sweep + daily digest (mornings).
+0 6 * * *   docker exec breakfix npm run escalate:stale
+0 7 * * *   docker exec breakfix npm run digest
+
+# Quote hold sweep.
+30 6 * * *  docker exec breakfix npm run quotes:sweep
+
+# Round-20 — operations + finance reports (daily / weekly Monday /
+# monthly 1st). Recipients live on the report_operations and
+# report_finance email rules (Admin → Email rules).
+10 6 * * *  docker exec breakfix npm run reports:daily
+20 6 * * 1  docker exec breakfix npm run reports:weekly
+30 6 1 * *  docker exec breakfix npm run reports:monthly
+```

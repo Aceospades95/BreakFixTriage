@@ -23,7 +23,7 @@ export function AttachmentList({
   canWrite,
 }: {
   attachments: (Attachment & { uploadedBy: { name: string } | null })[];
-  ownerKind: "TICKET" | "ROUTE_STOP" | "QUOTE";
+  ownerKind: "TICKET" | "ROUTE_STOP" | "QUOTE" | "EXPENSE";
   ownerId: string;
   returnTo: string;
   canWrite: boolean;
@@ -33,7 +33,9 @@ export function AttachmentList({
       ? "ticketId"
       : ownerKind === "ROUTE_STOP"
         ? "routeStopId"
-        : "quoteId";
+        : ownerKind === "EXPENSE"
+          ? "expenseId"
+          : "quoteId";
 
   return (
     <div>

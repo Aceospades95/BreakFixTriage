@@ -37,6 +37,10 @@ const ROUTES: Array<{ path: string; lowestRole: string }> = [
   { path: "/audit", lowestRole: "READ_ONLY" },
   { path: "/me/preferences", lowestRole: "READ_ONLY" },
   { path: "/me/schedule", lowestRole: "READ_ONLY" },
+  // Round-20 — NY team batch.
+  { path: "/me/expenses", lowestRole: "READ_ONLY" },
+  { path: "/team-notes", lowestRole: "DISPATCHER" },
+  { path: "/admin/expenses", lowestRole: "OPS_MANAGER" },
   { path: "/my-day", lowestRole: "READ_ONLY" },
   { path: "/notifications", lowestRole: "READ_ONLY" },
   { path: "/profile", lowestRole: "READ_ONLY" },

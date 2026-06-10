@@ -9,11 +9,15 @@ export const dynamic = "force-dynamic";
 export default async function AdminSchoolsPage({
   searchParams,
 }: {
-  searchParams?: { q?: string };
+  searchParams?: { q?: string; sort?: string; dir?: string };
 }) {
   await requireRole(PERMISSIONS.DISTRICTS_MANAGE);
 
   const query = searchParams?.q?.trim() ?? "";
+  // Round-20 — NY team: location list sortable alphabetically
+  // (name) or numerically (DBN code), both directions.
+  const sort = searchParams?.sort === "code" ? "code" : "name";
+  const dir: "asc" | "desc" = searchParams?.dir === "desc" ? "desc" : "asc";
   const schools = await prisma.school.findMany({
     where: query
       ? {
@@ -28,9 +32,21 @@ export default async function AdminSchoolsPage({
       address: true,
       _count: { select: { contacts: true, devices: true, tickets: true } },
     },
-    orderBy: [{ district: { name: "asc" } }, { name: "asc" }],
+    orderBy:
+      sort === "code"
+        ? [{ code: dir }, { name: "asc" }]
+        : [{ name: dir }],
     take: 500,
   });
+  const sortHref = (key: "name" | "code") => {
+    const sp = new URLSearchParams();
+    if (query) sp.set("q", query);
+    sp.set("sort", key);
+    sp.set("dir", sort === key && dir === "asc" ? "desc" : "asc");
+    return `/admin/schools?${sp.toString()}`;
+  };
+  const indicator = (key: "name" | "code") =>
+    sort === key ? (dir === "asc" ? " ↑" : " ↓") : "";
 
   return (
     <>
@@ -47,15 +63,30 @@ export default async function AdminSchoolsPage({
         }
       />
 
-      <form method="get" className="mb-4">
-        <input
-          type="search"
-          name="q"
-          defaultValue={query}
-          placeholder="Search by name or code"
-          className="w-80 rounded border border-surface-border bg-surface px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
-        />
-      </form>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <form method="get">
+          <input
+            type="search"
+            name="q"
+            defaultValue={query}
+            placeholder="Search by name or code"
+            className="w-80 rounded border border-surface-border bg-surface px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
+          />
+        </form>
+        <span className="text-xs text-slate-400">Sort:</span>
+        <Link
+          href={sortHref("name")}
+          className={`rounded border px-2 py-1 text-xs transition hover:border-accent ${sort === "name" ? "border-accent text-white" : "border-surface-border text-slate-300"}`}
+        >
+          Name A–Z{indicator("name")}
+        </Link>
+        <Link
+          href={sortHref("code")}
+          className={`rounded border px-2 py-1 text-xs transition hover:border-accent ${sort === "code" ? "border-accent text-white" : "border-surface-border text-slate-300"}`}
+        >
+          DBN code{indicator("code")}
+        </Link>
+      </div>
 
       <div className="overflow-hidden rounded-lg border border-surface-border">
         <table className="min-w-full divide-y divide-surface-border text-sm">

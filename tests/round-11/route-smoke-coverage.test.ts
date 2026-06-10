@@ -57,6 +57,8 @@ function fileToPath(file: string): string {
 const PRINT_PATHS_OK_TO_SKIP_IN_SPEC = new Set<string>([
   "/tickets/[ticketId]/print",
   "/scheduling/routes/[routeId]/print",
+  // Round-20 — printable PO sheet; covered by e2e/round-20.spec.ts.
+  "/quotes/[quoteId]/po",
   "/tickets/[ticketId]",
   "/imports/[batchId]",
   "/admin/users/[userId]",

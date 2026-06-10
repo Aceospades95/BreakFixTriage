@@ -32,7 +32,10 @@
     "digest": "tsx prisma/send-digest.ts",
     "schools:fix-addresses": "tsx scripts/fix-school-addresses.ts",
     "email:worker": "tsx scripts/email-worker.ts",
-    "email:seed-templates": "tsx prisma/seed-email-templates.ts"
+    "email:seed-templates": "tsx prisma/seed-email-templates.ts",
+    "reports:daily": "tsx scripts/send-scheduled-reports.ts --period=daily",
+    "reports:weekly": "tsx scripts/send-scheduled-reports.ts --period=weekly",
+    "reports:monthly": "tsx scripts/send-scheduled-reports.ts --period=monthly"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -14,6 +14,12 @@
 
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
+import type { BreakFixSession } from "@/lib/auth/session";
+import {
+  deviceWhereForSession,
+  schoolWhereForSession,
+  ticketWhereForSession,
+} from "@/lib/data/forSession";
 
 export type ScanHit =
   | { kind: "ticket"; id: string; label: string; href: string }
@@ -50,6 +56,11 @@ export function normalizeScan(raw: string): string {
 export async function resolveScan(
   raw: string,
   db: PrismaClient = defaultPrisma,
+  // Round-19 — tenant scoping (ADR 0014). Without the session
+  // filter any authenticated user could enumerate tickets/devices/
+  // schools from other districts by guessing identifiers. Parts are
+  // global inventory (no district), so they stay unscoped.
+  session?: BreakFixSession,
 ): Promise<ScanHit[]> {
   const value = normalizeScan(raw);
   if (!value || value.length < 2) return [];
@@ -59,18 +70,28 @@ export async function resolveScan(
   const [ticket, device, part, school] = await Promise.all([
     db.ticket.findFirst({
       where: {
-        OR: [
-          { incidentNumber: { equals: value, mode: "insensitive" } },
-          { id: value },
+        AND: [
+          session ? ticketWhereForSession(session) : {},
+          {
+            OR: [
+              { incidentNumber: { equals: value, mode: "insensitive" } },
+              { id: value },
+            ],
+          },
         ],
       },
       select: { id: true, incidentNumber: true },
     }),
     db.device.findFirst({
       where: {
-        OR: [
-          { serialNumber: { equals: value, mode: "insensitive" } },
-          { assetTag: { equals: value, mode: "insensitive" } },
+        AND: [
+          session ? deviceWhereForSession(session) : {},
+          {
+            OR: [
+              { serialNumber: { equals: value, mode: "insensitive" } },
+              { assetTag: { equals: value, mode: "insensitive" } },
+            ],
+          },
         ],
       },
       select: { id: true, serialNumber: true, assetTag: true },
@@ -80,7 +101,12 @@ export async function resolveScan(
       select: { id: true, sku: true, name: true },
     }),
     db.school.findFirst({
-      where: { code: { equals: value, mode: "insensitive" } },
+      where: {
+        AND: [
+          session ? schoolWhereForSession(session) : {},
+          { code: { equals: value, mode: "insensitive" } },
+        ],
+      },
       select: { id: true, name: true, code: true },
     }),
   ]);

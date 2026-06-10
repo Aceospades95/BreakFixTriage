@@ -18,6 +18,9 @@ export async function POST(request: Request) {
     value?: string;
   } | null;
   const value = body?.value ?? "";
-  const hits = await resolveScan(value);
+  // Tenant-scoped (Round-19): non-admins only resolve entities in
+  // their own districts — a cross-tenant scan simply finds nothing,
+  // matching the app's 404-not-403 posture.
+  const hits = await resolveScan(value, undefined, session);
   return NextResponse.json({ hits });
 }

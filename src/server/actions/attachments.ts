@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AttachmentKind } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/auth/session";
+import { requireRole, requireSession } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { deleteStoredFile, storeFile } from "@/lib/attachments/storage";
@@ -24,25 +24,45 @@ import { withFeedback } from "@/lib/url";
 export async function uploadAttachmentAction(formData: FormData) {
   const kindRaw = formData.get("kind")?.toString() ?? "";
   const kind =
-    kindRaw === "TICKET" || kindRaw === "ROUTE_STOP" || kindRaw === "QUOTE"
+    kindRaw === "TICKET" ||
+    kindRaw === "ROUTE_STOP" ||
+    kindRaw === "QUOTE" ||
+    kindRaw === "EXPENSE"
       ? (kindRaw as AttachmentKind)
       : null;
   if (!kind) {
     redirect("/?error=" + encodeURIComponent("Invalid attachment kind"));
   }
 
-  const requiredPermission =
-    kind === "TICKET"
-      ? PERMISSIONS.TICKETS_WRITE
-      : kind === "QUOTE"
-        ? PERMISSIONS.QUOTES_WRITE
-        : PERMISSIONS.STOPS_UPDATE;
-  const session = await requireRole(requiredPermission);
-
   const ticketId = formData.get("ticketId")?.toString() || null;
   const routeStopId = formData.get("routeStopId")?.toString() || null;
   const quoteId = formData.get("quoteId")?.toString() || null;
+  const expenseId = formData.get("expenseId")?.toString() || null;
   const returnTo = formData.get("returnTo")?.toString() || "/";
+
+  // Round-20 — EXPENSE receipts: any signed-in user, but only onto
+  // their OWN expense rows. Everything else keeps the entity-level
+  // write permission.
+  let session;
+  if (kind === "EXPENSE") {
+    session = await requireSession();
+    const expense = expenseId
+      ? await prisma.expense.findUnique({ where: { id: expenseId } })
+      : null;
+    if (!expense || expense.techUserId !== session.userId) {
+      redirect(
+        withFeedback(returnTo, "error", "Receipts attach to your own expenses only"),
+      );
+    }
+  } else {
+    const requiredPermission =
+      kind === "TICKET"
+        ? PERMISSIONS.TICKETS_WRITE
+        : kind === "QUOTE"
+          ? PERMISSIONS.QUOTES_WRITE
+          : PERMISSIONS.STOPS_UPDATE;
+    session = await requireRole(requiredPermission);
+  }
 
   // Two input shapes supported:
   //   1. `file` — a regular <input type="file"> upload
@@ -102,6 +122,7 @@ export async function uploadAttachmentAction(formData: FormData) {
         ticketId: kind === "TICKET" ? ticketId : null,
         routeStopId: kind === "ROUTE_STOP" ? routeStopId : null,
         quoteId: kind === "QUOTE" ? quoteId : null,
+        expenseId: kind === "EXPENSE" ? expenseId : null,
         uploadedByUserId: session.userId,
         filename: stored.filename,
         storedPath: stored.storedPath,
@@ -121,6 +142,7 @@ export async function uploadAttachmentAction(formData: FormData) {
         ticketId,
         routeStopId,
         quoteId,
+        expenseId,
       },
     });
   } catch (err) {

@@ -27,6 +27,12 @@ export const PERMISSIONS = {
   EMAIL_WRITE: "email:write",
   EMAIL_SEND_TEST: "email:send_test",
   EMAIL_RULES_MANAGE: "email:rules_manage",
+  // Round-20 — NY team batch. Posting/retiring urgent team notes
+  // (the banner everyone must acknowledge) and reviewing submitted
+  // tech expenses. Acknowledging a note and submitting an expense
+  // need only a session.
+  TEAM_NOTES_MANAGE: "team_notes:manage",
+  EXPENSES_REVIEW: "expenses:review",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -66,6 +72,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     // disabling rules can blast the wrong audience if misused.
     PERMISSIONS.EMAIL_WRITE,
     PERMISSIONS.EMAIL_SEND_TEST,
+    // Round-20 — team notes + expense review live with ops.
+    PERMISSIONS.TEAM_NOTES_MANAGE,
+    PERMISSIONS.EXPENSES_REVIEW,
   ],
   DISPATCHER: [
     ...READ_ONLY_SET,
@@ -73,6 +82,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     PERMISSIONS.SCHEDULING_WRITE,
     PERMISSIONS.ROUTES_BUILD,
     PERMISSIONS.STOPS_UPDATE,
+    // Round-20 — dispatch posts the urgent field notes ("toner on
+    // the table must reach Kennedy today").
+    PERMISSIONS.TEAM_NOTES_MANAGE,
   ],
   WAREHOUSE: [
     ...READ_ONLY_SET,

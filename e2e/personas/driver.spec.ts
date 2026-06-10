@@ -45,6 +45,12 @@ test.describe("§2A driver persona", () => {
         where: { routeId: route.id },
         data: { status: "SCHEDULED" },
       });
+      // Round-20 — clear the durable check-offs so the completion
+      // assertion below tests THIS run's stamps, not a prior one's.
+      await prisma.stopDevice.updateMany({
+        where: { stop: { routeId: route.id } },
+        data: { confirmedAt: null, confirmedByUserId: null },
+      });
       for (const stop of route.stops) {
         await prisma.job.update({
           where: { id: stop.jobId },
@@ -129,6 +135,18 @@ test.describe("§2A driver persona", () => {
     await expect(
       page.locator(`[data-testid="route-stop-done"][data-stop-id="${stopRow}"]`),
     ).toBeVisible(settle);
+
+    // Round-20 — the check-offs are durable: every active device
+    // line on the completed stop carries confirmedAt/by (the server
+    // refuses completion otherwise).
+    const confirmedLines = await prisma.stopDevice.findMany({
+      where: { stopId: stopRow!, removedAt: null },
+      select: { confirmedAt: true, confirmedByUserId: true },
+    });
+    for (const line of confirmedLines) {
+      expect(line.confirmedAt).not.toBeNull();
+      expect(line.confirmedByUserId).toBeTruthy();
+    }
 
     // (4) — Confirm ticket transition occurred. The associated
     // ticket(s) should now be IN_WAREHOUSE (pickup) or CLOSED

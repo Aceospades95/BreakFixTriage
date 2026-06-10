@@ -34,8 +34,8 @@ describe("Round-13 scheduling — StopDevice schema", () => {
 
   it("StopDevice.purpose column declared with a default", () => {
     const schema = read("prisma/schema.prisma");
-    expect(schema).toContain(
-      "purpose       StopDevicePurpose @default(PICKUP)",
+    expect(schema).toMatch(
+      /purpose\s+StopDevicePurpose\s+@default\(PICKUP\)/,
     );
   });
 

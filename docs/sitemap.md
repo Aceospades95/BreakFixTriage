@@ -26,7 +26,8 @@ Every signed-in user reaches them.
 | `/` | any | My-day landing page |
 | `/audit` | any | User's own audit feed (filtered to actor) |
 | `/me/preferences` | any | Personal digest hour + tz |
-| `/me/schedule` | any | Personal block view |
+| `/me/schedule` | any | Personal block view + Round-20 upcoming routes |
+| `/me/expenses` | any | Round-20 — bus-fare/toll/parking submission with receipt photo |
 | `/my-day` | any | Today's queue |
 | `/notifications` | any | Personal in-app feed |
 | `/profile` | any | Profile + name |
@@ -53,6 +54,7 @@ Every signed-in user reaches them.
 |------|-------------|------------|
 | `/scheduling` | READ_ONLY | SCHEDULING_READ |
 | `/scheduling/calendar` | READ_ONLY | SCHEDULING_READ |
+| `/team-notes` | DISPATCHER | TEAM_NOTES_MANAGE (Round-20 urgent notes + sign-offs) |
 | `/scheduling/people` | READ_ONLY | SCHEDULING_READ |
 | `/scheduling/routes` | any | view-only |
 | `/scheduling/routes/[routeId]` | READ_ONLY | SCHEDULING_READ |
@@ -67,6 +69,7 @@ Every signed-in user reaches them.
 | `/imports/[batchId]` | READ_ONLY | IMPORTS_READ |
 | `/imports/new` | OPS_MANAGER | IMPORTS_RUN |
 | `/quotes` | READ_ONLY | QUOTES_READ |
+| `/quotes/[quoteId]/po` | READ_ONLY | QUOTES_READ (Round-20 printable customer PO) |
 | `/invoices` | READ_ONLY | QUOTES_READ |
 
 ## Dashboards
@@ -104,6 +107,7 @@ Every signed-in user reaches them.
 | `/admin/devices/new` | ADMIN | DISTRICTS_MANAGE |
 | `/admin/devices/[deviceId]` | ADMIN | DISTRICTS_MANAGE |
 | `/admin/districts` | ADMIN | DISTRICTS_MANAGE |
+| `/admin/expenses` | OPS_MANAGER | EXPENSES_REVIEW (Round-20 weekly review) |
 | `/admin/parts` | ADMIN | DISTRICTS_MANAGE |
 | `/admin/parts/new` | ADMIN | DISTRICTS_MANAGE |
 | `/admin/parts/[partId]` | ADMIN | DISTRICTS_MANAGE |

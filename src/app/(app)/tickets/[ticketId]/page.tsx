@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { allowedNextStates } from "@/lib/workflow";
+import { nextActionFor } from "@/lib/workflow/next-action";
 import { readStatusConfig } from "@/lib/workflow/status-config";
 import {
   transitionTicketAction,
@@ -336,6 +337,34 @@ export default async function TicketDetailPage({
           </div>
         </div>
       )}
+
+      {!ticket.mergedIntoTicketId && (() => {
+        // Round-18 §2 — answer "now what?" right under the header
+        // instead of making operators reverse-engineer the state
+        // machine from the transitions card.
+        const next = nextActionFor(ticket.state);
+        return (
+          <div
+            data-testid="next-action"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded border border-accent/40 bg-accent/5 px-3 py-2.5 text-sm"
+          >
+            <div className="min-w-0 flex-1">
+              <span className="font-semibold text-slate-100">
+                Next: {next.headline}.
+              </span>{" "}
+              <span className="text-slate-300">{next.body}</span>
+            </div>
+            {next.cta && (
+              <Link
+                href={next.cta.href}
+                className="shrink-0 rounded border border-accent/60 bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent transition hover:bg-accent/20"
+              >
+                {next.cta.label} →
+              </Link>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="lg:col-span-2 space-y-6">

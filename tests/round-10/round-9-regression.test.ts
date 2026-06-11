@@ -102,8 +102,11 @@ describe("Round-10: Round-9 regression suite (structural)", () => {
     expect(page).toMatch(
       /transitionOptions=\{Object\.values\(TicketState\)\.map\(\(s\)\s*=>\s*\(\{\s*value:\s*s,\s*label:\s*humanise\(s\)/,
     );
+    // Round-21 widened the map body (selection-aware eligibility
+    // annotations), so match the call shape, not the literal arrow
+    // body opener.
     const island = read("src/components/tickets-bulk-actions.tsx");
-    expect(island).toMatch(/transitionOptions\.map\(\(o\)\s*=>\s*\(/);
+    expect(island).toMatch(/transitionOptions\.map\(\(o\)\s*=>/);
     expect(island).toContain("{o.label}");
   });
 

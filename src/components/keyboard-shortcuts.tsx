@@ -144,7 +144,7 @@ export function KeyboardShortcuts() {
               ))}
             </ul>
             <p className="mt-3 text-[10px] text-slate-500">
-              Shortcuts are disabled while you're typing in a form field.
+              Shortcuts are disabled while you&apos;re typing in a form field.
               Press <span className="font-medium tracking-tight text-accent">Esc</span> to
               close any open overlay.
             </p>

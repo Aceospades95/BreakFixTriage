@@ -46,7 +46,11 @@ export function SignaturePad({
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         ctx.lineWidth = 2;
-        ctx.strokeStyle = "#f1f5f9";
+        // Ink must contrast with the pad's surface in BOTH themes —
+        // a fixed near-white stroke disappears on the light theme.
+        ctx.strokeStyle = document.documentElement.classList.contains("light")
+          ? "#0f172a"
+          : "#f1f5f9";
       }
     };
     resize();
@@ -108,12 +112,13 @@ export function SignaturePad({
     if (!canvas || !hidden) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const dpr = window.devicePixelRatio || 1;
+    // restore() brings back the DPR-scaled transform saved below, so
+    // no re-scale afterwards — scaling again here compounded the DPR
+    // factor and made every post-clear stroke land at 2x offset.
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
-    ctx.scale(dpr, dpr);
     hidden.value = "";
     setHasInk(false);
   }

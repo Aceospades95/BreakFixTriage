@@ -4,6 +4,7 @@ import {
   deleteAttachmentAction,
   uploadAttachmentAction,
 } from "@/server/actions/attachments";
+import { ConfirmButton } from "@/components/confirm-button";
 import { LocalTime } from "@/components/local-time";
 
 /**
@@ -56,13 +57,23 @@ export function AttachmentList({
                 >
                   {a.filename}
                 </Link>
+                {a.signerName && (
+                  <span className="ml-2 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-200">
+                    Signed by {a.signerName}
+                  </span>
+                )}
                 <div className="mt-0.5 text-xs text-slate-400">
                   {formatSize(a.sizeBytes)} · {a.mimeType}
                   {a.uploadedBy && <> · uploaded by {a.uploadedBy.name}</>}
                   <span className="ml-1">
-                    · <LocalTime date={a.createdAt} mode="date" />
+                    · <LocalTime date={a.createdAt} mode="datetime" />
                   </span>
                 </div>
+                {a.note && (
+                  <div className="mt-0.5 text-xs italic text-slate-400">
+                    “{a.note}”
+                  </div>
+                )}
               </div>
               {canWrite && (
                 <form action={deleteAttachmentAction}>
@@ -72,12 +83,12 @@ export function AttachmentList({
                     value={a.id}
                   />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <button
-                    type="submit"
-                    className="ml-3 rounded border border-surface-border px-2 py-0.5 text-[10px] text-slate-400 hover:border-red-500/60 hover:text-red-200"
+                  <ConfirmButton
+                    message={`Delete ${a.filename}? Proof files are part of the work record — this cannot be undone.`}
+                    className="ml-3 rounded border border-surface-border bg-transparent px-2 py-0.5 text-[10px] font-normal text-slate-400 hover:border-red-500/60 hover:bg-transparent hover:text-red-200"
                   >
                     Delete
-                  </button>
+                  </ConfirmButton>
                 </form>
               )}
             </li>

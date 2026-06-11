@@ -54,7 +54,11 @@ export function SignInForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-6 space-y-4">
+    // method="post" matters: if the form is submitted before React
+    // hydrates (slow network, tablet), the browser falls back to a
+    // native submit. Without it that fallback is a GET that puts the
+    // password in the URL, browser history, and server logs.
+    <form method="post" onSubmit={onSubmit} className="mt-6 space-y-4">
       <label className="block">
         <span className="text-xs uppercase tracking-wide text-slate-400">
           Email

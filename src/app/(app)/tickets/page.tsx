@@ -8,6 +8,9 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
+import { ALLOWED_TRANSITIONS } from "@/lib/workflow";
+import { getSlaThresholds } from "@/lib/settings/settings";
+import { slaBreachedWhere } from "@/lib/reports/sla-filter";
 import { TicketsBulkActions } from "@/components/tickets-bulk-actions";
 import {
   bulkAssignAction,
@@ -31,6 +34,7 @@ export default async function TicketsPage({
     school?: string;
     manufacturer?: string;
     assignee?: string;
+    slaHealth?: string;
     error?: string;
     ok?: string;
   };
@@ -41,10 +45,18 @@ export default async function TicketsPage({
 
   const stateParam = searchParams?.state;
   const validStates = Object.values(TicketState) as string[];
+  // `state=open` is a virtual filter ("anything not closed") used by
+  // the manager KPIs on the home page.
+  const openOnly = stateParam === "open";
   const stateFilter =
     stateParam && validStates.includes(stateParam)
       ? (stateParam as TicketState)
       : undefined;
+  // `slaHealth=breached` — same definition the SLA badges and the
+  // home-page attention queue use: whole days in current state >= the
+  // state's threshold. Expressed as a per-state stateEnteredAt cutoff
+  // so the database does the filtering.
+  const slaBreachedOnly = searchParams?.slaHealth === "breached";
   const query = searchParams?.q?.trim() ?? "";
   const page = Math.max(1, parseInt(searchParams?.page ?? "1", 10) || 1);
 
@@ -85,8 +97,16 @@ export default async function TicketsPage({
   const manufacturerFilter = searchParams?.manufacturer || undefined;
   const assigneeFilter = searchParams?.assignee || undefined;
 
+  // Shared with /api/exports/tickets so "what you see" and "what you
+  // download" agree on the breached definition.
+  const slaBreachedClause = slaBreachedOnly
+    ? slaBreachedWhere(await getSlaThresholds())
+    : null;
+
   const where: Prisma.TicketWhereInput = {
     ...(stateFilter ? { state: stateFilter } : {}),
+    ...(openOnly ? { state: { not: TicketState.CLOSED } } : {}),
+    ...(slaBreachedClause ? { AND: [slaBreachedClause] } : {}),
     ...(schoolFilter ? { schoolId: schoolFilter } : {}),
     ...(assigneeFilter
       ? assigneeFilter === "unassigned"
@@ -170,6 +190,8 @@ export default async function TicketsPage({
   const allStates = Object.values(TicketState);
   const activeFilters: Record<string, string> = {
     ...(stateFilter ? { state: stateFilter } : {}),
+    ...(openOnly ? { state: "open" } : {}),
+    ...(slaBreachedOnly ? { slaHealth: "breached" } : {}),
     ...(query ? { q: query } : {}),
     ...(schoolFilter ? { school: schoolFilter } : {}),
     ...(manufacturerFilter ? { manufacturer: manufacturerFilter } : {}),
@@ -212,6 +234,34 @@ export default async function TicketsPage({
           {searchParams.ok}
         </div>
       )}
+
+      {/* When the list is filtered to a "ready" state, say what the
+          next operational step is instead of leaving a dead end. */}
+      {stateFilter &&
+        ["AWAITING_PICKUP", "PENDING_DELIVERY", "AWAITING_ONSITE"].includes(
+          stateFilter,
+        ) &&
+        total > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded border border-accent/40 bg-accent/5 px-3 py-2.5 text-sm">
+            <div className="min-w-0 flex-1 text-slate-200">
+              <span className="font-semibold">
+                These tickets are ready to schedule.
+              </span>{" "}
+              Group them onto a route from the Scheduling page — they move
+              to{" "}
+              {stateFilter === "PENDING_DELIVERY"
+                ? "Delivery scheduled"
+                : "Pickup scheduled"}{" "}
+              automatically when the route is built.
+            </div>
+            <Link
+              href="/scheduling"
+              className="shrink-0 rounded border border-accent/60 bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent transition hover:bg-accent/20"
+            >
+              Open Scheduling →
+            </Link>
+          </div>
+        )}
 
       {canWrite && templates.length > 0 && (
         <form
@@ -286,15 +336,30 @@ export default async function TicketsPage({
             </span>
             <select
               name="state"
-              defaultValue={stateFilter ?? ""}
+              defaultValue={openOnly ? "open" : (stateFilter ?? "")}
               className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             >
               <option value="">All states</option>
+              <option value="open">All open (not closed)</option>
               {allStates.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {humanise(s)}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              SLA
+            </span>
+            <select
+              name="slaHealth"
+              defaultValue={slaBreachedOnly ? "breached" : ""}
+              title="Breached = days in the current state have reached that state's SLA threshold"
+              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="">Any</option>
+              <option value="breached">Breached only</option>
             </select>
           </label>
           <label className="flex flex-col gap-1">
@@ -357,7 +422,13 @@ export default async function TicketsPage({
           >
             Apply filters
           </button>
-          {(query || stateFilter || schoolFilter || manufacturerFilter || assigneeFilter) && (
+          {(query ||
+            stateFilter ||
+            openOnly ||
+            slaBreachedOnly ||
+            schoolFilter ||
+            manufacturerFilter ||
+            assigneeFilter) && (
             <Link
               href="/tickets"
               className="text-xs text-slate-400 hover:text-white"
@@ -367,12 +438,14 @@ export default async function TicketsPage({
           )}
           <div className="ml-auto">
             <a
-              href={`/api/exports/tickets?${new URLSearchParams({
-                ...(stateFilter ? { state: stateFilter } : {}),
-                ...(query ? { q: query } : {}),
-                ...(schoolFilter ? { school: schoolFilter } : {}),
-                ...(manufacturerFilter ? { manufacturer: manufacturerFilter } : {}),
-              }).toString()}`}
+              href={(() => {
+                // Every active filter, no paging — the download is
+                // the full matching set, exactly what's on screen.
+                const sp = new URLSearchParams(activeFilters);
+                sp.delete("page");
+                const qs = sp.toString();
+                return `/api/exports/tickets${qs ? `?${qs}` : ""}`;
+              })()}
               className="rounded border border-surface-border px-3 py-1 text-sm transition hover:border-accent"
               title="Download matching tickets as CSV"
             >
@@ -395,6 +468,10 @@ export default async function TicketsPage({
             value: s,
             label: humanise(s),
           }))}
+          ticketStates={Object.fromEntries(
+            tickets.map((t) => [t.id, t.state]),
+          )}
+          allowedTransitions={ALLOWED_TRANSITIONS}
         >
           <TicketTable
             tickets={tickets}
@@ -424,12 +501,7 @@ export default async function TicketsPage({
       )}
 
       {pageCount > 1 && (
-        <Pagination
-          page={page}
-          pageCount={pageCount}
-          query={query}
-          state={stateFilter}
-        />
+        <Pagination page={page} pageCount={pageCount} filters={activeFilters} />
       )}
     </>
   );
@@ -624,18 +696,16 @@ function TicketTable({
 function Pagination({
   page,
   pageCount,
-  query,
-  state,
+  filters,
 }: {
   page: number;
   pageCount: number;
-  query: string;
-  state: TicketState | undefined;
+  /** Every active filter param — paging must not silently drop any. */
+  filters: Record<string, string>;
 }) {
   const mkHref = (p: number) => {
-    const sp = new URLSearchParams();
-    if (query) sp.set("q", query);
-    if (state) sp.set("state", state);
+    const sp = new URLSearchParams(filters);
+    sp.delete("page");
     if (p > 1) sp.set("page", String(p));
     const qs = sp.toString();
     return qs ? `/tickets?${qs}` : "/tickets";

@@ -668,6 +668,12 @@ model RouteStop {
   delayNote    String?
   delayedAt    DateTime?
 
+  /// Round-21 — why the stop FAILED ("Device not found — reschedule
+  /// required", "School closed", …). Stamped by updateStopStatus
+  /// from the driver's reason picker so dispatch can triage
+  /// reschedules from the stop card instead of the audit log.
+  failureReason String?
+
   route       Route        @relation(fields: [routeId], references: [id], onDelete: Cascade)
   job         Job          @relation(fields: [jobId], references: [id])
   attachments Attachment[]
@@ -951,6 +957,13 @@ model Attachment {
   storedPath       String
   mimeType         String
   sizeBytes        Int
+  /// Printed name of the person who signed, for signature
+  /// attachments captured via the SignaturePad ("who signed for
+  /// this pickup/delivery"). Null for ordinary file uploads.
+  signerName       String?
+  /// Optional free-text context captured with the proof ("left with
+  /// front desk", "custodian signed, AP unavailable", …).
+  note             String?
   createdAt        DateTime       @default(now())
 
   ticket     Ticket?    @relation(fields: [ticketId], references: [id], onDelete: Cascade)

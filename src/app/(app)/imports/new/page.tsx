@@ -131,7 +131,7 @@ export default async function NewImportPage({
               </form>
             ) : (
               <p className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
-                ServiceNow sync isn't connected yet — ask your administrator
+                ServiceNow sync isn&apos;t connected yet — ask your administrator
                 to wire it up.
               </p>
             )}

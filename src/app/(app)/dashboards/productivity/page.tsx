@@ -121,8 +121,8 @@ export default async function ProductivityPage({
         Closed count is measured at ticket closure time. Turnaround is
         the elapsed time from when a ticket was reported to when it was
         closed. Time logged sums every time entry that finished in the
-        window. Roles that don't track time (drivers, dispatch) show 0h
-        — that's expected.
+        window. Roles that don&apos;t track time (drivers, dispatch) show 0h
+        — that&apos;s expected.
       </p>
     </>
   );

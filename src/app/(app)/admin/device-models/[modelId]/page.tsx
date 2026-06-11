@@ -80,7 +80,7 @@ export default async function EditDeviceModelPage({
             </label>
             <p className="mb-2 text-xs text-slate-500">
               Plain text visible to every tech on the ticket detail
-              page whenever they're working on this model. Keep each
+              page whenever they&apos;re working on this model. Keep each
               tip short and actionable. Examples: common failure
               modes, parts that tend to need replacement together,
               recall advisories.

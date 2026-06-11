@@ -9,6 +9,7 @@ import {
 } from "@prisma/client";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { PageHeader } from "@/components/page-header";
+import { ConfirmButton } from "@/components/confirm-button";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
@@ -185,6 +186,13 @@ export default async function HomePage() {
                     },
                   },
                 },
+                // Active device lines decide whether one-tap Complete
+                // is allowed here or the driver must use the stop's
+                // per-device check-off on the route page.
+                stopDevices: {
+                  where: { removedAt: null },
+                  select: { id: true },
+                },
               },
             },
           },
@@ -302,7 +310,7 @@ export default async function HomePage() {
           <section>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                Today's routes{" "}
+                Today&apos;s routes{" "}
                 <span className="font-medium tracking-tight text-xs text-slate-500">
                   {doneStops}/{totalStops} stops done
                 </span>
@@ -398,7 +406,15 @@ export default async function HomePage() {
                               ))}
                             </ul>
                           </div>
-                          <StopStatusPill status={stop.status} />
+                          <div className="flex flex-col items-end gap-1">
+                            <StopStatusPill status={stop.status} />
+                            {stop.status === JobStatus.FAILED &&
+                              stop.failureReason && (
+                                <span className="max-w-44 text-right text-[10px] text-red-300">
+                                  {stop.failureReason}
+                                </span>
+                              )}
+                          </div>
                         </div>
 
                         {canUpdateStop && (
@@ -420,17 +436,38 @@ export default async function HomePage() {
                                 enabled={stop.status === JobStatus.EN_ROUTE}
                                 tone="primary"
                               />
-                              <DriverButton
-                                stopId={stop.id}
-                                routeId={route.id}
-                                target={JobStatus.COMPLETED}
-                                label="Complete"
-                                enabled={
-                                  stop.status === JobStatus.EN_ROUTE ||
-                                  stop.status === JobStatus.ARRIVED
-                                }
-                                tone="primary"
-                              />
+                              {stop.stopDevices.length > 0 ? (
+                                // Stops with device lines must be
+                                // completed through the per-device
+                                // check-off on the route page — a bare
+                                // Complete here would only bounce off
+                                // the server guard with an error the
+                                // driver can't act on from this card.
+                                <Link
+                                  href={`/scheduling/routes/${route.id}`}
+                                  className={`w-full rounded px-3 py-2 text-center text-sm font-semibold ${
+                                    stop.status === JobStatus.EN_ROUTE ||
+                                    stop.status === JobStatus.ARRIVED
+                                      ? "bg-accent hover:bg-accent-strong"
+                                      : "cursor-not-allowed border border-surface-border bg-surface text-slate-500"
+                                  }`}
+                                  title={`Check off the ${stop.stopDevices.length} device${stop.stopDevices.length === 1 ? "" : "s"} on this stop to complete it`}
+                                >
+                                  Complete…
+                                </Link>
+                              ) : (
+                                <DriverButton
+                                  stopId={stop.id}
+                                  routeId={route.id}
+                                  target={JobStatus.COMPLETED}
+                                  label="Complete"
+                                  enabled={
+                                    stop.status === JobStatus.EN_ROUTE ||
+                                    stop.status === JobStatus.ARRIVED
+                                  }
+                                  tone="primary"
+                                />
+                              )}
                               <DriverButton
                                 stopId={stop.id}
                                 routeId={route.id}
@@ -442,6 +479,7 @@ export default async function HomePage() {
                                   stop.status !== JobStatus.CANCELLED
                                 }
                                 tone="danger"
+                                confirmMessage="Mark this stop as failed? Its tickets go back to the reschedule queue. Open the route page instead if you want to record why."
                               />
                             </div>
                             <form
@@ -601,7 +639,7 @@ export default async function HomePage() {
           <section>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                Today's routes
+                Today&apos;s routes
               </h2>
               <Link
                 href="/scheduling"
@@ -820,6 +858,7 @@ function DriverButton({
   label,
   enabled,
   tone,
+  confirmMessage,
 }: {
   stopId: string;
   routeId: string;
@@ -827,28 +866,37 @@ function DriverButton({
   label: string;
   enabled: boolean;
   tone: "primary" | "danger";
+  /** When set, a confirm() gate fires before the form submits. */
+  confirmMessage?: string;
 }) {
   const enabledCls =
     tone === "danger"
       ? "border border-red-500/60 bg-red-500/20 text-red-100 hover:bg-red-500/30"
       : "bg-accent hover:bg-accent-strong";
+  const cls = `w-full rounded px-3 py-2 text-sm font-semibold ${
+    enabled
+      ? enabledCls
+      : "cursor-not-allowed border border-surface-border bg-surface text-slate-500"
+  }`;
   return (
     <form action={updateStopStatusAction}>
       <input type="hidden" name="stopId" value={stopId} />
       <input type="hidden" name="status" value={target} />
       <input type="hidden" name="routeId" value={routeId} />
       <input type="hidden" name="returnTo" value="/" />
-      <button
-        type="submit"
-        disabled={!enabled}
-        className={`w-full rounded px-3 py-2 text-sm font-semibold ${
-          enabled
-            ? enabledCls
-            : "cursor-not-allowed border border-surface-border bg-surface text-slate-500"
-        }`}
-      >
-        {label}
-      </button>
+      {confirmMessage ? (
+        <ConfirmButton
+          message={confirmMessage}
+          disabled={!enabled}
+          className={cls}
+        >
+          {label}
+        </ConfirmButton>
+      ) : (
+        <button type="submit" disabled={!enabled} className={cls}>
+          {label}
+        </button>
+      )}
     </form>
   );
 }

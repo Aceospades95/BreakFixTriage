@@ -298,7 +298,7 @@ export function StatusEditor({
                       <div className="text-xs text-slate-400">
                         Every state currently has active tickets. Close
                         or move some tickets first, or disable a state
-                        you don't use, then try again.
+                        you don&apos;t use, then try again.
                       </div>
                     ) : (
                       <div className="flex flex-wrap items-end gap-2">
@@ -329,7 +329,7 @@ export function StatusEditor({
                             <option value="">Pick an unused slot…</option>
                             {availableStates.map((s) => (
                               <option key={s.state} value={s.state}>
-                                {s.state} (originally "{s.defaultLabel}")
+                                {s.state} (originally &quot;{s.defaultLabel}&quot;)
                               </option>
                             ))}
                           </select>

@@ -134,7 +134,14 @@ export async function updateStopStatus(
 
     await tx.routeStop.update({
       where: { id: stop.id },
-      data: { status: input.status },
+      data: {
+        status: input.status,
+        // Keep the driver's "why failed" pick on the stop itself so
+        // dispatch can triage reschedules without the audit log.
+        ...(input.status === JobStatus.FAILED
+          ? { failureReason: input.reason ?? null }
+          : {}),
+      },
     });
     await tx.job.update({
       where: { id: stop.jobId },

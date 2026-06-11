@@ -49,15 +49,32 @@ export async function bulkTransitionAction(formData: FormData) {
     .filter(Boolean);
   const returnTo = formData.get("returnTo")?.toString() || "/tickets";
 
+  // A missing target is the most common slip (Apply clicked with the
+  // picker still on "pick state…"). Say so in operator language
+  // instead of leaking a zod enum dump.
+  const toRaw = formData.get("to")?.toString() ?? "";
+  if (!toRaw) {
+    redirect(
+      withFeedback(
+        returnTo,
+        "error",
+        "Pick a target status first, then Apply.",
+      ),
+    );
+  }
+
   const parsed = bulkTransitionSchema.safeParse({
     ticketIds,
-    to: formData.get("to"),
+    to: toRaw,
     reason: formData.get("reason")?.toString().trim() || undefined,
   });
   if (!parsed.success) {
-    redirect(
-      withFeedback(returnTo, "error", parsed.error.issues.map((i) => i.message).join("; ")),
-    );
+    const friendly = parsed.error.issues
+      .map((i) =>
+        i.path[0] === "to" ? "Unknown target status" : i.message,
+      )
+      .join("; ");
+    redirect(withFeedback(returnTo, "error", friendly));
   }
 
   let success = 0;
@@ -96,11 +113,20 @@ export async function bulkTransitionAction(formData: FormData) {
   publish({ topic: "tickets.bulk-changed", reason: "bulk-transition" });
   // Round-18 — operator-facing copy: humanised state, and when
   // everything was skipped say WHY instead of a bare "0/2 moved".
+  // Round-21 — when the move lands tickets in a "ready" bucket,
+  // point at the next operational step so the flow doesn't dead-end.
   const target = humanise(parsed.data.to);
+  const nextStepHint =
+    success > 0 &&
+    (parsed.data.to === "AWAITING_PICKUP" ||
+      parsed.data.to === "PENDING_DELIVERY" ||
+      parsed.data.to === "AWAITING_ONSITE")
+      ? " Next: open Scheduling to put them on a route."
+      : "";
   const summary =
     success === 0
       ? `No tickets moved — ${skipped} selected ticket${skipped === 1 ? " is" : "s are"} not allowed to go to ${target} from their current state.`
-      : `Moved ${success}/${parsed.data.ticketIds.length} to ${target}${skipped > 0 ? ` — ${skipped} skipped (transition not allowed from their current state)` : ""}`;
+      : `Moved ${success}/${parsed.data.ticketIds.length} to ${target}${skipped > 0 ? ` — ${skipped} skipped (transition not allowed from their current state)` : ""}.${nextStepHint}`;
   redirect(withFeedback(returnTo, success === 0 ? "error" : "ok", summary));
 }
 

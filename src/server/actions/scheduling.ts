@@ -531,6 +531,9 @@ const reportStopDelaySchema = z.object({
   reason: z.nativeEnum(StopDelayReason),
   minutes: z.coerce.number().int().min(5).max(8 * 60),
   note: z.string().max(500).optional(),
+  // Round-22 — also notify the SPOCs of LATER stops on the route
+  // (their visit may slip too) and push their estimates.
+  notifyDownstream: z.coerce.boolean().optional(),
 });
 
 /**
@@ -553,6 +556,7 @@ export async function reportStopDelayAction(formData: FormData) {
     reason: formData.get("reason"),
     minutes: formData.get("minutes"),
     note: formData.get("note")?.toString().trim() || undefined,
+    notifyDownstream: formData.get("notifyDownstream") === "on",
   });
   const fallbackPath = `/scheduling/routes/${formData.get("routeId")?.toString() ?? ""}`;
   if (!parsed.success) {
@@ -650,14 +654,93 @@ export async function reportStopDelayAction(formData: FormData) {
     );
   }
 
+  // Round-22 — cascade to LATER stops on the route. Their estimates
+  // slip by the same minutes, and (opt-in) their SPOCs hear about it
+  // via the dedicated stop_delayed_downstream template.
+  let downstreamCount = 0;
+  if (parsed.data.notifyDownstream) {
+    const laterStops = await prisma.routeStop.findMany({
+      where: {
+        routeId: parsed.data.routeId,
+        sequence: { gt: stop.sequence },
+        status: {
+          notIn: [
+            JobStatus.COMPLETED,
+            JobStatus.FAILED,
+            JobStatus.CANCELLED,
+          ],
+        },
+      },
+      orderBy: { sequence: "asc" },
+      include: {
+        job: {
+          select: {
+            type: true,
+            schoolId: true,
+            ticketLinks: { select: { ticketId: true } },
+          },
+        },
+      },
+    });
+    for (const later of laterStops) {
+      // Push the estimate too (the schedule update the brief asked
+      // for), only when an estimate exists.
+      if (later.arrivalEstimate) {
+        await prisma.routeStop.update({
+          where: { id: later.id },
+          data: {
+            arrivalEstimate: new Date(
+              later.arrivalEstimate.getTime() + parsed.data.minutes * 60_000,
+            ),
+          },
+        });
+      }
+      try {
+        for (const link of later.job.ticketLinks) {
+          const variables = await buildTicketEmailVariables(
+            link.ticketId,
+            prisma,
+            {
+              delay: {
+                reason: humanise(parsed.data.reason),
+                minutes: parsed.data.minutes,
+                note: "",
+              },
+              visit: {
+                kind: later.job.type === JobType.DELIVERY ? "delivery" : "pickup",
+              },
+            },
+          );
+          if (!variables) continue;
+          const sent = await dispatchEmailEvent("stop_delayed_downstream", {
+            ticketId: link.ticketId,
+            schoolId: later.job.schoolId,
+            routeId: parsed.data.routeId,
+            actorUserId: session.userId,
+            variables,
+          });
+          downstreamCount += sent.length;
+        }
+      } catch (dispatchErr) {
+        console.error(
+          `[reportStopDelayAction] downstream dispatch failed for ${later.id}:`,
+          dispatchErr,
+        );
+      }
+    }
+  }
+
   revalidatePath(routePath);
   revalidatePath("/scheduling");
   revalidatePath("/");
+  const downstreamNote = parsed.data.notifyDownstream
+    ? ` Later stops on the route were updated${downstreamCount > 0 ? ` and ${downstreamCount} downstream contact(s) emailed` : ""}.`
+    : "";
   redirect(
     withFeedback(
       routePath,
       "ok",
-      `Delay recorded — ${humanise(parsed.data.reason)}, about ${parsed.data.minutes} minutes.${dispatched > 0 ? " The school contact has been emailed." : " No SPOC email rule is enabled, so nothing was sent."}`,
+      `Delay recorded — ${humanise(parsed.data.reason)}, about ${parsed.data.minutes} minutes.${dispatched > 0 ? " The school contact has been emailed." : " No SPOC email rule is enabled, so nothing was sent."}${downstreamNote}`,
     ),
   );
 }

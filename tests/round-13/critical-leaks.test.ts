@@ -67,27 +67,30 @@ describe("Round-13 §1C — /my-day TEAM QUEUES humanises role", () => {
   });
 });
 
-describe("Round-13 §1D — /admin/email-rules tokens render as <code>", () => {
+describe("Round-13 §1D / Round-22 — /admin/email-rules tokens render as <code>", () => {
+  // Round-22 rebuilt this page into a real editor. The §1D
+  // guarantee survives: recipient kinds + template keys are
+  // programmatic tokens, so they render inside <code data-token-chip>
+  // (monospace), never as misleading plain user copy.
   const src = read("src/app/(app)/admin/email-rules/page.tsx");
 
-  it("Template column wraps rule.template.key in TokenChip", () => {
-    expect(src).toContain("<TokenChip>{rule.template.key}</TokenChip>");
+  it("template key renders inside a data-token-chip <code>", () => {
+    expect(src).toMatch(/<code data-token-chip[^>]*>\s*\{rule\.template\.key\}/);
   });
 
-  it("Recipients column uses RecipientChips with TokenChip per token", () => {
-    expect(src).toContain("<RecipientChips recipients={rule.recipients}");
-    expect(src).toContain("function RecipientChips");
-    expect(src).toContain("function TokenChip");
+  it("recipient kinds render through the RecipientSummary token chips", () => {
+    expect(src).toContain("<RecipientSummary rec={rec}");
+    expect(src).toContain("function RecipientSummary");
   });
 
-  it("TokenChip wraps in <code> with data-token-chip attribute", () => {
+  it("tokens use <code data-token-chip> with monospace styling", () => {
     expect(src).toMatch(/<code\s+data-token-chip/);
-    // Pinned monospace styling so it reads as a developer token.
     expect(src).toMatch(/font-mono\s+text-\[10px\]/);
   });
 
-  it("removed the string-returning recipientSummary helper", () => {
-    expect(src).not.toContain("function recipientSummary");
+  it("does not join recipient tokens into a plain string", () => {
+    // The old string-returning helper joined raw tokens as user
+    // copy; the rebuild renders each as a chip instead.
     expect(src).not.toContain('parts.join(" · ")');
   });
 });

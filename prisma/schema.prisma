@@ -1298,6 +1298,9 @@ enum EmailEvent {
   // stop_delayed: SPOC hears when their stop is marked delayed
   // (construction / weather / vehicle emergency / previous stop).
   stop_delayed
+  // Round-22 — the SPOCs of LATER stops on the same route hear that
+  // an earlier stop is running late, so their visit may slip too.
+  stop_delayed_downstream
   // Scheduled operations + finance reports (daily/weekly/monthly —
   // period rides in the template variables; recipients per event
   // via the rules engine).

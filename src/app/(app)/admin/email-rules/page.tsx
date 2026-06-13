@@ -1,245 +1,335 @@
 import Link from "next/link";
+import { EmailEvent } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
+import { EmailRecipientEditor } from "@/components/email-recipient-editor";
+import { ConfirmButton } from "@/components/confirm-button";
 import { seedExampleRuleAction } from "@/server/actions/email-admin";
+import {
+  createEmailRuleAction,
+  deleteEmailRuleAction,
+  toggleEmailRuleAction,
+  updateEmailRuleRecipientsAction,
+  updateEmailRuleTemplateAction,
+} from "@/server/actions/email-rules";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Round-3 §A1 + Round-13 hotfix — email rules list.
+ * Round-3 §A1 + Round-22 — email rules editor.
  *
- * Read-allowed for OPS_MANAGER + ADMIN (per the §2D persona
- * brief: "Olivia can read every page she should but cannot
- * write to /admin/email-rules"). Server actions for
- * create / update / delete / seed remain gated on
- * EMAIL_RULES_MANAGE — only ADMIN can mutate. The Seed example
- * rule button is also disabled for non-admin viewers.
+ * Read-allowed for OPS_MANAGER + ADMIN; all mutations gated on
+ * EMAIL_RULES_MANAGE (admin). Round-22 turned this from a read-only
+ * table into a real editor: per rule you can toggle enabled, edit
+ * recipients (any kind incl. the leadership distribution lists +
+ * literal addresses), swap the template, or delete; plus add a rule
+ * for any event.
  */
-export default async function EmailRulesPage() {
-  // Read gate: EMAIL_WRITE is held by OPS_MANAGER and ADMIN.
-  // Write gate (canManage below) is the strict EMAIL_RULES_MANAGE
-  // which only ADMIN holds by default.
+export default async function EmailRulesPage({
+  searchParams,
+}: {
+  searchParams?: { error?: string; ok?: string };
+}) {
   const session = await requireRole(PERMISSIONS.EMAIL_WRITE);
   const canManage = can(session.role, PERMISSIONS.EMAIL_RULES_MANAGE);
 
-  const rules = await prisma.emailRule.findMany({
-    orderBy: [{ enabled: "desc" }, { event: "asc" }],
-    include: { template: { select: { key: true } } },
-  });
+  const [rules, templates] = await Promise.all([
+    prisma.emailRule.findMany({
+      orderBy: [{ enabled: "desc" }, { event: "asc" }],
+      include: { template: { select: { id: true, key: true } } },
+    }),
+    prisma.emailTemplate.findMany({
+      select: { id: true, key: true },
+      orderBy: { key: "asc" },
+    }),
+  ]);
 
-  // Best-effort "last fired" — the most recent EmailLog row per
-  // rule. One round-trip per rule isn't great at scale; the proper
-  // fix is a denormalised lastFiredAt column on EmailRule, filed
-  // for the §A1 follow-up.
+  // Best-effort "last fired" — most recent EmailLog row per rule.
   const lastFired = new Map<string, Date>();
   if (rules.length > 0) {
     const recent = await prisma.emailLog.findMany({
       where: { ruleId: { in: rules.map((r) => r.id) } },
       orderBy: { createdAt: "desc" },
-      take: 200,
+      take: 400,
       select: { ruleId: true, createdAt: true },
     });
     for (const r of recent) {
       if (!r.ruleId) continue;
-      if (!lastFired.has(r.ruleId)) {
-        lastFired.set(r.ruleId, r.createdAt);
-      }
+      if (!lastFired.has(r.ruleId)) lastFired.set(r.ruleId, r.createdAt);
     }
   }
+
+  const allEvents = Object.values(EmailEvent);
 
   return (
     <>
       <PageHeader
         title="Email rules"
-        subtitle={`${rules.length} rule${rules.length === 1 ? "" : "s"} · admin`}
+        subtitle={`${rules.length} rule${rules.length === 1 ? "" : "s"} · who gets emailed when`}
         actions={
-          // Round-13 §3F — disable the seed button when ≥1 rule
-          // already exists. A re-click would create a duplicate
-          // example rule, which is exactly the kind of quiet
-          // foot-gun the gate guards against.
-          // Round-13 hotfix — disable the Seed example button when
-          // the viewer lacks EMAIL_RULES_MANAGE. OPS_MANAGER can
-          // read this page but cannot mutate; the matching server
-          // action is also gated on EMAIL_RULES_MANAGE so a
-          // hand-rolled POST also returns 403.
-          <form action={seedExampleRuleAction}>
-            <button
-              type="submit"
-              disabled={rules.length > 0 || !canManage}
-              title={
-                !canManage
-                  ? "Read-only — admin role required to seed."
-                  : rules.length > 0
-                  ? "Already seeded — use the row controls below to edit existing rules."
-                  : "Insert one disabled-by-default example rule"
-              }
-              className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-emerald-500/10"
-            >
-              Seed example rule
-            </button>
-          </form>
+          <Link
+            href="/admin/email-templates"
+            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+          >
+            Edit templates →
+          </Link>
         }
       />
 
+      {searchParams?.error && (
+        <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          {searchParams.error}
+        </div>
+      )}
+      {searchParams?.ok && (
+        <div className="mb-4 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+          {searchParams.ok}
+        </div>
+      )}
+
+      <div className="mb-4 rounded-lg border border-surface-border bg-surface-muted/40 p-3 text-xs text-slate-400">
+        Each rule sends one template to a set of recipients when its
+        event fires. Recipient groups (district / internal /
+        prime-contract leadership, the internal team list) are edited
+        on{" "}
+        <Link href="/admin/settings" className="text-accent hover:underline">
+          Settings
+        </Link>
+        ; a rule that targets an empty group simply sends to nobody.
+        Outward-facing rules ship disabled — enable each one when
+        you&apos;re ready for it to send.
+      </div>
+
+      {canManage && (
+        <form
+          action={createEmailRuleAction}
+          className="mb-6 flex flex-wrap items-end gap-2 rounded-lg border border-surface-border bg-surface-muted/40 p-3"
+          data-testid="add-rule-form"
+        >
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              Add a rule for event
+            </span>
+            <select
+              name="event"
+              defaultValue=""
+              required
+              className="rounded border border-surface-border bg-surface px-2 py-1.5 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="" disabled>
+                pick an event…
+              </option>
+              {allEvents.map((ev) => (
+                <option key={ev} value={ev}>
+                  {humanise(ev)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="rounded bg-accent px-4 py-2 text-sm font-semibold hover:bg-accent-strong"
+          >
+            Add rule
+          </button>
+          <span className="text-xs text-slate-500">
+            Starts disabled with the matching template and no
+            recipients.
+          </span>
+        </form>
+      )}
+
       {rules.length === 0 ? (
-        // Round-10 §2G — promote the empty-state to a prominent
-        // CTA banner so admins immediately see the seed action
-        // instead of hunting for the button in the page header.
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-5">
-          <div>
-            <h2 className="text-sm font-semibold text-amber-100">
-              No rules configured yet
-            </h2>
-            <p className="mt-1 text-xs text-amber-200/80">
-              Click &quot;Seed example rule&quot; to start with a sensible
-              default — every new ticket emails its school&apos;s SPOC
-              contacts. Manage templates at{" "}
-              <Link
-                href="/admin/email-templates"
-                className="text-amber-200 underline hover:text-amber-50"
-              >
-                Email templates
-              </Link>
-              .
-            </p>
-          </div>
-          {/*
-            Round-13 hotfix — empty-state Seed CTA is also gated on
-            canManage. Read-only viewers see the banner explaining
-            the empty state but the seed button itself is disabled.
-          */}
-          <form action={seedExampleRuleAction}>
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-6">
+          <h2 className="text-sm font-semibold text-amber-100">
+            No rules yet
+          </h2>
+          <p className="mt-1 text-xs text-amber-200/80">
+            Add a rule above, or seed a sensible starter (every new
+            ticket emails its school&apos;s SPOC).
+          </p>
+          <form action={seedExampleRuleAction} className="mt-3">
             <button
               type="submit"
               disabled={!canManage}
-              title={
-                canManage
-                  ? "Insert one disabled-by-default example rule"
-                  : "Read-only — admin role required to seed."
-              }
-              className="rounded bg-accent px-4 py-2 text-sm font-semibold transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-accent"
+              className="rounded bg-accent px-4 py-2 text-sm font-semibold transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
             >
               Seed example rule
             </button>
           </form>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-surface-border">
-          <table className="min-w-full divide-y divide-surface-border text-sm">
-            <thead className="bg-surface-muted text-left text-xs tracking-wide text-slate-400">
-              <tr>
-                <th className="px-3 py-2 font-medium">Scope</th>
-                <th className="px-3 py-2 font-medium">Event</th>
-                <th className="px-3 py-2 font-medium">Template</th>
-                <th className="px-3 py-2 font-medium">Recipients</th>
-                <th className="px-3 py-2 font-medium">Enabled</th>
-                <th className="px-3 py-2 font-medium">Last fired</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-border">
-              {rules.map((rule) => {
-                const fired = lastFired.get(rule.id);
-                return (
-                  <tr key={rule.id} className="hover:bg-surface-muted/40">
-                    <td className="px-3 py-2 text-xs">
-                      <div>{humanise(rule.scope)}</div>
-                      {rule.scopeId && (
-                        <div className="truncate text-slate-500">
-                          {rule.scopeId}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs">
-                      {humanise(rule.event)}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
-                      <TokenChip>{rule.template.key}</TokenChip>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
-                      <RecipientChips recipients={rule.recipients} />
-                    </td>
-                    <td className="px-3 py-2 text-xs">
-                      {rule.enabled ? (
-                        <span className="rounded border border-emerald-500/40 bg-emerald-500/15 px-2 py-0.5 text-emerald-100">
-                          Enabled
-                        </span>
-                      ) : (
-                        <span className="rounded border border-slate-500/40 bg-slate-500/15 px-2 py-0.5 text-slate-300">
-                          Disabled
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-400">
-                      {fired
-                        ? fired.toISOString().slice(0, 10)
-                        : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ul className="space-y-3">
+          {rules.map((rule) => {
+            const fired = lastFired.get(rule.id);
+            const rec = (rule.recipients ?? {}) as {
+              to?: { kind: string; value?: string }[];
+              cc?: { kind: string; value?: string }[];
+              bcc?: { kind: string; value?: string }[];
+            };
+            const toRows = (rec.to ?? []).map((r) => ({
+              bucket: "to" as const,
+              kind: r.kind as never,
+              value: r.value ?? "",
+            }));
+            const ccRows = (rec.cc ?? []).map((r) => ({
+              bucket: "cc" as const,
+              kind: r.kind as never,
+              value: r.value ?? "",
+            }));
+            const bccRows = (rec.bcc ?? []).map((r) => ({
+              bucket: "bcc" as const,
+              kind: r.kind as never,
+              value: r.value ?? "",
+            }));
+            return (
+              <li
+                key={rule.id}
+                data-testid="email-rule-row"
+                data-rule-event={rule.event}
+                className={`rounded-lg border p-4 ${
+                  rule.enabled
+                    ? "border-emerald-500/40 bg-emerald-500/5"
+                    : "border-surface-border bg-surface-muted/40"
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-semibold text-slate-100">
+                    {humanise(rule.event)}
+                  </span>
+                  <span
+                    className={`rounded border px-2 py-0.5 text-[10px] font-medium ${
+                      rule.enabled
+                        ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                        : "border-slate-500/40 bg-slate-500/15 text-slate-300"
+                    }`}
+                  >
+                    {rule.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    template{" "}
+                    <code data-token-chip className="rounded bg-surface px-1 font-mono text-[10px]">
+                      {rule.template.key}
+                    </code>
+                  </span>
+                  <RecipientSummary rec={rec} />
+                  <span className="ml-auto text-xs text-slate-500">
+                    {fired ? `last fired ${fired.toISOString().slice(0, 10)}` : "never fired"}
+                  </span>
+                </div>
+
+                {canManage && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-surface-border pt-3">
+                    <form action={toggleEmailRuleAction}>
+                      <input type="hidden" name="ruleId" value={rule.id} />
+                      <button
+                        type="submit"
+                        className={`rounded px-3 py-1.5 text-xs font-semibold ${
+                          rule.enabled
+                            ? "border border-surface-border text-slate-300 hover:border-accent"
+                            : "bg-accent hover:bg-accent-strong"
+                        }`}
+                      >
+                        {rule.enabled ? "Disable" : "Enable"}
+                      </button>
+                    </form>
+                    <form
+                      action={updateEmailRuleTemplateAction}
+                      className="flex items-center gap-1"
+                    >
+                      <input type="hidden" name="ruleId" value={rule.id} />
+                      <select
+                        name="templateId"
+                        defaultValue={rule.template.id}
+                        className="rounded border border-surface-border bg-surface px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                      >
+                        {templates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.key}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        className="rounded border border-surface-border px-2 py-1 text-xs text-slate-300 hover:border-accent"
+                      >
+                        Set template
+                      </button>
+                    </form>
+                    <form action={deleteEmailRuleAction} className="ml-auto">
+                      <input type="hidden" name="ruleId" value={rule.id} />
+                      <ConfirmButton
+                        message={`Delete the ${humanise(rule.event)} rule? It stops sending immediately.`}
+                        className="rounded border border-red-500/40 px-2 py-1 text-xs text-red-200 hover:bg-red-500/10"
+                      >
+                        Delete
+                      </ConfirmButton>
+                    </form>
+                  </div>
+                )}
+
+                {canManage && (
+                  <details className="mt-3 rounded border border-surface-border bg-surface/60 p-2">
+                    <summary className="cursor-pointer select-none text-xs font-semibold text-accent">
+                      Edit recipients
+                    </summary>
+                    <div className="mt-3">
+                      <EmailRecipientEditor
+                        ruleId={rule.id}
+                        action={updateEmailRuleRecipientsAction}
+                        initial={{ to: toRows, cc: ccRows, bcc: bccRows }}
+                      />
+                    </div>
+                  </details>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       )}
     </>
   );
 }
 
 /**
- * Round-13 §1D — token chip for the Recipients / Template
- * columns. Tokens like `school_spoc` / `ticket_created` are
- * programmatic strings tied to template-variable wiring; admins
- * editing rules need the exact spelling, so we render them as
- * <code> with a monospace pill style. The class flags them
- * visually as developer tokens rather than user-readable copy.
+ * Round-22 (preserving R13 §1D) — recipient kinds are programmatic
+ * tokens, so render each as a <code data-token-chip> rather than
+ * misleading plain user copy.
  */
-function TokenChip({ children }: { children: React.ReactNode }) {
-  // Round-13 §1D — keep `<code` and `font-mono` on a single line
-  // so the Round-3 §G14 vitest gate (which only matches
-  // <code|<pre> on the same line as font-mono) passes.
-  return (
-    <code data-token-chip className="inline-block rounded border border-surface-border bg-surface px-1.5 py-0.5 font-mono text-[10px] text-slate-200">
-      {children}
-    </code>
-  );
-}
-
-type RecipientItem = { kind?: string; value?: string };
-
-function RecipientChips({ recipients }: { recipients: unknown }) {
-  if (!recipients || typeof recipients !== "object") {
-    return <span className="text-slate-500">—</span>;
-  }
-  const r = recipients as {
-    to?: RecipientItem[];
-    cc?: RecipientItem[];
-    bcc?: RecipientItem[];
+function RecipientSummary({
+  rec,
+}: {
+  rec: {
+    to?: { kind: string; value?: string }[];
+    cc?: { kind: string; value?: string }[];
+    bcc?: { kind: string; value?: string }[];
   };
-  const groups: { label: string; items: RecipientItem[] }[] = [
-    { label: "To", items: r.to ?? [] },
-    { label: "Cc", items: r.cc ?? [] },
-    { label: "Bcc", items: r.bcc ?? [] },
-  ].filter((g) => g.items.length > 0);
-  if (groups.length === 0) return <span className="text-slate-500">—</span>;
+}) {
+  const buckets: { label: string; items: { kind: string; value?: string }[] }[] = [
+    { label: "To", items: rec.to ?? [] },
+    { label: "Cc", items: rec.cc ?? [] },
+    { label: "Bcc", items: rec.bcc ?? [] },
+  ].filter((b) => b.items.length > 0);
+  if (buckets.length === 0) {
+    return (
+      <span className="text-xs text-amber-300/80">no recipients yet</span>
+    );
+  }
   return (
-    <div className="flex flex-col gap-1">
-      {groups.map((g) => (
-        <div key={g.label} className="flex flex-wrap items-center gap-1">
-          <span className="text-[10px] tracking-wide text-slate-500">
-            {g.label}:
-          </span>
-          {g.items.map((item, i) => {
-            const label =
-              item.kind === "literal" && item.value
-                ? item.value
-                : (item.kind ?? "?");
-            return <TokenChip key={`${g.label}-${i}-${label}`}>{label}</TokenChip>;
-          })}
-        </div>
+    <span className="flex flex-wrap items-center gap-1 text-xs text-slate-400">
+      {buckets.map((b) => (
+        <span key={b.label} className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] text-slate-500">{b.label}:</span>
+          {b.items.map((item, i) => (
+            <code key={`${b.label}-${i}`} data-token-chip className="rounded border border-surface-border bg-surface px-1 font-mono text-[10px] text-slate-200">
+              {item.kind === "literal" && item.value ? item.value : item.kind}
+            </code>
+          ))}
+        </span>
       ))}
-    </div>
+    </span>
   );
 }

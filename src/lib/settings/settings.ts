@@ -58,6 +58,13 @@ export const SETTINGS_KEYS = {
   EMAIL_FROM_ADDRESS: "email.fromAddress",
   EMAIL_REPLY_TO: "email.replyTo",
   WYNNDALCO_TEAM_EMAILS: "email.wynndalcoTeamEmails",
+  // Round-22 — leadership distribution lists. Settings-backed,
+  // editable on /admin/settings, resolved by the matching recipient
+  // kinds (district_leadership / internal_leadership /
+  // prime_leadership). Reports and other rules target these.
+  DISTRICT_LEADERSHIP_EMAILS: "email.districtLeadershipEmails",
+  INTERNAL_LEADERSHIP_EMAILS: "email.internalLeadershipEmails",
+  PRIME_LEADERSHIP_EMAILS: "email.primeLeadershipEmails",
   // Round-2 §12 — business-hours SLA mode
   BUSINESS_HOURS_ENABLED: "sla.businessHours.enabled",
   BUSINESS_DAY_START: "sla.businessHours.dayStart",
@@ -169,6 +176,32 @@ export async function getWynndalcoTeamEmails(
     (v): v is string => typeof v === "string" && v.includes("@"),
   );
 }
+
+/**
+ * Round-22 — read one of the leadership distribution lists. Same
+ * shape as the team list: a JSON array of addresses, filtered to
+ * well-formed emails. Empty until an admin fills it in
+ * /admin/settings, so a rule targeting an empty list resolves to no
+ * recipients (logged as skipped) rather than erroring.
+ */
+export async function getEmailListSetting(
+  key: string,
+  db: PrismaClient = defaultPrisma,
+): Promise<string[]> {
+  const raw = await getRawSetting(key, db);
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (v): v is string => typeof v === "string" && v.includes("@"),
+  );
+}
+
+export const LEADERSHIP_LIST_KEYS = {
+  district_leadership: SETTINGS_KEYS.DISTRICT_LEADERSHIP_EMAILS,
+  internal_leadership: SETTINGS_KEYS.INTERNAL_LEADERSHIP_EMAILS,
+  prime_leadership: SETTINGS_KEYS.PRIME_LEADERSHIP_EMAILS,
+} as const;
+
+export type LeadershipListKind = keyof typeof LEADERSHIP_LIST_KEYS;
 
 export interface BusinessHours {
   enabled: boolean;

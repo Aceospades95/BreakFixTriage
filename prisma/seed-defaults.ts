@@ -119,15 +119,30 @@ export async function seedDefaults(
       event: "stop_delayed",
       recipients: { to: [{ kind: "spoc" }], cc: [], bcc: [] },
     },
-    // Scheduled reports go to the internal team list by default;
-    // admins add customer/finance literals on the rule.
+    // Round-22 — a delay also notifies the SPOCs of later stops on
+    // the route (their visit may slip too).
+    {
+      event: "stop_delayed_downstream",
+      recipients: { to: [{ kind: "spoc" }], cc: [], bcc: [] },
+    },
+    // Round-22 — NY team: reports go to leadership. Wired to the
+    // three leadership distribution lists (District / Internal /
+    // Prime-contract); fill the address lists in Admin → Settings.
     {
       event: "report_operations",
-      recipients: { to: [{ kind: "wynndalco_team" }], cc: [], bcc: [] },
+      recipients: {
+        to: [{ kind: "district_leadership" }, { kind: "prime_leadership" }],
+        cc: [{ kind: "internal_leadership" }],
+        bcc: [],
+      },
     },
     {
       event: "report_finance",
-      recipients: { to: [{ kind: "wynndalco_team" }], cc: [], bcc: [] },
+      recipients: {
+        to: [{ kind: "internal_leadership" }, { kind: "prime_leadership" }],
+        cc: [],
+        bcc: [],
+      },
     },
   ];
   for (const seed of RULE_SEEDS) {
@@ -158,6 +173,33 @@ export async function seedDefaults(
             ) as object,
           },
         });
+      }
+      // Round-22 — upgrade the report rules from the old
+      // wynndalco_team default to the leadership lists, but ONLY
+      // when the rule still carries that exact bare default (so any
+      // operator customisation is preserved). Disabled rules only.
+      if (
+        (seed.event === "report_operations" || seed.event === "report_finance") &&
+        !existingRule.enabled
+      ) {
+        const current = JSON.stringify(existingRule.recipients ?? {});
+        const oldDefault = JSON.stringify({
+          to: [{ kind: "wynndalco_team" }],
+          cc: [],
+          bcc: [],
+        });
+        // Compare against both key orderings the column may store.
+        const oldDefaultAlt = JSON.stringify({
+          cc: [],
+          to: [{ kind: "wynndalco_team" }],
+          bcc: [],
+        });
+        if (current === oldDefault || current === oldDefaultAlt) {
+          await prisma.emailRule.update({
+            where: { id: existingRule.id },
+            data: { recipients: seed.recipients as unknown as object },
+          });
+        }
       }
       continue;
     }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { TicketState } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { requireRole } from "@/lib/auth/session";
@@ -8,6 +9,9 @@ import {
   getEscalationMultiplier,
   getHoldDays,
   getSlaThresholds,
+  getWynndalcoTeamEmails,
+  getEmailListSetting,
+  SETTINGS_KEYS,
 } from "@/lib/settings/settings";
 import { ConfirmButton } from "@/components/confirm-button";
 import { updateSettingsAction } from "@/server/actions/settings";
@@ -34,11 +38,24 @@ export default async function SettingsPage({
 }) {
   await requireRole(PERMISSIONS.USERS_MANAGE);
 
-  const [holdDays, multiplier, thresholds, digestRecipients] = await Promise.all([
+  const [
+    holdDays,
+    multiplier,
+    thresholds,
+    digestRecipients,
+    teamEmails,
+    districtLeadership,
+    internalLeadership,
+    primeLeadership,
+  ] = await Promise.all([
     getHoldDays(),
     getEscalationMultiplier(),
     getSlaThresholds(),
     getDigestRecipients(),
+    getWynndalcoTeamEmails(),
+    getEmailListSetting(SETTINGS_KEYS.DISTRICT_LEADERSHIP_EMAILS),
+    getEmailListSetting(SETTINGS_KEYS.INTERNAL_LEADERSHIP_EMAILS),
+    getEmailListSetting(SETTINGS_KEYS.PRIME_LEADERSHIP_EMAILS),
   ]);
 
   return (
@@ -153,6 +170,71 @@ export default async function SettingsPage({
               className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </Field>
+        </section>
+
+        {/* Round-22 — email distribution lists. Referenced by email
+            rules via the matching recipient kinds. */}
+        <section className="rounded-lg border border-surface-border bg-surface-muted p-5">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-300">
+            Email distribution lists
+          </h2>
+          <p className="mb-3 text-xs text-slate-400">
+            Named recipient groups used by{" "}
+            <Link
+              href="/admin/email-rules"
+              className="text-accent hover:underline"
+            >
+              email rules
+            </Link>
+            . One email per line. A rule that targets an empty list
+            sends to nobody.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Internal team list"
+              hint="The general Wynndalco team list (the 'Internal team list' recipient)."
+            >
+              <textarea
+                name="teamEmails"
+                rows={3}
+                defaultValue={teamEmails.join("\n")}
+                className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              />
+            </Field>
+            <Field
+              label="District leadership"
+              hint="DOE / district leadership distribution list."
+            >
+              <textarea
+                name="districtLeadershipEmails"
+                rows={3}
+                defaultValue={districtLeadership.join("\n")}
+                className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              />
+            </Field>
+            <Field
+              label="Internal leadership"
+              hint="Wynndalco internal leadership."
+            >
+              <textarea
+                name="internalLeadershipEmails"
+                rows={3}
+                defaultValue={internalLeadership.join("\n")}
+                className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              />
+            </Field>
+            <Field
+              label="Prime-contract leadership"
+              hint="Prime contractor leadership distribution list."
+            >
+              <textarea
+                name="primeLeadershipEmails"
+                rows={3}
+                defaultValue={primeLeadership.join("\n")}
+                className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              />
+            </Field>
+          </div>
         </section>
 
         <div>

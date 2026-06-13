@@ -782,6 +782,14 @@ function StopBody({
                 className="rounded border border-surface-border bg-surface px-2 py-1 text-xs focus:border-accent focus:outline-none"
               />
             </label>
+            <label className="flex items-center gap-2 text-xs text-amber-100">
+              <input
+                type="checkbox"
+                name="notifyDownstream"
+                className="h-4 w-4 accent-[rgb(var(--color-primary))]"
+              />
+              Also notify later stops on this route
+            </label>
             <button
               type="submit"
               className="rounded border border-amber-500/60 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/30"
@@ -792,7 +800,9 @@ function StopBody({
           <p className="mt-2 text-[11px] text-slate-500">
             The arrival estimate moves by the minutes entered and the
             school&apos;s contact gets an email when the delay rule is
-            enabled in Admin → Email rules.
+            enabled in Admin → Email rules. Ticking &quot;notify later
+            stops&quot; pushes their estimates too and emails their
+            SPOCs with a heads-up (separate template you can edit).
           </p>
         </details>
       )}

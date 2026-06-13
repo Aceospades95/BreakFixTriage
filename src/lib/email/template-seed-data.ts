@@ -414,6 +414,28 @@ export const TEMPLATE_SEEDS: TemplateSeed[] = [
     },
   },
   {
+    key: "stop_delayed_downstream",
+    subject:
+      "Your {{visit.kind}} for {{ticket.number}} may run late today",
+    bodyHtml:
+      "<p>Heads up — an earlier stop on today's route is running behind, so the scheduled {{visit.kind}} for ticket <strong>{{ticket.number}}</strong> ({{ticket.school}}) may arrive later than planned.</p>" +
+      "<p>Estimated additional delay: about {{delay.minutes}} minutes.{{#delay.reason}} Cause: {{delay.reason}}.{{/delay.reason}}</p>" +
+      "<p>The driver is still on the way — thank you for your patience.</p>",
+    bodyText:
+      "Heads up - an earlier stop on today's route is running behind, so the scheduled {{visit.kind}} for ticket {{ticket.number}} ({{ticket.school}}) may arrive later than planned.\n" +
+      "Estimated additional delay: about {{delay.minutes}} minutes.{{#delay.reason}} Cause: {{delay.reason}}.{{/delay.reason}}\n" +
+      "\nThe driver is still on the way - thank you for your patience.",
+    variables: {
+      type: "object",
+      required: ["ticket", "delay", "visit"],
+      properties: {
+        ticket: { type: "object" },
+        delay: { type: "object" },
+        visit: { type: "object" },
+      },
+    },
+  },
+  {
     key: "report_operations",
     subject: "{{report.periodLabel}} operations report — {{report.rangeLabel}}",
     bodyHtml:

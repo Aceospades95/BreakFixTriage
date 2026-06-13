@@ -28,14 +28,28 @@ interface Point {
   longitude: number | null;
 }
 
+/** Serializable road-route data passed from a server component. */
+export interface RoadRouteData {
+  legs: { distanceKm: number; durationMin: number }[];
+  totalKm: number;
+  totalMin: number;
+}
+
 export function RouteMap({
   stops,
   title = "Route map",
   mapboxToken,
+  roadRoute = null,
 }: {
   stops: Point[];
   title?: string;
   mapboxToken?: string | null;
+  /**
+   * Real road geometry + drive times when a routing provider is
+   * configured (server passes it). Null → straight-line approximation,
+   * explicitly labeled, with no duration claims.
+   */
+  roadRoute?: RoadRouteData | null;
 }) {
   const withCoords = stops.filter(
     (s): s is Point & { latitude: number; longitude: number } =>
@@ -76,14 +90,25 @@ export function RouteMap({
           <span className="tabular-nums">
             {withCoords.length} stop{withCoords.length === 1 ? "" : "s"}
           </span>
-          <span className="tabular-nums">
-            {totalKm.toFixed(1)} km total
-          </span>
-          <span className="tabular-nums">
-            ≈ {(totalKm * 0.621).toFixed(1)} mi
-          </span>
+          {roadRoute ? (
+            <span className="tabular-nums">
+              {roadRoute.totalKm.toFixed(1)} km · ~{Math.round(roadRoute.totalMin)} min
+              by road
+            </span>
+          ) : (
+            <span className="tabular-nums">
+              {totalKm.toFixed(1)} km · {(totalKm * 0.621).toFixed(1)} mi
+              (straight-line)
+            </span>
+          )}
         </div>
       </div>
+      {!roadRoute && withCoords.length > 1 && (
+        <p className="mb-2 text-[10px] text-amber-300/80">
+          Straight-line approximation — road routing not configured. Distances
+          are as-the-crow-flies and no drive times are shown.
+        </p>
+      )}
       {mapboxUrl ? (
         <div
           className="relative overflow-hidden rounded border border-border bg-background"
@@ -130,6 +155,7 @@ export function RouteMap({
               );
             }
             const prev = withCoords[i - 1]!;
+            const roadLeg = roadRoute?.legs[i - 1];
             const leg = haversineKm(
               prev.latitude,
               prev.longitude,
@@ -146,7 +172,9 @@ export function RouteMap({
                 </span>
                 <span className="text-slate-200">{s.label}</span>
                 <span className="text-[10px] tabular-nums text-muted-foreground">
-                  +{leg.toFixed(1)} km
+                  {roadLeg
+                    ? `+${roadLeg.distanceKm.toFixed(1)} km · ${Math.round(roadLeg.durationMin)} min`
+                    : `+${leg.toFixed(1)} km`}
                 </span>
               </div>
             );

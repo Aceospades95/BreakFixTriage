@@ -883,6 +883,27 @@ npm run dev
 
 Visit http://localhost:3000.
 
+## Maps & routing configuration
+
+Two independent, optional knobs — both have safe zero-config defaults, so a
+fresh install gets a working (if approximate) map. All map env vars:
+
+| Env var | Default | What it does |
+| --- | --- | --- |
+| `ROUTING_PROVIDER` | `none` | Road geometry + drive times. `none` draws straight lines explicitly labeled "straight-line approximation — road routing not configured" and makes no drive-time claims. `osrm` / `mapbox` show real road distances and per-leg drive times. |
+| `OSRM_URL` | — | Base URL of a self-hosted OSRM instance, e.g. `http://osrm:5000`. Required when `ROUTING_PROVIDER=osrm`. |
+| `MAPBOX_TOKEN` | — | Mapbox Directions API token. Required when `ROUTING_PROVIDER=mapbox`. (Server-side; distinct from the public tile token below.) |
+| `NEXT_PUBLIC_MAP_TILE_URL` | OpenStreetMap | Base-map tile template. **OSM's tile server does not permit production app traffic** — point this at MapTiler / Carto / Protomaps / a self-hosted server for anything beyond dev. |
+| `NEXT_PUBLIC_MAP_TILE_ATTRIBUTION` | OSM attribution | Attribution string shown on the map; set it to match your tile provider. |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | — | A public Mapbox token switches the route map to Mapbox static-tile imagery instead of the interactive Leaflet map. |
+| `ROUTE_OPTIMIZER` | `nearest-neighbor` | Stop **ordering** (separate from geometry): `nearest-neighbor` (built-in) or `google-routes` (needs `GOOGLE_ROUTES_API_KEY`). |
+
+**Recommended for the Unraid box:** self-host OSRM with the NYC extract
+(it's small) and set `ROUTING_PROVIDER=osrm` + `OSRM_URL`. The map then
+shows real drive times with no code change — the routing layer
+(`src/lib/routing/road.ts`) is a drop-in abstraction and falls back to the
+labeled straight-line view whenever the provider is unset or unreachable.
+
 ## Importing a sample CSV
 
 `sample-data/servicenow-example.csv` contains five representative rows.

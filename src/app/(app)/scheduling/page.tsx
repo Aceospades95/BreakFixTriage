@@ -152,8 +152,7 @@ export default async function SchedulingPage({
                         {r.stops.length === 1 ? "" : "s"}
                         {isAdmin && r.optimizerName && (
                           <span className="text-slate-500">
-                            {" · optimized by "}
-                            {humaniseOptimizer(r.optimizerName)}
+                            {" · stops in suggested driving order"}
                           </span>
                         )}
                       </div>
@@ -358,10 +357,3 @@ function EmptyBlock({ children }: { children: React.ReactNode }) {
   );
 }
 
-function humaniseOptimizer(name: string): string {
-  // Round-6 §2D — admin-only optimizer subline. Drop the key=value
-  // form ("optimizer=nearest-neighbor"); render English instead.
-  // Known kebab-case optimizer names land here; unknown values
-  // fall through with hyphens replaced by spaces.
-  return name.replace(/[-_]/g, " ").trim();
-}

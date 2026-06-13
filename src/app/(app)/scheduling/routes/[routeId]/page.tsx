@@ -20,6 +20,7 @@ import {
   isProofSatisfied,
   proofPresence,
 } from "@/lib/scheduling/stop-lines";
+import { getRoadRoute } from "@/lib/routing/road";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
@@ -240,6 +241,21 @@ export default async function RouteDetailPage({
     (s) => s.status === JobStatus.FAILED || s.status === JobStatus.PARTIAL,
   );
 
+  // Round-22 §3 — real road geometry + drive times when a routing
+  // provider is configured; null → the map shows a labeled straight-line
+  // approximation. Bounded + best-effort, never blocks the render.
+  const orderedCoords = route.stops
+    .map((s) => s.job.school.address)
+    .filter(
+      (a): a is NonNullable<typeof a> =>
+        a?.latitude != null && a?.longitude != null,
+    )
+    .map((a) => ({ latitude: a.latitude!, longitude: a.longitude! }));
+  const road = await getRoadRoute(orderedCoords);
+  const roadRoute = road
+    ? { legs: road.legs, totalKm: road.totalKm, totalMin: road.totalMin }
+    : null;
+
   return (
     <>
       <PageHeader
@@ -335,6 +351,7 @@ export default async function RouteDetailPage({
               }))}
               title="Route map · stops in suggested driving order"
               mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? null}
+              roadRoute={roadRoute}
             />
           </div>
 

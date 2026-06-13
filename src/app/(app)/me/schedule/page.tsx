@@ -168,29 +168,25 @@ export default async function MyScheduleePage({
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[10px] tracking-wide text-slate-400">
-              Start (min)
+              Start
             </span>
             <input
-              type="number"
+              type="time"
               name="startMinute"
-              min={0}
-              max={24 * 60 - 1}
               required
-              defaultValue={9 * 60}
+              defaultValue="09:00"
               className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[10px] tracking-wide text-slate-400">
-              End (min)
+              End
             </span>
             <input
-              type="number"
+              type="time"
               name="endMinute"
-              min={1}
-              max={24 * 60}
               required
-              defaultValue={17 * 60}
+              defaultValue="17:00"
               className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </label>
@@ -216,8 +212,7 @@ export default async function MyScheduleePage({
           </div>
         </form>
         <p className="mt-2 text-xs text-slate-500">
-          Times are entered as minutes from midnight (e.g. 9 AM = 540,
-          5 PM = 1020). Hour-and-minute pickers and recurring blocks are
+          Pick a start and end time. Recurring blocks are
           on the roadmap.
         </p>
       </section>

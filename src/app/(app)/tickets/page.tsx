@@ -648,6 +648,17 @@ function TicketTable({
               >
                 {t.incidentNumber}
               </Link>
+              {/* Round-22 §4 — a SYN- ticket is a temporary one opened on
+                  a route before its real incident is known; flag it so the
+                  raw SYN- id doesn't look like a normal INC. */}
+              {t.incidentNumber.startsWith("SYN-") && (
+                <span
+                  className="ml-1.5 rounded border border-violet-400/40 bg-violet-500/15 px-1 py-0.5 text-[9px] font-semibold uppercase text-violet-200"
+                  title="Temporary ticket opened on a route — link it to the real incident from Duplicates."
+                >
+                  temp
+                </span>
+              )}
             </td>
             <td className="px-3 py-2">
               <PriorityPill priority={t.priority} />

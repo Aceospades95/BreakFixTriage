@@ -77,6 +77,10 @@ export default async function ProductivityPage({
               <th className="px-3 py-2 font-medium">Avg turnaround</th>
               <th className="px-3 py-2 font-medium">Open</th>
               <th className="px-3 py-2 font-medium">Hours logged</th>
+              <th className="px-3 py-2 font-medium">Routes</th>
+              <th className="px-3 py-2 font-medium">Stops done</th>
+              <th className="px-3 py-2 font-medium">Devices verified</th>
+              <th className="px-3 py-2 font-medium">Fail / partial</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-border">
@@ -101,12 +105,24 @@ export default async function ProductivityPage({
                 <td className="px-3 py-2 font-medium tracking-tight text-xs">
                   {(r.totalMinutesLogged / 60).toFixed(1)}h
                 </td>
+                <td className="px-3 py-2 font-medium tracking-tight">{r.routesRun}</td>
+                <td className="px-3 py-2 font-medium tracking-tight">{r.stopsCompleted}</td>
+                <td className="px-3 py-2 font-medium tracking-tight">{r.devicesVerified}</td>
+                <td className="px-3 py-2 font-medium tracking-tight text-xs">
+                  {r.stopsFailed + r.stopsPartial === 0 ? (
+                    "—"
+                  ) : (
+                    <span className="text-amber-300">
+                      {r.stopsFailed} / {r.stopsPartial}
+                    </span>
+                  )}
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={10}
                   className="px-3 py-8 text-center text-slate-400"
                 >
                   No assignees on record.

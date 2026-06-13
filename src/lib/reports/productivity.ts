@@ -24,6 +24,12 @@ export interface ProductivityRow {
   openAssigned: number;
   breachedOpen: number;
   totalMinutesLogged: number;
+  // Round-22 §4 — field metrics, so a driver's day no longer reads 0.0.
+  routesRun: number;
+  stopsCompleted: number;
+  stopsFailed: number;
+  stopsPartial: number;
+  devicesVerified: number;
 }
 
 /**
@@ -47,7 +53,7 @@ export async function productivityReport(
 
   const rows: ProductivityRow[] = [];
   for (const u of users) {
-    const [closed, open, timeSum] = await Promise.all([
+    const [closed, open, timeSum, routes] = await Promise.all([
       db.ticket.findMany({
         where: {
           assignedUserId: u.id,
@@ -75,6 +81,21 @@ export async function productivityReport(
         },
         _sum: { minutes: true },
       }),
+      // Round-22 §4 — field work, attributed via the route's assignee.
+      db.route.findMany({
+        where: { assigneeUserId: u.id, date: { gte: cutoff } },
+        select: {
+          stops: {
+            select: {
+              status: true,
+              stopDevices: {
+                where: { removedAt: null },
+                select: { lineState: true },
+              },
+            },
+          },
+        },
+      }),
     ]);
 
     const turnaroundDays = closed
@@ -93,6 +114,21 @@ export async function productivityReport(
           )
         : null;
 
+    const allStops = routes.flatMap((r) => r.stops);
+    const stopsCompleted = allStops.filter(
+      (s) => s.status === "COMPLETED" || s.status === "PARTIAL",
+    ).length;
+    const stopsFailed = allStops.filter((s) => s.status === "FAILED").length;
+    const stopsPartial = allStops.filter((s) => s.status === "PARTIAL").length;
+    const devicesVerified = allStops.reduce(
+      (acc, s) =>
+        acc +
+        s.stopDevices.filter(
+          (d) => d.lineState === "VERIFIED" || d.lineState === "EXTRA_ADDED",
+        ).length,
+      0,
+    );
+
     rows.push({
       userId: u.id,
       name: u.name,
@@ -102,10 +138,19 @@ export async function productivityReport(
       openAssigned: open.length,
       breachedOpen: 0, // computed separately below where SLA is known
       totalMinutesLogged: timeSum._sum.minutes ?? 0,
+      routesRun: routes.length,
+      stopsCompleted,
+      stopsFailed,
+      stopsPartial,
+      devicesVerified,
     });
   }
 
-  return rows.sort((a, b) => b.closedInWindow - a.closedInWindow);
+  // Surface the people who did the most work, by either dimension.
+  return rows.sort(
+    (a, b) =>
+      b.closedInWindow + b.stopsCompleted - (a.closedInWindow + a.stopsCompleted),
+  );
 }
 
 // ---------------------------------------------------------------------------

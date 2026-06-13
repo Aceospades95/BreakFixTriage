@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { JobStatus, JobType, StopDelayReason } from "@prisma/client";
+import {
+  JobStatus,
+  JobType,
+  StopDelayReason,
+  StopLineState,
+} from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
@@ -15,6 +20,7 @@ import { cancelRoute, reorderRoute } from "@/lib/scheduling/routes";
 import {
   StopUpdateRefusedError,
   updateStopStatus,
+  type StopLineResolution,
 } from "@/lib/scheduling/stops";
 import { withFeedback } from "@/lib/url";
 import { humanise } from "@/lib/format";
@@ -285,7 +291,34 @@ const updateStopStatusSchema = z.object({
   reason: z.string().max(500).optional(),
   returnTo: z.enum(["route", "my-day", "/"]).default("route"),
   routeId: z.string().optional(),
+  proofOverrideReason: z.string().max(500).optional(),
+  notes: z.string().max(2000).optional(),
 });
+
+/**
+ * Per-line resolutions arrive as repeated form fields:
+ *   line:<stopDeviceId> = VERIFIED | NOT_FOUND | REFUSED
+ *   lineNote:<stopDeviceId> = free text
+ * Parse them into the StopLineResolution[] the lib expects.
+ */
+function parseLineResolutions(formData: FormData): StopLineResolution[] {
+  const out: StopLineResolution[] = [];
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("line:")) continue;
+    const stopDeviceId = key.slice("line:".length);
+    const state = value.toString();
+    if (
+      state !== StopLineState.VERIFIED &&
+      state !== StopLineState.NOT_FOUND &&
+      state !== StopLineState.REFUSED
+    ) {
+      continue;
+    }
+    const note = formData.get(`lineNote:${stopDeviceId}`)?.toString().trim();
+    out.push({ stopDeviceId, state, note: note || undefined });
+  }
+  return out;
+}
 
 /**
  * Driver-facing (or dispatcher-on-behalf-of) stop status update. The
@@ -301,6 +334,9 @@ export async function updateStopStatusAction(formData: FormData) {
     reason: formData.get("reason")?.toString().trim() || undefined,
     returnTo: formData.get("returnTo") ?? "route",
     routeId: formData.get("routeId")?.toString() || undefined,
+    proofOverrideReason:
+      formData.get("proofOverrideReason")?.toString().trim() || undefined,
+    notes: formData.get("notes")?.toString() ?? undefined,
   });
 
   if (!parsed.success) {
@@ -314,17 +350,12 @@ export async function updateStopStatusAction(formData: FormData) {
         ? `/scheduling/routes/${parsed.data.routeId}`
         : "/scheduling";
 
-  // Round-20 — NY team: "we should have to select what we are
-  // picking up." Completing a stop requires every ACTIVE device
-  // line to be explicitly confirmed; the confirmation is stamped
-  // on the StopDevice row as the durable field check-off. The
-  // check + stamps run inside updateStopStatus's transaction so a
-  // refused completion never leaves devices half-confirmed.
-  const confirmedDeviceIds = formData
-    .getAll("confirmedDeviceIds")
-    .map((v) => v.toString())
-    .filter(Boolean);
+  // Round-22 §1C/§1D — per-line resolutions + proof override. The
+  // completion gate is enforced inside updateStopStatus's transaction
+  // so a refused completion never leaves lines or proof half-applied.
+  const lineResolutions = parseLineResolutions(formData);
 
+  let resultStatus: JobStatus = parsed.data.status;
   let errorMessage: string | null = null;
   try {
     await updateStopStatus({
@@ -332,12 +363,17 @@ export async function updateStopStatusAction(formData: FormData) {
       status: parsed.data.status,
       actorUserId: session.userId,
       reason: parsed.data.reason,
-      confirmedDeviceIds,
+      lineResolutions,
+      proofOverrideReason: parsed.data.proofOverrideReason,
+      notes: parsed.data.notes,
     });
 
     // Round-7 §3B — fire pickup_completed when a Pickup stop
     // transitions to COMPLETED. dispatchEmailEvent is the chokepoint.
-    if (parsed.data.status === JobStatus.COMPLETED) {
+    if (
+      parsed.data.status === JobStatus.COMPLETED ||
+      parsed.data.status === JobStatus.PARTIAL
+    ) {
       try {
         const stop = await prisma.routeStop.findUnique({
           where: { id: parsed.data.stopId },
@@ -400,6 +436,46 @@ export async function updateStopStatusAction(formData: FormData) {
   revalidatePath(fallbackPath);
   revalidatePath("/scheduling");
   revalidatePath("/");
+
+  // Round-22 §1E — after wrapping up a stop, jump to the next open stop
+  // on the same route instead of dumping the technician back at the map.
+  const isTerminal =
+    resultStatus === JobStatus.COMPLETED ||
+    resultStatus === JobStatus.PARTIAL ||
+    resultStatus === JobStatus.FAILED;
+  if (isTerminal && parsed.data.routeId) {
+    const nextStop = await prisma.routeStop.findFirst({
+      where: {
+        routeId: parsed.data.routeId,
+        status: {
+          notIn: [
+            JobStatus.COMPLETED,
+            JobStatus.PARTIAL,
+            JobStatus.FAILED,
+            JobStatus.CANCELLED,
+          ],
+        },
+      },
+      orderBy: { sequence: "asc" },
+      select: { id: true },
+    });
+    const verb =
+      resultStatus === JobStatus.COMPLETED
+        ? "Stop completed"
+        : resultStatus === JobStatus.PARTIAL
+          ? "Stop saved as partial — unresolved items returned to Ready to Schedule"
+          : "Stop failed — its tickets are back in Ready to Schedule";
+    const base = `/scheduling/routes/${parsed.data.routeId}`;
+    const target = nextStop ? `${base}#stop-${nextStop.id}` : base;
+    redirect(
+      withFeedback(
+        target,
+        "ok",
+        nextStop ? `${verb}. Next stop is open below.` : `${verb}. Route done.`,
+      ),
+    );
+  }
+
   redirect(fallbackPath);
 }
 

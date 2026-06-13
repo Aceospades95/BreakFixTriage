@@ -224,7 +224,7 @@ export default async function ExceptionsPage({
           {orphanStopDevices.map((sd) => (
             <li key={sd.id} className="flex flex-wrap gap-x-2 text-xs">
               <span className="font-medium tracking-tight text-slate-200">
-                {sd.device.serialNumber}
+                {sd.device?.serialNumber ?? "device pending"}
               </span>
               <Link
                 href={`/scheduling/routes/${sd.stop.routeId}`}

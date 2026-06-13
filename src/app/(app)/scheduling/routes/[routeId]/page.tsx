@@ -11,10 +11,15 @@ import { RouteMap } from "@/components/route-map";
 import { SignaturePad } from "@/components/signature-pad";
 import { PhotoCapture } from "@/components/photo-capture";
 import { StopAccordion, StopAccordionItem } from "@/components/stop-accordion";
-import { StopCompletion } from "@/components/stop-completion";
+import { StopWorkPanel } from "@/components/stop-work-panel";
 import { ActionForm } from "@/components/action-form";
 import { ConfirmButton } from "@/components/confirm-button";
 import { LocalTime } from "@/components/local-time";
+import {
+  describeProofRule,
+  isProofSatisfied,
+  proofPresence,
+} from "@/lib/scheduling/stop-lines";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
@@ -147,6 +152,7 @@ type StopRow = RouteRow["stops"][number];
 
 const TERMINAL_STOP_STATUSES: JobStatus[] = [
   JobStatus.COMPLETED,
+  JobStatus.PARTIAL,
   JobStatus.FAILED,
   JobStatus.CANCELLED,
 ];
@@ -206,6 +212,34 @@ export default async function RouteDetailPage({
     activeStops[0]?.id ??
     null;
 
+  // Round-22 §1E — the audit strip on completed/failed stops shows who
+  // wrapped it up and when. Fetch the latest status-transition audit row
+  // per terminal stop (first match per stop = most recent).
+  const terminalStopIds = doneStops.map((s) => s.id);
+  const stopAudits =
+    terminalStopIds.length > 0
+      ? await prisma.auditLog.findMany({
+          where: {
+            entityType: "RouteStop",
+            entityId: { in: terminalStopIds },
+            action: { startsWith: "status:" },
+          },
+          orderBy: { createdAt: "desc" },
+          include: { actor: { select: { name: true } } },
+        })
+      : [];
+  const auditByStop = new Map<string, (typeof stopAudits)[number]>();
+  for (const a of stopAudits) {
+    if (!auditByStop.has(a.entityId)) auditByStop.set(a.entityId, a);
+  }
+
+  // Round-22 §2/§1E — a route whose stops all wrapped up but with a
+  // failure or partial reads "Completed with issues", not a clean
+  // "Completed".
+  const routeHasIssues = route.stops.some(
+    (s) => s.status === JobStatus.FAILED || s.status === JobStatus.PARTIAL,
+  );
+
   return (
     <>
       <PageHeader
@@ -213,7 +247,16 @@ export default async function RouteDetailPage({
         subtitle={`${route.assignee.name} · ${route.stops.length} stop${route.stops.length === 1 ? "" : "s"}`}
         actions={
           <div className="flex items-center gap-2">
-            <RouteStatusPill status={route.status} />
+            {route.status === RouteStatus.COMPLETED && routeHasIssues ? (
+              <span
+                className="rounded border border-orange-500/50 bg-orange-500/15 px-2 py-0.5 text-[11px] font-semibold text-orange-200"
+                title="The route is done, but at least one stop failed or was only partially completed."
+              >
+                Completed with issues
+              </span>
+            ) : (
+              <RouteStatusPill status={route.status} />
+            )}
             <Link
               href={`/scheduling/routes/${route.id}/print`}
               target="_blank"
@@ -290,7 +333,7 @@ export default async function RouteDetailPage({
                 latitude: s.job.school.address?.latitude ?? null,
                 longitude: s.job.school.address?.longitude ?? null,
               }))}
-              title="Route map · auto-optimized by nearest-neighbor haversine distance"
+              title="Route map · stops in suggested driving order"
               mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? null}
             />
           </div>
@@ -329,6 +372,7 @@ export default async function RouteDetailPage({
                         canUpdateStop={canUpdateStop}
                         routeOpen={routeOpen}
                         deviceModels={deviceModels}
+                        completionAudit={null}
                         reorder={
                           reorderAllowed
                             ? {
@@ -354,7 +398,7 @@ export default async function RouteDetailPage({
           {doneStops.length > 0 && (
             <div className="mt-6">
               <h2 className="mb-2 text-sm font-semibold text-slate-200">
-                Completed stops{" "}
+                Resolved stops{" "}
                 <span className="font-normal text-slate-400">
                   ({doneStops.length})
                 </span>
@@ -378,6 +422,7 @@ export default async function RouteDetailPage({
                           canUpdateStop={canUpdateStop}
                           routeOpen={routeOpen}
                           deviceModels={deviceModels}
+                          completionAudit={auditByStop.get(stop.id) ?? null}
                           reorder={null}
                         />
                       </div>
@@ -475,6 +520,7 @@ function StopBody({
   canUpdateStop,
   routeOpen,
   deviceModels,
+  completionAudit,
   reorder,
 }: {
   stop: StopRow;
@@ -483,6 +529,10 @@ function StopBody({
   canUpdateStop: boolean;
   routeOpen: boolean;
   deviceModels: { id: string; manufacturer: string; modelName: string }[];
+  completionAudit: {
+    createdAt: Date;
+    actor: { name: string } | null;
+  } | null;
   reorder: { upOrder: string[] | null; downOrder: string[] | null } | null;
 }) {
   const school = stop.job.school;
@@ -501,32 +551,54 @@ function StopBody({
   const terminal = TERMINAL_STOP_STATUSES.includes(stop.status);
   const returnTo = `/scheduling/routes/${routeId}`;
 
-  const checklistItems =
-    activeDevices.length > 0
-      ? activeDevices.map((sd) => ({
-          id: sd.id,
-          // Round-20 — real check-off: each line submits its
-          // StopDevice id as confirmedDeviceIds; the server refuses
-          // completion until every active line is confirmed.
-          deviceId: sd.id,
-          label: `${sd.purpose === "DELIVERY" ? "Deliver" : "Pick up"} ${
-            sd.device.assetTag ?? sd.device.serialNumber
-          }${
-            sd.device.model
-              ? ` — ${sd.device.model.manufacturer} ${sd.device.model.modelName}`
-              : ""
-          }`,
-        }))
-      : [
-          {
-            id: "work-done",
-            deviceId: null,
-            label: `${humanise(stop.job.type)} work at ${school.name} is done`,
-          },
-        ];
+  // Round-22 §1C — line items the on-site panel verifies. Each line is an
+  // active StopDevice (pre-populated from the job's tickets, or added on
+  // site); the label names the ticket and the device when one is recorded.
+  const panelLines = activeDevices.map((sd) => {
+    const deviceLabel = sd.device
+      ? `${sd.device.assetTag ?? sd.device.serialNumber}${
+          sd.device.model
+            ? ` — ${sd.device.model.manufacturer} ${sd.device.model.modelName}`
+            : ""
+        }`
+      : "device to be recorded on pickup";
+    const inc = sd.ticket?.incidentNumber;
+    return {
+      id: sd.id,
+      purpose: (sd.purpose === "DELIVERY" ? "DELIVERY" : "PICKUP") as
+        | "PICKUP"
+        | "DELIVERY",
+      label: inc ? `${inc} · ${deviceLabel}` : deviceLabel,
+    };
+  });
+
+  // Round-22 §1D — proof presence drives the gate + the strip.
+  const proofPresent = proofPresence(
+    stop.attachments.map((a) => ({
+      mimeType: a.mimeType,
+      signerName: a.signerName,
+    })),
+  );
+
+  // Unresolved lines (not collected/delivered) on a terminal stop are
+  // what re-queued — surface them with links (1E).
+  const unresolvedLines = activeDevices.filter(
+    (sd) =>
+      sd.lineState === "NOT_FOUND" || sd.lineState === "REFUSED",
+  );
 
   return (
     <div className="space-y-4">
+      {/* ----------------------------------------- Completion record (1E) */}
+      {terminal && (
+        <StopAuditStrip
+          stop={stop}
+          completionAudit={completionAudit}
+          proofPresent={proofPresent}
+          unresolvedLines={unresolvedLines}
+        />
+      )}
+
       {/* ------------------------------------------------ Stop facts */}
       <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
         <div>
@@ -657,17 +729,18 @@ function StopBody({
             Proof required
           </div>
           <div className="mt-0.5 text-slate-200">
-            Photo of the devices + school-contact signature before
-            completing.
+            {describeProofRule(stop.proofRule)}
           </div>
         </div>
-        {(stop.job.notes || school.notes) && (
+        {(stop.job.notes || school.notes || stop.notes) && (
           <div className="sm:col-span-2 lg:col-span-3">
             <div className="text-[10px] uppercase tracking-wide text-slate-400">
               Notes
             </div>
             <div className="mt-0.5 whitespace-pre-wrap text-slate-200">
-              {[stop.job.notes, school.notes].filter(Boolean).join("\n")}
+              {[stop.job.notes, school.notes, stop.notes]
+                .filter(Boolean)
+                .join("\n")}
             </div>
           </div>
         )}
@@ -832,9 +905,12 @@ function StopBody({
                       {sd.purpose === "DELIVERY" ? "Delivery" : "Pickup"}
                     </span>
                     <code className="rounded bg-surface-muted px-1.5 py-0.5 text-[11px] text-slate-200">
-                      {sd.device.assetTag ?? sd.device.serialNumber}
+                      {sd.device?.assetTag ??
+                        sd.device?.serialNumber ??
+                        "device pending"}
                     </code>
-                    {sd.device.model && (
+                    <LineStateBadge state={sd.lineState} />
+                    {sd.device?.model && (
                       <span className="text-[10px] text-slate-500">
                         {sd.device.model.manufacturer}{" "}
                         {sd.device.model.modelName}
@@ -986,7 +1062,7 @@ function StopBody({
                           name="incidentNumber"
                           placeholder="Existing INC# (optional)"
                           pattern="[A-Za-z0-9\-]{3,40}"
-                          title="Attach to a known incident number at this school. Leave blank to mint a synthetic SYN ticket."
+                          title="Type a known incident number at this school, or leave blank — we'll open a temporary ticket you can link to the real one later."
                           className="rounded border border-surface-border bg-surface-muted px-2 py-1 focus:border-accent focus:outline-none"
                         />
                       </div>
@@ -998,19 +1074,19 @@ function StopBody({
                       </button>
                     </ActionForm>
                     <p className="text-[10px] text-slate-500">
-                      Every device line gets a ticket. Type a known INC#
-                      to attach an existing ticket; leave blank to mint a
-                      synthetic ticket in &quot;Pending pickup (unlinked)&quot; —
-                      link it later from{" "}
+                      Use this for a device you find on site that wasn&apos;t
+                      on the list. If you know its incident number, type it in
+                      to attach the existing ticket; otherwise we&apos;ll open
+                      a temporary ticket for it now and link it to the real
+                      one later from{" "}
                       <Link
                         href="/duplicates"
                         className="text-accent hover:underline"
                       >
-                        /duplicates
-                      </Link>{" "}
-                      once the SNOW incident posts. Use the
-                      Pickup/Delivery toggle if a missed pickup is
-                      discovered during a delivery (or vice versa).
+                        Duplicates
+                      </Link>
+                      . Flip the Pickup/Delivery toggle if you&apos;re
+                      collecting a device during a delivery (or vice versa).
                     </p>
                   </div>
                 </details>
@@ -1061,12 +1137,18 @@ function StopBody({
                   <span className="text-[10px] uppercase tracking-wide text-slate-400">
                     Signer&apos;s printed name (required)
                   </span>
+                  {/* Round-22 §1D — prefill the contact's name as a real
+                      value (not a placeholder that looks filled-in but
+                      isn't), so the required field doesn't spring a native
+                      "please fill this in" surprise on a field that reads
+                      as complete. The tech edits it if someone else signs. */}
                   <input
                     type="text"
                     name="signerName"
                     required
                     maxLength={120}
-                    placeholder={contact?.name ?? "e.g. front-desk staff name"}
+                    defaultValue={contact?.name ?? ""}
+                    placeholder="Name of the person signing"
                     className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
                   />
                 </label>
@@ -1098,20 +1180,149 @@ function StopBody({
         </div>
       )}
 
-      {/* ------------------------------------------------ Completion */}
+      {/* ------------------------------------------------ Completion (1C/1D) */}
       {canUpdateStop && routeOpen && !terminal && (
-        <StopCompletion
+        <StopWorkPanel
           action={updateStopStatusAction}
           stopId={stop.id}
           routeId={routeId}
-          items={checklistItems}
-          enabled={
-            stop.status === JobStatus.EN_ROUTE ||
-            stop.status === JobStatus.ARRIVED
-          }
-          disabledHint="Tap Start when you head to this stop, then Arrived on site — completing unlocks once you're moving."
-          proofCount={stop.attachments.length}
+          lines={panelLines}
+          proofRule={stop.proofRule}
+          proofPresent={proofPresent}
+          enabled={stop.status === JobStatus.ARRIVED}
+          disabledHint="Tap Start when you head out, then Arrived on site — the checklist unlocks once you're on site."
+          initialNotes={stop.notes}
         />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Completion record strip (Round-22 §1E)
+// ---------------------------------------------------------------------------
+
+/**
+ * Inline audit strip on a completed / partial / failed stop: who wrapped
+ * it up and when, the item outcomes, proof status (flagged when overridden
+ * or absent), the sign-off name, notes, and links to any tickets that
+ * were returned to Ready to Schedule. All from data already on the record.
+ */
+function StopAuditStrip({
+  stop,
+  completionAudit,
+  proofPresent,
+  unresolvedLines,
+}: {
+  stop: StopRow;
+  completionAudit: { createdAt: Date; actor: { name: string } | null } | null;
+  proofPresent: { photo: boolean; signature: boolean };
+  unresolvedLines: StopRow["stopDevices"];
+}) {
+  const active = stop.stopDevices.filter((d) => d.removedAt == null);
+  const counts = {
+    verified: active.filter(
+      (l) => l.lineState === "VERIFIED" || l.lineState === "EXTRA_ADDED",
+    ).length,
+    notFound: active.filter((l) => l.lineState === "NOT_FOUND").length,
+    refused: active.filter((l) => l.lineState === "REFUSED").length,
+  };
+  const itemSummary = [
+    counts.verified > 0 ? `${counts.verified} verified` : null,
+    counts.notFound > 0 ? `${counts.notFound} not found` : null,
+    counts.refused > 0 ? `${counts.refused} refused` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const signer = stop.attachments.find((a) => a.signerName)?.signerName ?? null;
+  const proofOverridden = !!stop.proofOverrideReason;
+  const proofOk =
+    isProofSatisfied(stop.proofRule, proofPresent) || proofOverridden;
+
+  const tone =
+    stop.status === JobStatus.COMPLETED
+      ? "border-emerald-500/40 bg-emerald-500/5"
+      : stop.status === JobStatus.PARTIAL
+        ? "border-orange-500/40 bg-orange-500/5"
+        : "border-red-500/40 bg-red-500/5";
+
+  // Tickets returned to Ready to Schedule: the whole stop on FAILED, the
+  // unresolved lines on PARTIAL.
+  const requeued =
+    stop.status === JobStatus.FAILED
+      ? stop.job.ticketLinks.map((tl) => tl.ticket)
+      : unresolvedLines
+          .map((l) => l.ticket)
+          .filter((t): t is NonNullable<typeof t> => t != null);
+
+  return (
+    <div className={`rounded-lg border p-3 text-xs ${tone}`}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <StopStatusPill status={stop.status} />
+        {completionAudit && (
+          <span className="text-slate-300">
+            by {completionAudit.actor?.name ?? "system"} ·{" "}
+            <LocalTime date={completionAudit.createdAt} mode="datetime" />
+          </span>
+        )}
+        {itemSummary && <span className="text-slate-400">· {itemSummary}</span>}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-300">
+        <span>
+          Proof:{" "}
+          {proofOverridden ? (
+            <span className="font-semibold text-amber-300">
+              overridden — {stop.proofOverrideReason}
+            </span>
+          ) : proofOk ? (
+            <span className="text-emerald-300">
+              {[
+                proofPresent.photo ? "photo" : null,
+                proofPresent.signature ? "signature" : null,
+              ]
+                .filter(Boolean)
+                .join(" + ") || "attached"}
+            </span>
+          ) : (
+            <span className="font-semibold text-amber-300">none attached</span>
+          )}
+        </span>
+        {signer && <span>· Signed by {signer}</span>}
+      </div>
+
+      {stop.status === JobStatus.FAILED && stop.failureReason && (
+        <div className="mt-1 text-red-200">Reason: {stop.failureReason}</div>
+      )}
+      {stop.notes && (
+        <div className="mt-1 whitespace-pre-wrap text-slate-400">
+          Notes: {stop.notes}
+        </div>
+      )}
+
+      {requeued.length > 0 && (
+        <div className="mt-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-amber-200">
+          {requeued.length} ticket{requeued.length === 1 ? "" : "s"} returned to
+          Ready to Schedule:{" "}
+          {requeued.map((t, i) => (
+            <span key={t.id}>
+              {i > 0 && ", "}
+              <Link
+                href={`/tickets/${t.incidentNumber}`}
+                className="font-medium underline hover:text-amber-100"
+              >
+                {t.incidentNumber}
+              </Link>
+            </span>
+          ))}{" "}
+          <Link
+            href="/scheduling"
+            className="font-medium underline hover:text-amber-100"
+          >
+            → reschedule
+          </Link>
+        </div>
       )}
     </div>
   );
@@ -1120,6 +1331,23 @@ function StopBody({
 // ---------------------------------------------------------------------------
 // Small helper components
 // ---------------------------------------------------------------------------
+
+function LineStateBadge({ state }: { state: StopRow["stopDevices"][number]["lineState"] }) {
+  if (state === "EXPECTED") return null;
+  const cls: Record<string, string> = {
+    VERIFIED: "border-emerald-500/40 bg-emerald-500/10 text-emerald-200",
+    EXTRA_ADDED: "border-sky-500/40 bg-sky-500/10 text-sky-200",
+    NOT_FOUND: "border-amber-500/40 bg-amber-500/10 text-amber-200",
+    REFUSED: "border-amber-500/40 bg-amber-500/10 text-amber-200",
+  };
+  return (
+    <span
+      className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${cls[state] ?? ""}`}
+    >
+      {humanise(state)}
+    </span>
+  );
+}
 
 function Meta({ label, value }: { label: string; value: string }) {
   return (
@@ -1263,14 +1491,16 @@ function StopStatusPill({ status }: { status: JobStatus }) {
     EN_ROUTE: "bg-amber-500/20 text-amber-200 border-amber-500/40",
     ARRIVED: "bg-amber-500/20 text-amber-200 border-amber-500/40",
     COMPLETED: "bg-emerald-500/20 text-emerald-200 border-emerald-500/40",
+    PARTIAL: "bg-orange-500/20 text-orange-200 border-orange-500/40",
     FAILED: "bg-red-500/20 text-red-200 border-red-500/40",
     CANCELLED: "bg-slate-500/20 text-slate-200 border-slate-500/40",
   };
+  const label = status === JobStatus.ARRIVED ? "On site" : humanise(status);
   return (
     <span
       className={`rounded border px-2 py-0.5 text-[10px] font-medium tracking-wide ${cls[status]}`}
     >
-      {humanise(status)}
+      {label}
     </span>
   );
 }

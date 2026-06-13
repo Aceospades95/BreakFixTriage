@@ -1,7 +1,10 @@
 import {
   JobStatus,
   JobType,
+  ProofRule,
   RouteStatus,
+  StopDevicePurpose,
+  StopLineState,
   type PrismaClient,
 } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
@@ -124,6 +127,7 @@ export async function buildRoute(
       orderedJobIds = jobs.map((j) => j.id);
     }
 
+    const jobById = new Map(jobs.map((j) => [j.id, j]));
     const route = await tx.route.create({
       data: {
         date: input.date,
@@ -137,11 +141,46 @@ export async function buildRoute(
             jobId,
             sequence: idx + 1,
             status: JobStatus.SCHEDULED,
+            // Round-22 §1D — deliveries need a signed hand-off; pickups
+            // need a photo of what was collected. Set the enforceable
+            // proof rule per job type at build time.
+            proofRule:
+              jobById.get(jobId)?.type === JobType.DELIVERY
+                ? ProofRule.PHOTO_AND_SIGNATURE
+                : ProofRule.PHOTO,
           })),
         },
       },
       include: { stops: true },
     });
+
+    // Round-22 §1C — pre-populate one stop line item per expected ticket
+    // so the technician sees exactly what to pick up / drop off the
+    // moment they arrive, instead of a stop that reads "0 devices".
+    // A pickup ticket may not have a device linked yet (it is collected
+    // on the visit); such a line carries the ticket with deviceId null
+    // until the device is recorded on site.
+    const stopByJobId = new Map(route.stops.map((s) => [s.jobId, s.id]));
+    for (const job of jobs) {
+      const stopId = stopByJobId.get(job.id);
+      if (!stopId) continue;
+      const purpose =
+        job.type === JobType.DELIVERY
+          ? StopDevicePurpose.DELIVERY
+          : StopDevicePurpose.PICKUP;
+      for (const link of job.ticketLinks) {
+        await tx.stopDevice.create({
+          data: {
+            stopId,
+            ticketId: link.ticketId,
+            deviceId: link.ticket.deviceId ?? null,
+            purpose,
+            lineState: StopLineState.EXPECTED,
+            addedByUserId: input.actorUserId,
+          },
+        });
+      }
+    }
 
     // Move jobs to SCHEDULED
     await tx.job.updateMany({

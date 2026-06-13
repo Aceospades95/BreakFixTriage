@@ -77,7 +77,14 @@ async function createFixture(opts?: { withDevice?: boolean }) {
       assigneeUserId: driver.id,
       status: RouteStatus.PLANNED,
       stops: {
-        create: { jobId: job.id, sequence: 1, status: JobStatus.SCHEDULED },
+        // proofRule NONE keeps these reliability cases focused on the
+        // transaction/locking behaviour, not the proof gate.
+        create: {
+          jobId: job.id,
+          sequence: 1,
+          status: JobStatus.SCHEDULED,
+          proofRule: "NONE",
+        },
       },
     },
     include: { stops: true },
@@ -247,7 +254,7 @@ describe.skipIf(!process.env.DATABASE_URL)("stop reliability (Phase 0)", () => {
     },
   );
 
-  it("a refused completion rolls back atomically — no half-stamped confirmations", async () => {
+  it("a refused completion rolls back atomically — no half-stamped resolutions", async () => {
     const { stop, driver, stopDeviceId } = await createFixture({
       withDevice: true,
     });
@@ -256,15 +263,20 @@ describe.skipIf(!process.env.DATABASE_URL)("stop reliability (Phase 0)", () => {
       status: JobStatus.EN_ROUTE,
       actorUserId: driver.id,
     });
+    await updateStopStatus({
+      stopId: stop.id,
+      status: JobStatus.ARRIVED,
+      actorUserId: driver.id,
+    });
 
-    // Complete without confirming the device line — must be refused
-    // with the operator-facing message...
+    // Complete without resolving the line — must be refused with the
+    // operator-facing message...
     await expect(
       updateStopStatus({
         stopId: stop.id,
         status: JobStatus.COMPLETED,
         actorUserId: driver.id,
-        confirmedDeviceIds: [],
+        lineResolutions: [],
       }),
     ).rejects.toThrow(StopUpdateRefusedError);
 
@@ -275,25 +287,26 @@ describe.skipIf(!process.env.DATABASE_URL)("stop reliability (Phase 0)", () => {
       where: { id: stopDeviceId! },
     });
     expect(sd.confirmedAt).toBeNull();
-    expect(sd.confirmedByUserId).toBeNull();
+    expect(sd.lineState).toBe("EXPECTED");
     const after = await appPrisma.routeStop.findUniqueOrThrow({
       where: { id: stop.id },
     });
-    expect(after.status).toBe(JobStatus.EN_ROUTE);
+    expect(after.status).toBe(JobStatus.ARRIVED);
 
-    // Confirming the line completes the stop and stamps the check-off
-    // in the same transaction.
+    // Verifying the line completes the stop and stamps the check-off in
+    // the same transaction.
     await updateStopStatus({
       stopId: stop.id,
       status: JobStatus.COMPLETED,
       actorUserId: driver.id,
-      confirmedDeviceIds: [stopDeviceId!],
+      lineResolutions: [{ stopDeviceId: stopDeviceId!, state: "VERIFIED" }],
     });
     const sdAfter = await appPrisma.stopDevice.findUniqueOrThrow({
       where: { id: stopDeviceId! },
     });
     expect(sdAfter.confirmedAt).not.toBeNull();
     expect(sdAfter.confirmedByUserId).toBe(driver.id);
+    expect(sdAfter.lineState).toBe("VERIFIED");
     const done = await appPrisma.routeStop.findUniqueOrThrow({
       where: { id: stop.id },
     });

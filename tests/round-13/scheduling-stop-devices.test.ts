@@ -144,8 +144,11 @@ describe("Round-13 scheduling — route detail UI", () => {
     expect(ui).toContain('stop.job.type === "DELIVERY"');
   });
 
-  it("add form caption explains the new fields", () => {
-    expect(ui).toContain("Every device line gets a ticket");
-    expect(ui).toContain("missed pickup");
+  it("add form caption explains the new fields in plain language", () => {
+    // Round-22 §1C — humanized copy: no "mint a synthetic ticket" /
+    // "/duplicates … SNOW incident posts" jargon.
+    expect(ui).toContain("a device you find on site");
+    expect(ui).toContain("Pickup/Delivery toggle");
+    expect(ui).not.toContain("mint a synthetic");
   });
 });

@@ -18,5 +18,10 @@ export async function GET() {
     return new NextResponse("unauthorized", { status: 401 });
   }
   const counts = await getExceptionCounts();
-  return NextResponse.json(counts);
+  return NextResponse.json(counts, {
+    // Badge data tolerates a couple of minutes of staleness. The
+    // private cache lets N open tabs share one count fetch instead of
+    // each running the seven COUNT queries on their own timer.
+    headers: { "Cache-Control": "private, max-age=120" },
+  });
 }

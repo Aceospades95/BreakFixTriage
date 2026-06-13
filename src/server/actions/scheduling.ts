@@ -12,7 +12,10 @@ import { buildTicketEmailVariables } from "@/lib/email/variables";
 import { writeAudit } from "@/lib/audit/audit";
 import { buildRoute, createJob } from "@/lib/scheduling/jobs";
 import { cancelRoute, reorderRoute } from "@/lib/scheduling/routes";
-import { updateStopStatus } from "@/lib/scheduling/stops";
+import {
+  StopUpdateRefusedError,
+  updateStopStatus,
+} from "@/lib/scheduling/stops";
 import { withFeedback } from "@/lib/url";
 import { humanise } from "@/lib/format";
 
@@ -314,44 +317,13 @@ export async function updateStopStatusAction(formData: FormData) {
   // Round-20 — NY team: "we should have to select what we are
   // picking up." Completing a stop requires every ACTIVE device
   // line to be explicitly confirmed; the confirmation is stamped
-  // on the StopDevice row as the durable field check-off.
-  if (parsed.data.status === JobStatus.COMPLETED) {
-    const confirmedIds = new Set(
-      formData.getAll("confirmedDeviceIds").map((v) => v.toString()),
-    );
-    const activeLines = await prisma.stopDevice.findMany({
-      where: { stopId: parsed.data.stopId, removedAt: null },
-      select: {
-        id: true,
-        purpose: true,
-        device: { select: { assetTag: true, serialNumber: true } },
-      },
-    });
-    const missing = activeLines.filter((l) => !confirmedIds.has(l.id));
-    if (missing.length > 0) {
-      const label = missing
-        .map((l) => l.device.assetTag ?? l.device.serialNumber)
-        .slice(0, 3)
-        .join(", ");
-      redirect(
-        withFeedback(
-          fallbackPath,
-          "error",
-          `Confirm every device before completing the stop — ${missing.length} unconfirmed (${label}${missing.length > 3 ? ", …" : ""}). Check each line off, or remove it from the stop with a reason.`,
-        ),
-      );
-    }
-    if (activeLines.length > 0) {
-      await prisma.stopDevice.updateMany({
-        where: {
-          stopId: parsed.data.stopId,
-          removedAt: null,
-          confirmedAt: null,
-        },
-        data: { confirmedAt: new Date(), confirmedByUserId: session.userId },
-      });
-    }
-  }
+  // on the StopDevice row as the durable field check-off. The
+  // check + stamps run inside updateStopStatus's transaction so a
+  // refused completion never leaves devices half-confirmed.
+  const confirmedDeviceIds = formData
+    .getAll("confirmedDeviceIds")
+    .map((v) => v.toString())
+    .filter(Boolean);
 
   let errorMessage: string | null = null;
   try {
@@ -360,6 +332,7 @@ export async function updateStopStatusAction(formData: FormData) {
       status: parsed.data.status,
       actorUserId: session.userId,
       reason: parsed.data.reason,
+      confirmedDeviceIds,
     });
 
     // Round-7 §3B — fire pickup_completed when a Pickup stop
@@ -403,7 +376,21 @@ export async function updateStopStatusAction(formData: FormData) {
       }
     }
   } catch (err) {
-    errorMessage = err instanceof Error ? err.message : "Stop update failed";
+    if (err instanceof StopUpdateRefusedError) {
+      // Operator-fixable refusal (wrong order, unconfirmed devices,
+      // concurrent edit) — surface the message verbatim.
+      errorMessage = err.message;
+    } else {
+      // Unexpected failure (DB down, timeout, …). The transaction
+      // rolled back, so nothing was saved — say exactly that instead
+      // of leaking a driver/ORM error string.
+      console.error(
+        `[updateStopStatusAction] stop update failed for ${parsed.data.stopId}:`,
+        err,
+      );
+      errorMessage =
+        "Saving this stop failed and nothing was changed. Try again; if it keeps failing, reload the page.";
+    }
   }
 
   if (errorMessage) {

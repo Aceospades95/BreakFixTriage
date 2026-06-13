@@ -1,4 +1,4 @@
-import type { TicketState } from "@prisma/client";
+import type { Prisma, PrismaClient, TicketState } from "@prisma/client";
 import { ALLOWED_TRANSITIONS } from "@/lib/workflow/states";
 import { DEFAULT_SLA_DAYS } from "@/lib/reports/sla";
 import { prisma } from "@/lib/db/prisma";
@@ -75,9 +75,17 @@ export function getEffectiveColor(
  *
  * No permission check — callers that gate on role do it themselves.
  * Returns an empty config when nothing has been saved yet.
+ *
+ * Accepts an optional transaction client. Callers that are already
+ * inside an interactive transaction MUST pass their `tx` — reading
+ * through the global client from inside an open transaction demands a
+ * second pool connection per call, which under load deadlocks the pool
+ * (every transaction holds a connection while waiting for one).
  */
-export async function readStatusConfig(): Promise<StatusConfig> {
-  const setting = await prisma.appSetting.findUnique({
+export async function readStatusConfig(
+  db: PrismaClient | Prisma.TransactionClient = prisma,
+): Promise<StatusConfig> {
+  const setting = await db.appSetting.findUnique({
     where: { key: SETTING_KEY },
   });
   if (!setting) return { transitions: {}, sla: {}, disabled: [] };

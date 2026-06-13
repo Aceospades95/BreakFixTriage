@@ -7,6 +7,7 @@ import {
   TicketState,
   type Role,
 } from "@prisma/client";
+import { ActionForm } from "@/components/action-form";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { PageHeader } from "@/components/page-header";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -482,7 +483,7 @@ export default async function HomePage() {
                                 confirmMessage="Mark this stop as failed? Its tickets go back to the reschedule queue. Open the route page instead if you want to record why."
                               />
                             </div>
-                            <form
+                            <ActionForm
                               action={uploadAttachmentAction}
                               encType="multipart/form-data"
                               className="mt-3 flex items-center gap-2 border-t border-surface-border pt-3"
@@ -507,7 +508,7 @@ export default async function HomePage() {
                               >
                                 Attach photo
                               </button>
-                            </form>
+                            </ActionForm>
                           </>
                         )}
                       </li>
@@ -751,14 +752,14 @@ export default async function HomePage() {
                   <strong>{expiringQuotes}</strong> sent or approved quote
                   {expiringQuotes === 1 ? "" : "s"} past their hold window.
                 </span>
-                <form action={sweepQuotesAction}>
+                <ActionForm action={sweepQuotesAction}>
                   <button
                     type="submit"
                     className="rounded bg-amber-500/30 px-3 py-1 text-xs font-semibold hover:bg-amber-500/50"
                   >
                     Sweep now
                   </button>
-                </form>
+                </ActionForm>
               </div>
             )}
 
@@ -879,7 +880,7 @@ function DriverButton({
       : "cursor-not-allowed border border-surface-border bg-surface text-slate-500"
   }`;
   return (
-    <form action={updateStopStatusAction}>
+    <ActionForm action={updateStopStatusAction}>
       <input type="hidden" name="stopId" value={stopId} />
       <input type="hidden" name="status" value={target} />
       <input type="hidden" name="routeId" value={routeId} />
@@ -897,7 +898,7 @@ function DriverButton({
           {label}
         </button>
       )}
-    </form>
+    </ActionForm>
   );
 }
 

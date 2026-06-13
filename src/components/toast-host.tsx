@@ -120,6 +120,38 @@ export function ToastHost() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, pathname]);
 
+  // Phase-0 reliability — imperative channel. Client code (the
+  // ActionForm transport-failure path, the scan page, …) can pop a
+  // toast without a navigation by dispatching a `bft:toast`
+  // CustomEvent. Error and important toasts stay until dismissed,
+  // same as the URL-param variants.
+  useEffect(() => {
+    function onToastEvent(e: Event) {
+      const detail = (e as CustomEvent<{ kind?: string; message?: string }>)
+        .detail;
+      if (!detail?.message) return;
+      const kind =
+        detail.kind === "error"
+          ? ("error" as const)
+          : detail.kind === "important"
+            ? ("important" as const)
+            : ("ok" as const);
+      const now = Date.now();
+      setToasts((prev) => [
+        ...prev,
+        {
+          id: now + Math.random(),
+          kind,
+          message: detail.message!,
+          fading: false,
+          expiresAt: kind === "ok" ? now + SHOW_MS : null,
+        },
+      ]);
+    }
+    window.addEventListener("bft:toast", onToastEvent);
+    return () => window.removeEventListener("bft:toast", onToastEvent);
+  }, []);
+
   // Round-4 §pre-work-1: pause-on-hover at the host level. While
   // `paused`, every visible toast keeps its current `expiresAt`
   // and we don't schedule a fade timer. On unpause, each toast

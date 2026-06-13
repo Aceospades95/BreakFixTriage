@@ -12,6 +12,7 @@ import { SignaturePad } from "@/components/signature-pad";
 import { PhotoCapture } from "@/components/photo-capture";
 import { StopAccordion, StopAccordionItem } from "@/components/stop-accordion";
 import { StopCompletion } from "@/components/stop-completion";
+import { ActionForm } from "@/components/action-form";
 import { ConfirmButton } from "@/components/confirm-button";
 import { LocalTime } from "@/components/local-time";
 import { prisma } from "@/lib/db/prisma";
@@ -390,7 +391,7 @@ export default async function RouteDetailPage({
       )}
 
       {canReorder && routeOpen && (
-        <form
+        <ActionForm
           action={cancelRouteAction}
           className="mt-8 flex flex-wrap items-end gap-2 rounded border border-red-500/30 bg-red-500/5 p-3"
         >
@@ -412,7 +413,7 @@ export default async function RouteDetailPage({
           >
             Cancel route
           </ConfirmButton>
-        </form>
+        </ActionForm>
       )}
     </>
   );
@@ -734,7 +735,7 @@ function StopBody({
           <summary className="cursor-pointer select-none font-semibold text-amber-200">
             Running late? Report a delay
           </summary>
-          <form
+          <ActionForm
             action={reportStopDelayAction}
             className="mt-3 flex flex-wrap items-end gap-2"
           >
@@ -788,7 +789,7 @@ function StopBody({
             >
               Record delay & notify school
             </button>
-          </form>
+          </ActionForm>
           <p className="mt-2 text-[11px] text-slate-500">
             The arrival estimate moves by the minutes entered and the
             school&apos;s contact gets an email when the delay rule is
@@ -883,7 +884,7 @@ function StopBody({
                       canUpdateStop &&
                       routeOpen &&
                       !terminal && (
-                        <form
+                        <ActionForm
                           action={removeDeviceFromStopAction}
                           className="ml-auto flex items-center gap-1"
                         >
@@ -909,7 +910,7 @@ function StopBody({
                           >
                             × Remove
                           </button>
-                        </form>
+                        </ActionForm>
                       )
                     )}
                   </li>
@@ -930,7 +931,7 @@ function StopBody({
                     + Add device
                   </summary>
                   <div className="mt-3 grid gap-2">
-                    <form
+                    <ActionForm
                       action={addDeviceToStopAction}
                       className="grid gap-2 rounded border border-surface-border bg-surface p-2 sm:grid-cols-[max-content_1fr_max-content]"
                     >
@@ -995,7 +996,7 @@ function StopBody({
                       >
                         Add
                       </button>
-                    </form>
+                    </ActionForm>
                     <p className="text-[10px] text-slate-500">
                       Every device line gets a ticket. Type a known INC#
                       to attach an existing ticket; leave blank to mint a
@@ -1044,7 +1045,7 @@ function StopBody({
             </div>
           )}
           {canUpdateStop && !terminal && (
-            <form
+            <ActionForm
               action={uploadAttachmentAction}
               className="mt-3 space-y-2 rounded border border-surface-border bg-surface-muted/40 p-3"
             >
@@ -1092,7 +1093,7 @@ function StopBody({
                 The signature, name, and timestamp attach to this stop and
                 stay visible in the work record.
               </p>
-            </form>
+            </ActionForm>
           )}
         </div>
       )}
@@ -1157,7 +1158,7 @@ function StopStatusControls({
   return (
     <>
       {buttons.map((b) => (
-        <form key={b.to} action={updateStopStatusAction}>
+        <ActionForm key={b.to} action={updateStopStatusAction}>
           <input type="hidden" name="stopId" value={stopId} />
           <input type="hidden" name="status" value={b.to} />
           <input type="hidden" name="routeId" value={routeId} />
@@ -1173,9 +1174,12 @@ function StopStatusControls({
           >
             {b.label}
           </button>
-        </form>
+        </ActionForm>
       ))}
-      <form action={updateStopStatusAction} className="flex items-center gap-1">
+      <ActionForm
+        action={updateStopStatusAction}
+        className="flex items-center gap-1"
+      >
         <input type="hidden" name="stopId" value={stopId} />
         <input type="hidden" name="status" value={JobStatus.FAILED} />
         <input type="hidden" name="routeId" value={routeId} />
@@ -1222,7 +1226,7 @@ function StopStatusControls({
         >
           Fail
         </ConfirmButton>
-      </form>
+      </ActionForm>
     </>
   );
 }
@@ -1237,7 +1241,7 @@ function ReorderButton({
   label: string;
 }) {
   return (
-    <form action={reorderRouteAction}>
+    <ActionForm action={reorderRouteAction}>
       <input type="hidden" name="routeId" value={routeId} />
       {orderedStopIds.map((id) => (
         <input key={id} type="hidden" name="orderedStopIds" value={id} />
@@ -1248,7 +1252,7 @@ function ReorderButton({
       >
         {label}
       </button>
-    </form>
+    </ActionForm>
   );
 }
 
@@ -1313,7 +1317,7 @@ function VehicleMeta({
       <div className="text-[10px] uppercase tracking-wide text-slate-400">
         Vehicle
       </div>
-      <form
+      <ActionForm
         action={updateRouteVehicleAction}
         className="mt-0.5 flex items-center gap-2"
       >
@@ -1332,7 +1336,7 @@ function VehicleMeta({
         >
           Save
         </button>
-      </form>
+      </ActionForm>
     </div>
   );
 }

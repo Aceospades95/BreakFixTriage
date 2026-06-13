@@ -20,7 +20,13 @@ export function ExceptionsBadge() {
 
   useEffect(() => {
     let cancelled = false;
+    let lastLoadedAt = 0;
     async function load() {
+      // Backgrounded tabs skip the refresh entirely; they catch up
+      // on the next visibilitychange. Keeps N idle tabs from each
+      // running the count queries on their own timer.
+      if (document.visibilityState === "hidden") return;
+      lastLoadedAt = Date.now();
       try {
         const res = await fetch("/api/exceptions/count", {
           credentials: "same-origin",
@@ -34,11 +40,21 @@ export function ExceptionsBadge() {
         // Transient failure — keep whatever we had.
       }
     }
+    function onVisible() {
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastLoadedAt > REFRESH_MS
+      ) {
+        void load();
+      }
+    }
     void load();
     const t = setInterval(load, REFRESH_MS);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

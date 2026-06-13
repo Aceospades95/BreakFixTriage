@@ -1,5 +1,6 @@
 import { ExpenseKind, ExpenseStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { ActionForm } from "@/components/action-form";
 import { ConfirmButton } from "@/components/confirm-button";
 import { PhotoCapture } from "@/components/photo-capture";
 import { AttachmentList } from "@/components/attachment-list";
@@ -86,7 +87,12 @@ export default async function MyExpensesPage({
         <h2 className="mb-3 text-sm font-semibold tracking-wide text-slate-300">
           Submit an expense
         </h2>
+        {/* Round-22 §4 — key on the expense count so the form remounts
+            and clears after a successful submit; App Router's soft
+            navigation otherwise preserves the typed-in values, which
+            invited an accidental double-submit. */}
         <form
+          key={expenses.length}
           action={submitExpenseAction}
           className="flex flex-wrap items-end gap-3"
         >
@@ -236,13 +242,41 @@ export default async function MyExpensesPage({
                     canWrite={false}
                   />
                   {e.status === ExpenseStatus.SUBMITTED && (
-                    <div className="mt-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
                       <PhotoCapture
                         action={uploadAttachmentAction}
                         ownerKind="EXPENSE"
                         ownerId={e.id}
                         returnTo="/me/expenses"
                       />
+                      {/* Round-22 §4 — the page promises a receipt photo;
+                          give an explicit file upload (PDF/image) too, not
+                          camera-only. */}
+                      <ActionForm
+                        action={uploadAttachmentAction}
+                        encType="multipart/form-data"
+                        className="flex items-center gap-2"
+                      >
+                        <input type="hidden" name="kind" value="EXPENSE" />
+                        <input type="hidden" name="expenseId" value={e.id} />
+                        <input type="hidden" name="returnTo" value="/me/expenses" />
+                        <label className="text-[10px] text-slate-400">
+                          <span className="sr-only">Upload receipt file</span>
+                          <input
+                            type="file"
+                            name="file"
+                            required
+                            accept="image/*,application/pdf"
+                            className="max-w-44 rounded border border-surface-border bg-surface px-2 py-1 text-xs file:mr-2 file:rounded file:border-0 file:bg-accent file:px-2 file:py-0.5 file:text-[10px] file:font-semibold file:text-white"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          className="rounded border border-surface-border px-2 py-1 text-[10px] font-semibold text-slate-300 hover:border-accent hover:text-white"
+                        >
+                          Upload file
+                        </button>
+                      </ActionForm>
                     </div>
                   )}
                 </div>

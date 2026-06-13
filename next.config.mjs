@@ -24,6 +24,22 @@
 //     specific origins rather than removing this directive.
 const isDev = process.env.NODE_ENV !== "production";
 
+// Round-22 §3 — when a custom base-map tile provider is configured
+// (NEXT_PUBLIC_MAP_TILE_URL), allow its origin in the CSP img-src so the
+// tiles actually load. Falls back to the OpenStreetMap defaults.
+function tileOrigin() {
+  const raw = process.env.NEXT_PUBLIC_MAP_TILE_URL;
+  if (!raw) return "";
+  try {
+    // The template contains {z}/{x}/{y}; URL() only needs the origin.
+    return new URL(raw).origin;
+  } catch {
+    return "";
+  }
+}
+
+const extraImgSrc = [tileOrigin()].filter(Boolean).join(" ");
+
 const securityHeaders = [
   {
     key: "Content-Security-Policy",
@@ -31,7 +47,7 @@ const securityHeaders = [
       "default-src 'self'",
       `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://api.mapbox.com",
+      `img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://api.mapbox.com${extraImgSrc ? " " + extraImgSrc : ""}`,
       "media-src 'self' blob:",
       "font-src 'self' data:",
       "connect-src 'self'",

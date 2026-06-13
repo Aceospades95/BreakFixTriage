@@ -32,7 +32,14 @@ const ticketIdsSchema = z
 const bulkTransitionSchema = z.object({
   ticketIds: ticketIdsSchema,
   to: z.nativeEnum(TicketState),
-  reason: z.string().max(500).optional(),
+  // Round-22 §4 — a bulk state change carries the same weight as the
+  // ticket page's force-change, which requires a reason; match that
+  // guardrail here instead of leaving it optional.
+  reason: z
+    .string()
+    .trim()
+    .min(3, "Add a reason for the bulk status change")
+    .max(500),
 });
 
 /**
@@ -63,10 +70,21 @@ export async function bulkTransitionAction(formData: FormData) {
     );
   }
 
+  const reasonRaw = formData.get("reason")?.toString().trim() || "";
+  if (reasonRaw.length < 3) {
+    redirect(
+      withFeedback(
+        returnTo,
+        "error",
+        "Add a reason for the bulk status change before applying.",
+      ),
+    );
+  }
+
   const parsed = bulkTransitionSchema.safeParse({
     ticketIds,
     to: toRaw,
-    reason: formData.get("reason")?.toString().trim() || undefined,
+    reason: reasonRaw,
   });
   if (!parsed.success) {
     const friendly = parsed.error.issues

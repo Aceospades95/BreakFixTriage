@@ -166,7 +166,7 @@ export function TicketsBulkActions({
           <input
             type="text"
             name="reason"
-            placeholder="reason (optional)"
+            placeholder="reason (required to apply)"
             className="w-40 rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
           />
           <button

@@ -118,7 +118,7 @@ export default async function DeviceHotspotsPage({
                   colSpan={6}
                   className="px-3 py-8 text-center text-slate-400"
                 >
-                  No devices meet the threshold. 🎉
+                  No devices meet the threshold.
                 </td>
               </tr>
             )}

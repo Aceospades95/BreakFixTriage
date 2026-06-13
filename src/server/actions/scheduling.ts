@@ -485,7 +485,13 @@ export async function updateStopStatusAction(formData: FormData) {
 
 const cancelRouteSchema = z.object({
   routeId: z.string().min(1),
-  reason: z.string().max(500).optional(),
+  // Round-22 §4 — cancelling a route is destructive (stops unscheduled,
+  // tech notified); require a reason so the audit trail explains why.
+  reason: z
+    .string()
+    .trim()
+    .min(3, "A reason is required to cancel a route")
+    .max(500),
 });
 
 export async function cancelRouteAction(formData: FormData) {

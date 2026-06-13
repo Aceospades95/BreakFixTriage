@@ -36,8 +36,11 @@ export const config = {
   //   - signin page + NextAuth API routes
   //   - /portal/*          → magic-link school status portal
   //   - /api/health        → unauthenticated monitor endpoint
+  //   - PWA manifest + icons (the browser fetches these WITHOUT a
+  //     session — Round-22 §4: they were redirected to sign-in, which
+  //     is the "icon-192.png 404" the install flow hit)
   //   - static asset paths
   matcher: [
-    "/((?!signin|api/auth|api/health|portal|_next/static|_next/image|favicon.ico).*)",
+    "/((?!signin|api/auth|api/health|portal|manifest.webmanifest|icon-192.png|icon-512.png|_next/static|_next/image|favicon.ico).*)",
   ],
 };

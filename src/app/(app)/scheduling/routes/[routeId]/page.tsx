@@ -465,7 +465,10 @@ export default async function RouteDetailPage({
             <input
               type="text"
               name="reason"
-              placeholder="Reason (optional)"
+              required
+              minLength={3}
+              maxLength={500}
+              placeholder="Reason (required)"
               className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </label>

@@ -32,6 +32,10 @@ export default async function SchedulingPage({
   const canBuild = can(session.role, PERMISSIONS.ROUTES_BUILD);
   const isAdmin = session.role === "ADMIN";
 
+  // Round-22 §4 — flag routes still open after their date has passed.
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+
   const [
     activeRoutes,
     recentRoutes,
@@ -157,7 +161,17 @@ export default async function SchedulingPage({
                         )}
                       </div>
                     </div>
-                    <RouteStatusPill status={r.status} />
+                    <div className="flex flex-col items-end gap-1">
+                      <RouteStatusPill status={r.status} />
+                      {r.date < todayStart && (
+                        <span
+                          className="rounded border border-red-500/50 bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-200"
+                          title="This route is still open but its date has passed — close it out or cancel it."
+                        >
+                          Overdue
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </Link>
               </li>

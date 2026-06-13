@@ -60,7 +60,8 @@ model User {
   ticketEventsActed   TicketEvent[]       @relation("TicketEventActor")
   importBatches       ImportBatch[]
   resolvedDupes       DuplicateConflict[] @relation("DupeResolver")
-  auditLogs           AuditLog[]
+  auditLogs           AuditLog[]          @relation("AuditActor")
+  acknowledgedAudits  AuditLog[]          @relation("AuditAcknowledger")
   assignedTickets     Ticket[]            @relation("TicketAssignee")
   assignedRoutes      Route[]             @relation("RouteAssignee")
   quoteActivities     QuoteActivity[]
@@ -918,15 +919,22 @@ model AuditLog {
   /// changes write `warn`; tenant-violation rejections write
   /// `critical`. Default keeps every prior write classified `info`.
   severity       String?  @default("info")
+  /// Round-22 §2 — a high-severity event can be acknowledged so it
+  /// leaves the active exceptions count + badge instead of squatting
+  /// there for a rolling 7 days. Null = still needs attention.
+  acknowledgedAt       DateTime?
+  acknowledgedByUserId String?
   createdAt      DateTime @default(now())
 
-  actor User? @relation(fields: [actorUserId], references: [id])
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id])
+  acknowledgedBy User? @relation("AuditAcknowledger", fields: [acknowledgedByUserId], references: [id])
 
   @@index([entityType, entityId])
   @@index([createdAt])
   @@index([transitionType])
   @@index([severity])
   @@index([requestId])
+  @@index([severity, acknowledgedAt])
 }
 
 enum NotificationStatus {

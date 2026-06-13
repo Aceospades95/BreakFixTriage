@@ -332,6 +332,10 @@ export default async function AdminAuditLogPage({
     if (next.cats) sp.set("cats", next.cats);
     if (next.actor) sp.set("actor", next.actor);
     if (next.entityId) sp.set("entityId", next.entityId);
+    // Round-22 §2.3 — `quick` was computed into `next` but never
+    // serialized, so the "Failed sign-ins" chip changed nothing in the
+    // URL (the verified-cosmetic bug). Write it through.
+    if (next.quick) sp.set("quick", next.quick);
     if (next.page) sp.set("page", next.page);
     const qs = sp.toString();
     return qs ? `/admin/audit?${qs}` : "/admin/audit";

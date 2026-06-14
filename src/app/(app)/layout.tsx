@@ -12,6 +12,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { ToastHost } from "@/components/toast-host";
 import { CommandPalette } from "@/components/command-palette";
 import { ExceptionsBadge } from "@/components/exceptions-badge";
+import { ProfileMenu } from "@/components/profile-menu";
 import { TeamNoteBanner } from "@/components/team-note-banner";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
@@ -83,19 +84,7 @@ export default async function AppLayout({
         {isAdmin && <ExceptionsBadge />}
         <NotificationBell notifications={notifications} />
         <HelpMenu />
-        <Link
-          href="/profile"
-          className="hidden text-right text-xs transition hover:text-white sm:block"
-        >
-          <div className="font-medium text-slate-100">{session.name}</div>
-          <div className="text-[10px] tracking-wide text-muted-foreground">
-            {/* Round-4 §pre-work-2: humanise() canonical surface.
-                Was a raw .replace + uppercase; now the documented
-                titlecase form ("Ops manager", "Read only") with
-                acronym preservation. */}
-            {formatRole(session.role)}
-          </div>
-        </Link>
+        <ProfileMenu name={session.name} roleLabel={formatRole(session.role)} />
         <SignOutButton />
       </div>
     </>

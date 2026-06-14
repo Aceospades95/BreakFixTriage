@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { JobStatus, JobType, StopDelayReason } from "@prisma/client";
+import {
+  JobStatus,
+  JobType,
+  StopDelayReason,
+  StopLineState,
+} from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
@@ -12,7 +17,11 @@ import { buildTicketEmailVariables } from "@/lib/email/variables";
 import { writeAudit } from "@/lib/audit/audit";
 import { buildRoute, createJob } from "@/lib/scheduling/jobs";
 import { cancelRoute, reorderRoute } from "@/lib/scheduling/routes";
-import { updateStopStatus } from "@/lib/scheduling/stops";
+import {
+  StopUpdateRefusedError,
+  updateStopStatus,
+  type StopLineResolution,
+} from "@/lib/scheduling/stops";
 import { withFeedback } from "@/lib/url";
 import { humanise } from "@/lib/format";
 
@@ -89,6 +98,136 @@ export async function createJobAction(formData: FormData) {
       "Job created — pick a driver below and save to finish the route.",
     ),
   );
+}
+
+// ---------------------------------------------------------------------------
+// previewRouteAction (Round-22 §3.3) — optimize WITHOUT saving
+// ---------------------------------------------------------------------------
+
+export interface RoutePreview {
+  ok: boolean;
+  error?: string;
+  stops: {
+    id: string;
+    sequence: number;
+    label: string;
+    sublabel: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  }[];
+  /** True when the optimizer reordered the stops vs the input order. */
+  changed: boolean;
+  /** Plain-language note of what optimization did. */
+  summary: string;
+  roadRoute: {
+    legs: { distanceKm: number; durationMin: number }[];
+    totalKm: number;
+    totalMin: number;
+  } | null;
+}
+
+/**
+ * Round-22 §3.3 — compute the optimized stop order + map data + estimated
+ * duration for a candidate route WITHOUT persisting anything. Drives the
+ * route-builder preview step that sits between "optimize" and "save".
+ */
+export async function previewRouteAction(
+  formData: FormData,
+): Promise<RoutePreview> {
+  await requireRole(PERMISSIONS.ROUTES_BUILD);
+  const empty: RoutePreview = {
+    ok: false,
+    stops: [],
+    changed: false,
+    summary: "",
+    roadRoute: null,
+  };
+
+  const jobIds = formData
+    .getAll("jobIds")
+    .map((v) => v.toString())
+    .filter(Boolean);
+  if (jobIds.length === 0) {
+    return { ...empty, error: "Pick at least one stop to preview." };
+  }
+
+  const { getOptimizer } = await import("@/lib/routing/optimizer");
+  const { getRoadRoute } = await import("@/lib/routing/road");
+
+  const jobs = await prisma.job.findMany({
+    where: { id: { in: jobIds } },
+    select: {
+      id: true,
+      school: {
+        select: {
+          name: true,
+          code: true,
+          address: { select: { latitude: true, longitude: true } },
+        },
+      },
+    },
+  });
+  // Preserve the operator's input order for the "what changed" diff.
+  const byId = new Map(jobs.map((j) => [j.id, j]));
+  const inputOrder = jobIds.filter((id) => byId.has(id));
+
+  const withCoords = inputOrder
+    .map((id) => byId.get(id)!)
+    .filter(
+      (j) =>
+        j.school.address?.latitude != null &&
+        j.school.address?.longitude != null,
+    );
+
+  let orderedIds = inputOrder;
+  let changed = false;
+  if (withCoords.length === inputOrder.length && inputOrder.length > 1) {
+    const optimizer = getOptimizer();
+    const result = await optimizer.optimize({
+      origin: null,
+      stops: inputOrder.map((id) => {
+        const j = byId.get(id)!;
+        return {
+          id,
+          latitude: j.school.address!.latitude!,
+          longitude: j.school.address!.longitude!,
+        };
+      }),
+    });
+    orderedIds = result.orderedStopIds;
+    changed = orderedIds.join(",") !== inputOrder.join(",");
+  }
+
+  const stops = orderedIds.map((id, idx) => {
+    const j = byId.get(id)!;
+    return {
+      id,
+      sequence: idx + 1,
+      label: j.school.name,
+      sublabel: j.school.code ?? null,
+      latitude: j.school.address?.latitude ?? null,
+      longitude: j.school.address?.longitude ?? null,
+    };
+  });
+
+  const coords = stops
+    .filter((s) => s.latitude != null && s.longitude != null)
+    .map((s) => ({ latitude: s.latitude!, longitude: s.longitude! }));
+  const road = await getRoadRoute(coords);
+  const roadRoute = road
+    ? { legs: road.legs, totalKm: road.totalKm, totalMin: road.totalMin }
+    : null;
+
+  const summary =
+    inputOrder.length <= 1
+      ? "Single stop — nothing to optimize."
+      : withCoords.length < inputOrder.length
+        ? "Some stops have no map coordinates, so the order is left as you picked it. Add lat/lng to those schools for an optimized sequence."
+        : changed
+          ? "Optimizer reordered the stops into a shorter driving sequence (shown below)."
+          : "Your stop order is already the optimized sequence — no change.";
+
+  return { ok: true, stops, changed, summary, roadRoute, error: undefined };
 }
 
 // ---------------------------------------------------------------------------
@@ -282,7 +421,34 @@ const updateStopStatusSchema = z.object({
   reason: z.string().max(500).optional(),
   returnTo: z.enum(["route", "my-day", "/"]).default("route"),
   routeId: z.string().optional(),
+  proofOverrideReason: z.string().max(500).optional(),
+  notes: z.string().max(2000).optional(),
 });
+
+/**
+ * Per-line resolutions arrive as repeated form fields:
+ *   line:<stopDeviceId> = VERIFIED | NOT_FOUND | REFUSED
+ *   lineNote:<stopDeviceId> = free text
+ * Parse them into the StopLineResolution[] the lib expects.
+ */
+function parseLineResolutions(formData: FormData): StopLineResolution[] {
+  const out: StopLineResolution[] = [];
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("line:")) continue;
+    const stopDeviceId = key.slice("line:".length);
+    const state = value.toString();
+    if (
+      state !== StopLineState.VERIFIED &&
+      state !== StopLineState.NOT_FOUND &&
+      state !== StopLineState.REFUSED
+    ) {
+      continue;
+    }
+    const note = formData.get(`lineNote:${stopDeviceId}`)?.toString().trim();
+    out.push({ stopDeviceId, state, note: note || undefined });
+  }
+  return out;
+}
 
 /**
  * Driver-facing (or dispatcher-on-behalf-of) stop status update. The
@@ -298,6 +464,9 @@ export async function updateStopStatusAction(formData: FormData) {
     reason: formData.get("reason")?.toString().trim() || undefined,
     returnTo: formData.get("returnTo") ?? "route",
     routeId: formData.get("routeId")?.toString() || undefined,
+    proofOverrideReason:
+      formData.get("proofOverrideReason")?.toString().trim() || undefined,
+    notes: formData.get("notes")?.toString() ?? undefined,
   });
 
   if (!parsed.success) {
@@ -311,48 +480,12 @@ export async function updateStopStatusAction(formData: FormData) {
         ? `/scheduling/routes/${parsed.data.routeId}`
         : "/scheduling";
 
-  // Round-20 — NY team: "we should have to select what we are
-  // picking up." Completing a stop requires every ACTIVE device
-  // line to be explicitly confirmed; the confirmation is stamped
-  // on the StopDevice row as the durable field check-off.
-  if (parsed.data.status === JobStatus.COMPLETED) {
-    const confirmedIds = new Set(
-      formData.getAll("confirmedDeviceIds").map((v) => v.toString()),
-    );
-    const activeLines = await prisma.stopDevice.findMany({
-      where: { stopId: parsed.data.stopId, removedAt: null },
-      select: {
-        id: true,
-        purpose: true,
-        device: { select: { assetTag: true, serialNumber: true } },
-      },
-    });
-    const missing = activeLines.filter((l) => !confirmedIds.has(l.id));
-    if (missing.length > 0) {
-      const label = missing
-        .map((l) => l.device.assetTag ?? l.device.serialNumber)
-        .slice(0, 3)
-        .join(", ");
-      redirect(
-        withFeedback(
-          fallbackPath,
-          "error",
-          `Confirm every device before completing the stop — ${missing.length} unconfirmed (${label}${missing.length > 3 ? ", …" : ""}). Check each line off, or remove it from the stop with a reason.`,
-        ),
-      );
-    }
-    if (activeLines.length > 0) {
-      await prisma.stopDevice.updateMany({
-        where: {
-          stopId: parsed.data.stopId,
-          removedAt: null,
-          confirmedAt: null,
-        },
-        data: { confirmedAt: new Date(), confirmedByUserId: session.userId },
-      });
-    }
-  }
+  // Round-22 §1C/§1D — per-line resolutions + proof override. The
+  // completion gate is enforced inside updateStopStatus's transaction
+  // so a refused completion never leaves lines or proof half-applied.
+  const lineResolutions = parseLineResolutions(formData);
 
+  let resultStatus: JobStatus = parsed.data.status;
   let errorMessage: string | null = null;
   try {
     await updateStopStatus({
@@ -360,11 +493,17 @@ export async function updateStopStatusAction(formData: FormData) {
       status: parsed.data.status,
       actorUserId: session.userId,
       reason: parsed.data.reason,
+      lineResolutions,
+      proofOverrideReason: parsed.data.proofOverrideReason,
+      notes: parsed.data.notes,
     });
 
     // Round-7 §3B — fire pickup_completed when a Pickup stop
     // transitions to COMPLETED. dispatchEmailEvent is the chokepoint.
-    if (parsed.data.status === JobStatus.COMPLETED) {
+    if (
+      parsed.data.status === JobStatus.COMPLETED ||
+      parsed.data.status === JobStatus.PARTIAL
+    ) {
       try {
         const stop = await prisma.routeStop.findUnique({
           where: { id: parsed.data.stopId },
@@ -403,7 +542,21 @@ export async function updateStopStatusAction(formData: FormData) {
       }
     }
   } catch (err) {
-    errorMessage = err instanceof Error ? err.message : "Stop update failed";
+    if (err instanceof StopUpdateRefusedError) {
+      // Operator-fixable refusal (wrong order, unconfirmed devices,
+      // concurrent edit) — surface the message verbatim.
+      errorMessage = err.message;
+    } else {
+      // Unexpected failure (DB down, timeout, …). The transaction
+      // rolled back, so nothing was saved — say exactly that instead
+      // of leaking a driver/ORM error string.
+      console.error(
+        `[updateStopStatusAction] stop update failed for ${parsed.data.stopId}:`,
+        err,
+      );
+      errorMessage =
+        "Saving this stop failed and nothing was changed. Try again; if it keeps failing, reload the page.";
+    }
   }
 
   if (errorMessage) {
@@ -413,6 +566,46 @@ export async function updateStopStatusAction(formData: FormData) {
   revalidatePath(fallbackPath);
   revalidatePath("/scheduling");
   revalidatePath("/");
+
+  // Round-22 §1E — after wrapping up a stop, jump to the next open stop
+  // on the same route instead of dumping the technician back at the map.
+  const isTerminal =
+    resultStatus === JobStatus.COMPLETED ||
+    resultStatus === JobStatus.PARTIAL ||
+    resultStatus === JobStatus.FAILED;
+  if (isTerminal && parsed.data.routeId) {
+    const nextStop = await prisma.routeStop.findFirst({
+      where: {
+        routeId: parsed.data.routeId,
+        status: {
+          notIn: [
+            JobStatus.COMPLETED,
+            JobStatus.PARTIAL,
+            JobStatus.FAILED,
+            JobStatus.CANCELLED,
+          ],
+        },
+      },
+      orderBy: { sequence: "asc" },
+      select: { id: true },
+    });
+    const verb =
+      resultStatus === JobStatus.COMPLETED
+        ? "Stop completed"
+        : resultStatus === JobStatus.PARTIAL
+          ? "Stop saved as partial — unresolved items returned to Ready to Schedule"
+          : "Stop failed — its tickets are back in Ready to Schedule";
+    const base = `/scheduling/routes/${parsed.data.routeId}`;
+    const target = nextStop ? `${base}#stop-${nextStop.id}` : base;
+    redirect(
+      withFeedback(
+        target,
+        "ok",
+        nextStop ? `${verb}. Next stop is open below.` : `${verb}. Route done.`,
+      ),
+    );
+  }
+
   redirect(fallbackPath);
 }
 
@@ -422,7 +615,13 @@ export async function updateStopStatusAction(formData: FormData) {
 
 const cancelRouteSchema = z.object({
   routeId: z.string().min(1),
-  reason: z.string().max(500).optional(),
+  // Round-22 §4 — cancelling a route is destructive (stops unscheduled,
+  // tech notified); require a reason so the audit trail explains why.
+  reason: z
+    .string()
+    .trim()
+    .min(3, "A reason is required to cancel a route")
+    .max(500),
 });
 
 export async function cancelRouteAction(formData: FormData) {

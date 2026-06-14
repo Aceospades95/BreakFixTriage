@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { ActionForm, useActionFormPending } from "@/components/action-form";
 
 /**
  * Round-18 §4 — "Take photo" proof capture for route stops and
@@ -66,7 +66,11 @@ export function PhotoCapture({
   }
 
   return (
-    <form action={action} encType="multipart/form-data" data-testid="photo-capture">
+    <ActionForm
+      action={action}
+      encType="multipart/form-data"
+      data-testid="photo-capture"
+    >
       <input type="hidden" name="kind" value={ownerKind} />
       <input type="hidden" name={ownerIdField} value={ownerId} />
       <input type="hidden" name="returnTo" value={returnTo} />
@@ -116,12 +120,12 @@ export function PhotoCapture({
           </div>
         </div>
       )}
-    </form>
+    </ActionForm>
   );
 }
 
 function SaveButton({ disabled }: { disabled: boolean }) {
-  const { pending } = useFormStatus();
+  const pending = useActionFormPending();
   return (
     <button
       type="submit"

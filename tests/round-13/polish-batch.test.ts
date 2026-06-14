@@ -68,7 +68,9 @@ describe("Round-13 §3D — /scheduling/people header reflects current date", ()
   });
 
   it("forward arrow advances date in the URL", () => {
-    expect(src).toMatch(/shiftDate\(date,\s*1\)/);
+    // Round-22 §3.1 — the nav strides by the active view's unit now
+    // (day/week/month), so the forward arrow uses strideDate(date, view, 1).
+    expect(src).toMatch(/strideDate\(date,\s*view,\s*1\)/);
   });
 });
 

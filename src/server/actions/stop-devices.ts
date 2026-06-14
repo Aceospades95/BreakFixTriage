@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import {
   StopDevicePurpose,
+  StopLineState,
   TicketSource,
   TicketState,
 } from "@prisma/client";
@@ -349,6 +350,12 @@ export async function addDeviceToStop(
         ticketId,
         addedByUserId: session.userId,
         purpose: finalPurpose,
+        // Round-22 §1C — a device added on site wasn't on the original
+        // manifest: born EXTRA_ADDED (a resolved, successful line) and
+        // stamped as confirmed by whoever added it.
+        lineState: StopLineState.EXTRA_ADDED,
+        confirmedAt: new Date(),
+        confirmedByUserId: session.userId,
       },
       select: { id: true },
     });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useFormStatus } from "react-dom";
+import { ActionForm, useActionFormPending } from "@/components/action-form";
 
 /**
  * Round-18 §3 / Round-20 — guarded completion for a route stop.
@@ -65,7 +65,7 @@ export function StopCompletion({
   }
 
   return (
-    <form
+    <ActionForm
       action={action}
       data-testid="stop-completion"
       className="rounded border border-surface-border bg-surface p-3"
@@ -132,12 +132,12 @@ export function StopCompletion({
           }
         />
       </div>
-    </form>
+    </ActionForm>
   );
 }
 
 function CompleteButton({ ready, hint }: { ready: boolean; hint?: string }) {
-  const { pending } = useFormStatus();
+  const pending = useActionFormPending();
   return (
     <div className="flex items-center gap-2">
       <button

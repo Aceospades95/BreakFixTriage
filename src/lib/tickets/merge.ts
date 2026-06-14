@@ -126,8 +126,9 @@ export async function mergeTicket(
     const reasonSuffix = input.reason ? `: ${input.reason}` : "";
     const deviceList = stopDevices
       .map((sd) => {
-        const id = sd.device.assetTag ?? sd.device.serialNumber;
-        const model = sd.device.model
+        const id =
+          sd.device?.assetTag ?? sd.device?.serialNumber ?? "device pending";
+        const model = sd.device?.model
           ? ` (${sd.device.model.manufacturer} ${sd.device.model.modelName})`
           : "";
         return `${id}${model}`;
@@ -198,10 +199,10 @@ export async function mergeTicket(
           after: {
             toTicketId: target.id,
             toIncident: target.incidentNumber,
-            deviceId: sd.device.id,
-            serialNumber: sd.device.serialNumber,
+            deviceId: sd.device?.id ?? null,
+            serialNumber: sd.device?.serialNumber ?? null,
           },
-          reason: `Device ${sd.device.assetTag ?? sd.device.serialNumber} transferred from ${source.incidentNumber} on merge`,
+          reason: `Device ${sd.device?.assetTag ?? sd.device?.serialNumber ?? "(pending)"} transferred from ${source.incidentNumber} on merge`,
         },
         tx,
       );

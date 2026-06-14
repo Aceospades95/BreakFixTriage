@@ -77,7 +77,27 @@ export function QrScanner({
       setStatus("scanning");
     } catch (err) {
       setStatus("error");
-      setError(err instanceof Error ? err.message : "Camera unavailable");
+      // Round-22 §4 — humanize the camera failure into an actionable
+      // state instead of leaking the raw "NotAllowedError" string.
+      const name =
+        err && typeof err === "object" && "name" in err
+          ? String((err as { name: unknown }).name)
+          : "";
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setError(
+          "Camera access was blocked. Allow camera permission for this site in your browser settings, then tap Start again — or type the code in below.",
+        );
+      } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+        setError(
+          "No camera was found on this device. Type the code in below instead.",
+        );
+      } else {
+        setError(
+          err instanceof Error
+            ? `Camera unavailable: ${err.message}. You can type the code in below.`
+            : "Camera unavailable — type the code in below.",
+        );
+      }
     }
   }
 

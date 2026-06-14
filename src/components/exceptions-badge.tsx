@@ -20,7 +20,13 @@ export function ExceptionsBadge() {
 
   useEffect(() => {
     let cancelled = false;
+    let lastLoadedAt = 0;
     async function load() {
+      // Backgrounded tabs skip the refresh entirely; they catch up
+      // on the next visibilitychange. Keeps N idle tabs from each
+      // running the count queries on their own timer.
+      if (document.visibilityState === "hidden") return;
+      lastLoadedAt = Date.now();
       try {
         const res = await fetch("/api/exceptions/count", {
           credentials: "same-origin",
@@ -34,22 +40,45 @@ export function ExceptionsBadge() {
         // Transient failure — keep whatever we had.
       }
     }
+    function onVisible() {
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastLoadedAt > REFRESH_MS
+      ) {
+        void load();
+      }
+    }
     void load();
     const t = setInterval(load, REFRESH_MS);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
-  if (!total) return null;
+  // Round-22 §4 — reserve the slot with a skeleton while the first count
+  // loads, instead of popping in and shoving the topbar around.
+  if (total === null) {
+    return (
+      <span
+        aria-hidden="true"
+        data-testid="exceptions-badge-loading"
+        className="h-8 w-10 shrink-0 animate-pulse rounded border border-surface-border bg-surface-muted"
+      />
+    );
+  }
+  if (total === 0) return null;
 
   return (
     <Link
       href="/admin/exceptions"
       data-testid="exceptions-badge"
       title={`${total} exception${total === 1 ? "" : "s"} need attention`}
-      className="flex h-8 items-center gap-1.5 rounded border border-amber-500/50 bg-amber-500/15 px-2.5 text-xs font-semibold text-amber-200 transition hover:border-amber-400"
+      // shrink-0 + whitespace-nowrap stop the badge wrapping to two lines
+      // in the cramped 390px topbar.
+      className="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded border border-amber-500/50 bg-amber-500/15 px-2.5 text-xs font-semibold text-amber-200 transition hover:border-amber-400"
     >
       <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-amber-400" />
       <span className="tabular-nums">{total}</span>

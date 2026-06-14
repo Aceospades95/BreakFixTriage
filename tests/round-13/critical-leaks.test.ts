@@ -58,7 +58,7 @@ describe("Round-13 §1C — /my-day TEAM QUEUES humanises role", () => {
   const src = read("src/app/(app)/page.tsx");
 
   it("imports formatRole from @/lib/format", () => {
-    expect(src).toMatch(/import \{ formatRole \} from "@\/lib\/format"/);
+    expect(src).toMatch(/import \{ formatRole[^}]*\} from "@\/lib\/format"/);
   });
 
   it("renders user.role through formatRole, not raw", () => {

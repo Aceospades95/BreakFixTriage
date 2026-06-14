@@ -631,23 +631,40 @@ function TicketTable({
         {tickets.map((t) => (
           <tr key={t.id} className="transition hover:bg-surface-muted/40">
             {withCheckbox && (
-              <td className="px-2 py-2">
-                <input
-                  type="checkbox"
-                  name="ticketIds"
-                  value={t.id}
+              <td className="p-0">
+                {/* Round-22 §4 — fat, label-wrapped tap target (≥44px) so
+                    field tablets can check a row without pixel-hunting. */}
+                <label
+                  className="flex h-11 w-full cursor-pointer items-center justify-center px-2"
                   aria-label={`Select ${t.incidentNumber}`}
-                  className="h-4 w-4 accent-accent"
-                />
+                >
+                  <input
+                    type="checkbox"
+                    name="ticketIds"
+                    value={t.id}
+                    className="h-4 w-4 accent-accent"
+                  />
+                </label>
               </td>
             )}
             <td className="px-3 py-2">
               <Link
                 href={`/tickets/${t.incidentNumber}`}
-                className="font-medium tracking-tight text-accent hover:underline"
+                className="-my-2 inline-block py-2 font-medium tracking-tight text-accent hover:underline"
               >
                 {t.incidentNumber}
               </Link>
+              {/* Round-22 §4 — a SYN- ticket is a temporary one opened on
+                  a route before its real incident is known; flag it so the
+                  raw SYN- id doesn't look like a normal INC. */}
+              {t.incidentNumber.startsWith("SYN-") && (
+                <span
+                  className="ml-1.5 rounded border border-violet-400/40 bg-violet-500/15 px-1 py-0.5 text-[9px] font-semibold uppercase text-violet-200"
+                  title="Temporary ticket opened on a route — link it to the real incident from Duplicates."
+                >
+                  temp
+                </span>
+              )}
             </td>
             <td className="px-3 py-2">
               <PriorityPill priority={t.priority} />

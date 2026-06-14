@@ -198,7 +198,13 @@ async function transitionInTx(
   // states are rejected with a clear operator-facing message. The
   // hardcoded ALLOWED_TRANSITIONS map remains as the first-run
   // safety net (StatusConfig empty → defaults).
-  const config = await readStatusConfig();
+  //
+  // Read through `tx`, never the global client: this function runs
+  // inside the caller's open transaction, and a global-client query
+  // here needs a second pool connection while the transaction holds
+  // its own — the pool-starvation pattern behind the June-2026
+  // same-route hang.
+  const config = await readStatusConfig(tx);
   if (!opts.force) {
     if (config.disabled.includes(to)) {
       throw new WorkflowError(

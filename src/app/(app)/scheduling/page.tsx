@@ -32,6 +32,10 @@ export default async function SchedulingPage({
   const canBuild = can(session.role, PERMISSIONS.ROUTES_BUILD);
   const isAdmin = session.role === "ADMIN";
 
+  // Round-22 §4 — flag routes still open after their date has passed.
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+
   const [
     activeRoutes,
     recentRoutes,
@@ -152,13 +156,22 @@ export default async function SchedulingPage({
                         {r.stops.length === 1 ? "" : "s"}
                         {isAdmin && r.optimizerName && (
                           <span className="text-slate-500">
-                            {" · optimized by "}
-                            {humaniseOptimizer(r.optimizerName)}
+                            {" · stops in suggested driving order"}
                           </span>
                         )}
                       </div>
                     </div>
-                    <RouteStatusPill status={r.status} />
+                    <div className="flex flex-col items-end gap-1">
+                      <RouteStatusPill status={r.status} />
+                      {r.date < todayStart && (
+                        <span
+                          className="rounded border border-red-500/50 bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-200"
+                          title="This route is still open but its date has passed — close it out or cancel it."
+                        >
+                          Overdue
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </Link>
               </li>
@@ -358,10 +371,3 @@ function EmptyBlock({ children }: { children: React.ReactNode }) {
   );
 }
 
-function humaniseOptimizer(name: string): string {
-  // Round-6 §2D — admin-only optimizer subline. Drop the key=value
-  // form ("optimizer=nearest-neighbor"); render English instead.
-  // Known kebab-case optimizer names land here; unknown values
-  // fall through with hyphens replaced by spaces.
-  return name.replace(/[-_]/g, " ").trim();
-}

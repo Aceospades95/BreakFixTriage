@@ -7,19 +7,17 @@ import {
   TicketState,
   type Role,
 } from "@prisma/client";
+import { ActionForm } from "@/components/action-form";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { PageHeader } from "@/components/page-header";
-import { ConfirmButton } from "@/components/confirm-button";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/auth/rbac";
-import { formatRole } from "@/lib/format";
+import { formatRole, humanise } from "@/lib/format";
 import { daysInState, slaHealth } from "@/lib/reports/sla";
 import { getSlaThresholds } from "@/lib/settings/settings";
-import { updateStopStatusAction } from "@/server/actions/scheduling";
-import { uploadAttachmentAction } from "@/server/actions/attachments";
 import { sweepQuotesAction } from "@/server/actions/quotes";
 
 export const dynamic = "force-dynamic";
@@ -186,13 +184,14 @@ export default async function HomePage() {
                     },
                   },
                 },
-                // Active device lines decide whether one-tap Complete
-                // is allowed here or the driver must use the stop's
-                // per-device check-off on the route page.
+                // Round-22 §1A — My Day summarizes only. Line states +
+                // attached proof drive the read-only badges; all
+                // mutation happens in the stop work panel.
                 stopDevices: {
                   where: { removedAt: null },
-                  select: { id: true },
+                  select: { id: true, lineState: true },
                 },
+                attachments: { select: { signerName: true, mimeType: true } },
               },
             },
           },
@@ -236,16 +235,14 @@ export default async function HomePage() {
     return slaHealth(t.state, days, thresholds) === "breached";
   });
 
+  const isTerminalStop = (s: { status: JobStatus }) =>
+    s.status === JobStatus.COMPLETED ||
+    s.status === JobStatus.PARTIAL ||
+    s.status === JobStatus.FAILED ||
+    s.status === JobStatus.CANCELLED;
   const totalStops = myRoutes.reduce((a, r) => a + r.stops.length, 0);
   const doneStops = myRoutes.reduce(
-    (a, r) =>
-      a +
-      r.stops.filter(
-        (s) =>
-          s.status === JobStatus.COMPLETED ||
-          s.status === JobStatus.FAILED ||
-          s.status === JobStatus.CANCELLED,
-      ).length,
+    (a, r) => a + r.stops.filter(isTerminalStop).length,
     0,
   );
 
@@ -305,12 +302,12 @@ export default async function HomePage() {
       )}
 
       <div className="space-y-8">
-        {/* ── My Routes (driver controls) ── */}
+        {/* ── My routes today (read-only summary; mutate in the panel) ── */}
         {canSeeScheduling && myRoutes.length > 0 && (
           <section>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                Today&apos;s routes{" "}
+                My routes today{" "}
                 <span className="font-medium tracking-tight text-xs text-slate-500">
                   {doneStops}/{totalStops} stops done
                 </span>
@@ -339,179 +336,99 @@ export default async function HomePage() {
                         )}
                       </div>
                       <div className="text-xs text-slate-400">
+                        {route.stops.filter(isTerminalStop).length}/
                         {route.stops.length} stop
-                        {route.stops.length === 1 ? "" : "s"}
+                        {route.stops.length === 1 ? "" : "s"} done
                       </div>
                     </div>
                     <Link
                       href={`/scheduling/routes/${route.id}`}
-                      className="text-xs text-slate-400 hover:text-white"
+                      className="text-xs text-accent hover:underline"
                     >
-                      Full details →
+                      Open route →
                     </Link>
                   </div>
 
-                  <ol className="space-y-3">
-                    {route.stops.map((stop) => (
-                      <li
-                        key={stop.id}
-                        className="rounded border border-surface-border bg-surface p-3"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 text-sm font-semibold">
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-surface-border font-medium tracking-tight text-xs">
-                                {stop.sequence}
-                              </span>
-                              <span>{stop.job.school.name}</span>
-                              <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase">
-                                {stop.job.type}
-                              </span>
-                            </div>
-                            {stop.job.school.address && (
-                              <div className="mt-1 text-xs text-slate-400">
-                                <a
-                                  href={buildMapsUrl(
-                                    stop.job.school.address,
-                                    stop.job.school.name,
-                                  )}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-accent hover:underline"
-                                >
-                                  {stop.job.school.address.line1},{" "}
-                                  {stop.job.school.address.city},{" "}
-                                  {stop.job.school.address.state}{" "}
-                                  {stop.job.school.address.postalCode} ↗
-                                </a>
-                              </div>
-                            )}
-                            <ul className="mt-2 space-y-1 text-xs">
-                              {stop.job.ticketLinks.map((tl) => (
-                                <li
-                                  key={tl.ticket.id}
-                                  className="flex items-center gap-2"
-                                >
-                                  <Link
-                                    href={`/tickets/${tl.ticket.incidentNumber}`}
-                                    className="font-medium tracking-tight text-accent hover:underline"
-                                  >
-                                    {tl.ticket.incidentNumber}
-                                  </Link>
-                                  <StatePill state={tl.ticket.state} />
-                                  <span className="truncate text-slate-400">
-                                    {tl.ticket.shortDescription}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <StopStatusPill status={stop.status} />
-                            {stop.status === JobStatus.FAILED &&
-                              stop.failureReason && (
-                                <span className="max-w-44 text-right text-[10px] text-red-300">
-                                  {stop.failureReason}
+                  <ol className="space-y-2">
+                    {route.stops.map((stop) => {
+                      const activeItems = stop.stopDevices.length;
+                      const hasSignature = stop.attachments.some(
+                        (a) => a.signerName,
+                      );
+                      const hasPhoto = stop.attachments.some(
+                        (a) => !a.signerName && a.mimeType.startsWith("image/"),
+                      );
+                      const proofLabel =
+                        stop.proofRule === "NONE"
+                          ? null
+                          : stop.proofRule === "PHOTO"
+                            ? { need: "Photo", ok: hasPhoto }
+                            : stop.proofRule === "SIGNATURE"
+                              ? { need: "Signature", ok: hasSignature }
+                              : {
+                                  need: "Photo + signature",
+                                  ok: hasPhoto && hasSignature,
+                                };
+                      return (
+                        <li
+                          key={stop.id}
+                          className="rounded border border-surface-border bg-surface p-3"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-surface-border font-medium tracking-tight text-xs">
+                                  {stop.sequence}
                                 </span>
-                              )}
-                          </div>
-                        </div>
-
-                        {canUpdateStop && (
-                          <>
-                            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                              <DriverButton
-                                stopId={stop.id}
-                                routeId={route.id}
-                                target={JobStatus.EN_ROUTE}
-                                label="Start"
-                                enabled={stop.status === JobStatus.SCHEDULED}
-                                tone="primary"
-                              />
-                              <DriverButton
-                                stopId={stop.id}
-                                routeId={route.id}
-                                target={JobStatus.ARRIVED}
-                                label="Arrived"
-                                enabled={stop.status === JobStatus.EN_ROUTE}
-                                tone="primary"
-                              />
-                              {stop.stopDevices.length > 0 ? (
-                                // Stops with device lines must be
-                                // completed through the per-device
-                                // check-off on the route page — a bare
-                                // Complete here would only bounce off
-                                // the server guard with an error the
-                                // driver can't act on from this card.
-                                <Link
-                                  href={`/scheduling/routes/${route.id}`}
-                                  className={`w-full rounded px-3 py-2 text-center text-sm font-semibold ${
-                                    stop.status === JobStatus.EN_ROUTE ||
-                                    stop.status === JobStatus.ARRIVED
-                                      ? "bg-accent hover:bg-accent-strong"
-                                      : "cursor-not-allowed border border-surface-border bg-surface text-slate-500"
-                                  }`}
-                                  title={`Check off the ${stop.stopDevices.length} device${stop.stopDevices.length === 1 ? "" : "s"} on this stop to complete it`}
-                                >
-                                  Complete…
-                                </Link>
-                              ) : (
-                                <DriverButton
-                                  stopId={stop.id}
-                                  routeId={route.id}
-                                  target={JobStatus.COMPLETED}
-                                  label="Complete"
-                                  enabled={
-                                    stop.status === JobStatus.EN_ROUTE ||
-                                    stop.status === JobStatus.ARRIVED
-                                  }
-                                  tone="primary"
-                                />
-                              )}
-                              <DriverButton
-                                stopId={stop.id}
-                                routeId={route.id}
-                                target={JobStatus.FAILED}
-                                label="Fail"
-                                enabled={
-                                  stop.status !== JobStatus.COMPLETED &&
-                                  stop.status !== JobStatus.FAILED &&
-                                  stop.status !== JobStatus.CANCELLED
-                                }
-                                tone="danger"
-                                confirmMessage="Mark this stop as failed? Its tickets go back to the reschedule queue. Open the route page instead if you want to record why."
-                              />
+                                <span className="truncate">
+                                  {stop.job.school.name}
+                                </span>
+                                <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px]">
+                                  {humanise(stop.job.type)}
+                                </span>
+                              </div>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                                <span>
+                                  {activeItems > 0
+                                    ? `${activeItems} item${activeItems === 1 ? "" : "s"} to ${stop.job.type === "DELIVERY" ? "drop off" : "pick up"}`
+                                    : `${stop.job.ticketLinks.length} ticket${stop.job.ticketLinks.length === 1 ? "" : "s"}`}
+                                </span>
+                                {proofLabel && (
+                                  <span
+                                    className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                                      proofLabel.ok
+                                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                                        : "border-slate-500/40 bg-slate-500/10 text-slate-300"
+                                    }`}
+                                    title={`Proof required: ${proofLabel.need}`}
+                                  >
+                                    {proofLabel.ok ? "✓ " : ""}
+                                    {proofLabel.need}
+                                  </span>
+                                )}
+                              </div>
+                              {stop.status === JobStatus.FAILED &&
+                                stop.failureReason && (
+                                  <div className="mt-1 text-[10px] text-red-300">
+                                    {stop.failureReason}
+                                  </div>
+                                )}
                             </div>
-                            <form
-                              action={uploadAttachmentAction}
-                              encType="multipart/form-data"
-                              className="mt-3 flex items-center gap-2 border-t border-surface-border pt-3"
-                            >
-                              <input type="hidden" name="kind" value="ROUTE_STOP" />
-                              <input type="hidden" name="routeStopId" value={stop.id} />
-                              <input type="hidden" name="returnTo" value="/" />
-                              <label className="min-w-0 flex-1">
-                                <span className="sr-only">Upload photo</span>
-                                <input
-                                  type="file"
-                                  name="file"
-                                  required
-                                  accept="image/*"
-                                  capture="environment"
-                                  className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-xs file:mr-2 file:rounded file:border-0 file:bg-accent file:px-2 file:py-0.5 file:text-[10px] file:font-semibold file:text-white"
-                                />
-                              </label>
-                              <button
-                                type="submit"
-                                className="rounded bg-accent px-3 py-1 text-xs font-semibold hover:bg-accent-strong"
-                              >
-                                Attach photo
-                              </button>
-                            </form>
-                          </>
-                        )}
-                      </li>
-                    ))}
+                            <div className="flex shrink-0 flex-col items-end gap-1.5">
+                              <StopStatusPill status={stop.status} />
+                              {!isTerminalStop(stop) && (
+                                <Link
+                                  href={`/scheduling/routes/${route.id}#stop-${stop.id}`}
+                                  className="rounded bg-accent px-2.5 py-1 text-[11px] font-semibold hover:bg-accent-strong"
+                                >
+                                  Open stop →
+                                </Link>
+                              )}
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ol>
                 </div>
               ))}
@@ -658,7 +575,7 @@ export default async function HomePage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">{r.assignee.name}</span>
                     <span className="font-medium tracking-tight text-xs text-slate-500">
-                      {r.stops.filter((s) => s.status === "COMPLETED").length}
+                      {r.stops.filter(isTerminalStop).length}
                       /{r.stops.length}
                     </span>
                   </div>
@@ -751,14 +668,14 @@ export default async function HomePage() {
                   <strong>{expiringQuotes}</strong> sent or approved quote
                   {expiringQuotes === 1 ? "" : "s"} past their hold window.
                 </span>
-                <form action={sweepQuotesAction}>
+                <ActionForm action={sweepQuotesAction}>
                   <button
                     type="submit"
                     className="rounded bg-amber-500/30 px-3 py-1 text-xs font-semibold hover:bg-amber-500/50"
                   >
                     Sweep now
                   </button>
-                </form>
+                </ActionForm>
               </div>
             )}
 
@@ -851,56 +768,6 @@ function Kpi({
   );
 }
 
-function DriverButton({
-  stopId,
-  routeId,
-  target,
-  label,
-  enabled,
-  tone,
-  confirmMessage,
-}: {
-  stopId: string;
-  routeId: string;
-  target: JobStatus;
-  label: string;
-  enabled: boolean;
-  tone: "primary" | "danger";
-  /** When set, a confirm() gate fires before the form submits. */
-  confirmMessage?: string;
-}) {
-  const enabledCls =
-    tone === "danger"
-      ? "border border-red-500/60 bg-red-500/20 text-red-100 hover:bg-red-500/30"
-      : "bg-accent hover:bg-accent-strong";
-  const cls = `w-full rounded px-3 py-2 text-sm font-semibold ${
-    enabled
-      ? enabledCls
-      : "cursor-not-allowed border border-surface-border bg-surface text-slate-500"
-  }`;
-  return (
-    <form action={updateStopStatusAction}>
-      <input type="hidden" name="stopId" value={stopId} />
-      <input type="hidden" name="status" value={target} />
-      <input type="hidden" name="routeId" value={routeId} />
-      <input type="hidden" name="returnTo" value="/" />
-      {confirmMessage ? (
-        <ConfirmButton
-          message={confirmMessage}
-          disabled={!enabled}
-          className={cls}
-        >
-          {label}
-        </ConfirmButton>
-      ) : (
-        <button type="submit" disabled={!enabled} className={cls}>
-          {label}
-        </button>
-      )}
-    </form>
-  );
-}
-
 function StopStatusPill({ status }: { status: JobStatus }) {
   const cls: Record<JobStatus, string> = {
     UNSCHEDULED: "bg-slate-500/20 text-slate-200 border-slate-500/40",
@@ -908,34 +775,17 @@ function StopStatusPill({ status }: { status: JobStatus }) {
     EN_ROUTE: "bg-amber-500/20 text-amber-200 border-amber-500/40",
     ARRIVED: "bg-amber-500/20 text-amber-200 border-amber-500/40",
     COMPLETED: "bg-emerald-500/20 text-emerald-200 border-emerald-500/40",
+    PARTIAL: "bg-orange-500/20 text-orange-200 border-orange-500/40",
     FAILED: "bg-red-500/20 text-red-200 border-red-500/40",
     CANCELLED: "bg-slate-500/20 text-slate-200 border-slate-500/40",
   };
+  // "On site" reads better than the ARRIVED enum to a field tech.
+  const label = status === JobStatus.ARRIVED ? "On site" : humanise(status);
   return (
     <span
-      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] uppercase tracking-wide ${cls[status]}`}
+      className={`rounded border px-2 py-0.5 font-medium tracking-tight text-[10px] tracking-wide ${cls[status]}`}
     >
-      {status}
+      {label}
     </span>
   );
-}
-
-function buildMapsUrl(
-  address: {
-    line1: string;
-    city: string;
-    state: string;
-    postalCode: string;
-    latitude: number | null;
-    longitude: number | null;
-  },
-  schoolName: string,
-): string {
-  const textQuery = `${schoolName}, ${address.line1}, ${address.city}, ${address.state} ${address.postalCode}`;
-  if (address.latitude != null && address.longitude != null) {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      `${address.latitude},${address.longitude}`,
-    )}`;
-  }
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(textQuery)}`;
 }

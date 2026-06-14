@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import "leaflet/dist/leaflet.css";
+import { getTileConfig } from "@/lib/routing/config";
 
 /**
  * Round-18 — interactive route map on Leaflet + OpenStreetMap.
@@ -45,10 +46,13 @@ export function LeafletMap({ stops }: { stops: MapStop[] }) {
         scrollWheelZoom: false, // don't hijack page scroll on mobile
       });
 
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      // Round-22 §3 — tiles are configurable (NEXT_PUBLIC_MAP_TILE_URL);
+      // OSM is the zero-config default, but production points this at a
+      // provider whose usage policy allows app traffic (see README).
+      const tiles = getTileConfig();
+      L.tileLayer(tiles.url, {
         maxZoom: 19,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        attribution: tiles.attribution,
       }).addTo(map);
 
       const latLngs: [number, number][] = stops.map((s) => [
@@ -56,8 +60,23 @@ export function LeafletMap({ stops }: { stops: MapStop[] }) {
         s.longitude,
       ]);
 
+      // Round-22 §3 — spiderfy co-located stops. Several stops at the
+      // same school share a lat/lng and used to stack into one pin;
+      // fan duplicates out on a small circle so every stop is clickable.
+      const seen = new Map<string, number>();
       for (const s of stops) {
-        L.marker([s.latitude, s.longitude], {
+        const key = `${s.latitude.toFixed(5)},${s.longitude.toFixed(5)}`;
+        const dupIndex = seen.get(key) ?? 0;
+        seen.set(key, dupIndex + 1);
+        let lat = s.latitude;
+        let lng = s.longitude;
+        if (dupIndex > 0) {
+          // ~12m offset ring; enough to separate pins at street zoom.
+          const angle = (dupIndex * 60 * Math.PI) / 180;
+          lat += 0.00011 * Math.cos(angle);
+          lng += 0.00011 * Math.sin(angle);
+        }
+        L.marker([lat, lng], {
           icon: L.divIcon({
             className: "",
             html: `<div style="width:24px;height:24px;border-radius:9999px;background:#15583e;border:2px solid #fff;color:#fff;font:700 11px/20px system-ui;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.4)">${s.sequence}</div>`,

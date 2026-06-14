@@ -60,7 +60,8 @@ model User {
   ticketEventsActed   TicketEvent[]       @relation("TicketEventActor")
   importBatches       ImportBatch[]
   resolvedDupes       DuplicateConflict[] @relation("DupeResolver")
-  auditLogs           AuditLog[]
+  auditLogs           AuditLog[]          @relation("AuditActor")
+  acknowledgedAudits  AuditLog[]          @relation("AuditAcknowledger")
   assignedTickets     Ticket[]            @relation("TicketAssignee")
   assignedRoutes      Route[]             @relation("RouteAssignee")
   quoteActivities     QuoteActivity[]
@@ -578,6 +579,7 @@ enum JobStatus {
   EN_ROUTE
   ARRIVED
   COMPLETED
+  PARTIAL
   FAILED
   CANCELLED
 }
@@ -674,6 +676,24 @@ model RouteStop {
   /// reschedules from the stop card instead of the audit log.
   failureReason String?
 
+  /// Round-22 §1C — free-text stop notes the technician records on
+  /// site. The "Other — see stop notes" fail reason references this
+  /// field, which previously did not exist.
+  notes String?
+
+  /// Round-22 §1D — proof the stop requires before completion. Set
+  /// per job type at build time (deliveries need a signature; pickups
+  /// a photo); enforced by the completion gate.
+  proofRule ProofRule @default(PHOTO_AND_SIGNATURE)
+
+  /// Round-22 §1D — when a stop is completed without satisfying its
+  /// proof rule, the technician must supply an override reason. It is
+  /// stamped here (flagged on the record) and written as a
+  /// high-visibility audit line.
+  proofOverrideReason   String?
+  proofOverrideByUserId String?
+  proofOverrideAt       DateTime?
+
   route       Route        @relation(fields: [routeId], references: [id], onDelete: Cascade)
   job         Job          @relation(fields: [jobId], references: [id])
   attachments Attachment[]
@@ -707,11 +727,22 @@ model RouteStop {
 model StopDevice {
   id                String            @id @default(cuid())
   stopId            String
-  deviceId          String
+  /// Nullable since Round-22 §1C: a stop line is now pre-populated
+  /// from each expected ticket at build time, and a pickup ticket
+  /// often has no device linked yet (the device is collected on the
+  /// visit). Such a line carries the ticket with deviceId null until
+  /// the technician records the physical device on site.
+  deviceId          String?
   /// Open ticket attached to the (device, stop). Set on creation.
   /// Null is valid only for transient orphans (resolve via
   /// /duplicates).
   ticketId          String?
+  /// Round-22 §1C — per-line verification state. See StopLineState.
+  /// Pre-populated lines start EXPECTED; the technician resolves each
+  /// on site. Ad-hoc on-site adds are born EXTRA_ADDED.
+  lineState         StopLineState     @default(EXPECTED)
+  /// Round-22 §1C — optional per-line note (e.g. why NOT_FOUND).
+  lineNote          String?
   /// Whether this device is being PICKED UP from the school or
   /// DELIVERED to it. Defaults to the parent Job.type when not
   /// supplied — usually the same intent — but can be overridden
@@ -741,7 +772,7 @@ model StopDevice {
   confirmedByUserId String?
 
   stop   RouteStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
-  device Device    @relation(fields: [deviceId], references: [id])
+  device Device?   @relation(fields: [deviceId], references: [id])
   ticket Ticket?   @relation(fields: [ticketId], references: [id])
 
   @@index([stopId])
@@ -749,6 +780,7 @@ model StopDevice {
   @@index([ticketId])
   @@index([removedAt])
   @@index([purpose])
+  @@index([lineState])
 }
 
 /// Round-13 — pickup vs delivery for an individual StopDevice line.
@@ -758,6 +790,35 @@ model StopDevice {
 enum StopDevicePurpose {
   PICKUP
   DELIVERY
+}
+
+/// Round-22 §1C — per-line verification state for a stop line item.
+/// A line is born EXPECTED (pre-populated from the job's tickets at
+/// build time). On site the technician resolves each one:
+///   VERIFIED      — handed over / collected as expected (success)
+///   NOT_FOUND     — the device wasn't there to pick up / deliver
+///   REFUSED       — the school declined to accept / release it
+///   EXTRA_ADDED   — discovered on site, not on the original manifest
+/// "Resolved" = anything other than EXPECTED. The completion gate
+/// requires every active line resolved; PARTIAL emerges when the
+/// resolutions are mixed (some VERIFIED, some NOT_FOUND/REFUSED).
+enum StopLineState {
+  EXPECTED
+  VERIFIED
+  NOT_FOUND
+  REFUSED
+  EXTRA_ADDED
+}
+
+/// Round-22 §1D — what proof a stop requires before it can be
+/// completed. Enforced by the completion gate (not just displayed).
+/// An explicit override with a reason is the only way past an unmet
+/// rule, and the override is flagged on the record + audited.
+enum ProofRule {
+  NONE
+  PHOTO
+  SIGNATURE
+  PHOTO_AND_SIGNATURE
 }
 
 /// Round-20 — why a pickup/delivery is running late. NY team's
@@ -858,15 +919,22 @@ model AuditLog {
   /// changes write `warn`; tenant-violation rejections write
   /// `critical`. Default keeps every prior write classified `info`.
   severity       String?  @default("info")
+  /// Round-22 §2 — a high-severity event can be acknowledged so it
+  /// leaves the active exceptions count + badge instead of squatting
+  /// there for a rolling 7 days. Null = still needs attention.
+  acknowledgedAt       DateTime?
+  acknowledgedByUserId String?
   createdAt      DateTime @default(now())
 
-  actor User? @relation(fields: [actorUserId], references: [id])
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id])
+  acknowledgedBy User? @relation("AuditAcknowledger", fields: [acknowledgedByUserId], references: [id])
 
   @@index([entityType, entityId])
   @@index([createdAt])
   @@index([transitionType])
   @@index([severity])
   @@index([requestId])
+  @@index([severity, acknowledgedAt])
 }
 
 enum NotificationStatus {

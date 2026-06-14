@@ -18,10 +18,22 @@ describe("validateStopStatusTransition", () => {
     ).toBe(true);
   });
 
-  it("permits skipping ARRIVED when completing from EN_ROUTE", () => {
+  it("requires ON_SITE (ARRIVED) before completing — no skipping from EN_ROUTE", () => {
     expect(
       validateStopStatusTransition(JobStatus.EN_ROUTE, JobStatus.COMPLETED).ok,
+    ).toBe(false);
+    expect(
+      validateStopStatusTransition(JobStatus.ARRIVED, JobStatus.COMPLETED).ok,
     ).toBe(true);
+  });
+
+  it("permits PARTIAL only from ARRIVED", () => {
+    expect(
+      validateStopStatusTransition(JobStatus.ARRIVED, JobStatus.PARTIAL).ok,
+    ).toBe(true);
+    expect(
+      validateStopStatusTransition(JobStatus.EN_ROUTE, JobStatus.PARTIAL).ok,
+    ).toBe(false);
   });
 
   it("refuses to start a stop that is not SCHEDULED", () => {
@@ -90,6 +102,7 @@ describe("validateStopStatusTransition", () => {
         JobStatus.EN_ROUTE,
         JobStatus.ARRIVED,
         JobStatus.COMPLETED,
+        JobStatus.PARTIAL,
         JobStatus.FAILED,
       ]),
     );

@@ -16,7 +16,13 @@ import {
   revokePortalTokenAction,
 } from "@/server/actions/portal";
 import { CopyButton } from "@/components/copy-button";
+import { LocalTime } from "@/components/local-time";
+import { humanise } from "@/lib/format";
 import { appBaseUrl } from "@/lib/email/variables";
+import {
+  buildSiteSummary,
+  type SummaryPeriod,
+} from "@/lib/reports/site-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -25,9 +31,18 @@ export default async function SchoolProfilePage({
   searchParams,
 }: {
   params: { schoolId: string };
-  searchParams?: { error?: string; ok?: string; newToken?: string };
+  searchParams?: {
+    error?: string;
+    ok?: string;
+    newToken?: string;
+    period?: string;
+  };
 }) {
   await requireRole(PERMISSIONS.DISTRICTS_MANAGE);
+
+  const summaryPeriod: SummaryPeriod =
+    searchParams?.period === "month" ? "month" : "week";
+  const summary = await buildSiteSummary(params.schoolId, summaryPeriod);
 
   const school = await prisma.school.findUnique({
     where: { id: params.schoolId },
@@ -80,6 +95,88 @@ export default async function SchoolProfilePage({
           {searchParams.ok}
         </div>
       )}
+      {summary && (
+        <section className="mb-6 rounded-lg border border-surface-border bg-surface-muted/40 p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold tracking-wide text-slate-300">
+              Site summary ·{" "}
+              <span className="font-normal text-slate-400">
+                {summary.period === "week" ? "last 7 days" : "last 30 days"}
+              </span>
+            </h2>
+            <div className="flex items-center gap-2 text-xs">
+              <Link
+                href={`/admin/schools/${params.schoolId}?period=week`}
+                className={`rounded border px-2 py-0.5 ${summaryPeriod === "week" ? "border-accent text-accent" : "border-surface-border text-slate-400 hover:border-accent"}`}
+              >
+                Week
+              </Link>
+              <Link
+                href={`/admin/schools/${params.schoolId}?period=month`}
+                className={`rounded border px-2 py-0.5 ${summaryPeriod === "month" ? "border-accent text-accent" : "border-surface-border text-slate-400 hover:border-accent"}`}
+              >
+                Month
+              </Link>
+              <a
+                href={`/api/exports/site-summary?schoolId=${params.schoolId}&period=${summaryPeriod}`}
+                className="rounded border border-surface-border px-2 py-0.5 text-slate-300 hover:border-accent hover:text-white"
+              >
+                Export CSV
+              </a>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <SummaryStat label="Devices completed" value={summary.devicesCompleted} />
+            <SummaryStat label="Devices pending" value={summary.devicesPending} />
+            <SummaryStat label="Routes run" value={summary.routesRun} />
+            <SummaryStat
+              label="Failed stops"
+              value={summary.failedStops.length}
+              emphasize={summary.failedStops.length > 0}
+            />
+            <SummaryStat
+              label="Partial stops"
+              value={summary.partialStops.length}
+              emphasize={summary.partialStops.length > 0}
+            />
+            <SummaryStat
+              label={`Aging > 30d`}
+              value={summary.agingOpen}
+              emphasize={summary.agingOpen > 0}
+            />
+          </div>
+          {summary.openByState.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+              {summary.openByState.map((g) => (
+                <span
+                  key={g.state}
+                  className="rounded border border-surface-border bg-surface px-1.5 py-0.5 text-slate-300"
+                >
+                  {humanise(g.state)}: {g.count}
+                </span>
+              ))}
+            </div>
+          )}
+          {(summary.failedStops.length > 0 ||
+            summary.partialStops.length > 0) && (
+            <ul className="mt-3 space-y-1 text-xs text-amber-200/90">
+              {[...summary.failedStops, ...summary.partialStops]
+                .slice(0, 6)
+                .map((s, i) => (
+                  <li key={i}>
+                    <LocalTime date={s.date} mode="date" /> — {s.reason}
+                  </li>
+                ))}
+            </ul>
+          )}
+          <p className="mt-3 text-[10px] text-slate-500">
+            Scheduled email sends use this same summary; sending is gated on
+            outbound email being configured (see
+            scripts/send-scheduled-reports.ts).
+          </p>
+        </section>
+      )}
+
       {searchParams?.newToken && (
         <div
           data-testid="portal-token-once"
@@ -517,5 +614,30 @@ export default async function SchoolProfilePage({
         </form>
       </section>
     </>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  emphasize = false,
+}: {
+  label: string;
+  value: number;
+  emphasize?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded border p-2 ${
+        emphasize
+          ? "border-amber-500/40 bg-amber-500/10"
+          : "border-surface-border bg-surface"
+      }`}
+    >
+      <div className="text-[10px] uppercase tracking-wide text-slate-400">
+        {label}
+      </div>
+      <div className="mt-0.5 text-xl font-semibold tabular-nums">{value}</div>
+    </div>
   );
 }

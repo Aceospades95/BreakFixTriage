@@ -1,16 +1,21 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
+import { ActionForm } from "@/components/action-form";
+import { LocalTime } from "@/components/local-time";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
+import { formatAuditAction } from "@/lib/audit/format";
 import {
   getExceptionCounts,
+  FIELD_OUTCOME_WHERE,
   STUCK_IMPORT_THRESHOLD_MS,
   TOKEN_EXPIRY_WINDOW_MS,
   SEVERITY_WINDOW_MS,
 } from "@/lib/exceptions/counts";
 import { requeueDeadLetteredEmailJobAction } from "@/server/actions/email-admin";
+import { acknowledgeExceptionAction } from "@/server/actions/exceptions";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +51,7 @@ export default async function ExceptionsPage({
     stuckImports,
     expiringTokens,
     severeAudits,
+    fieldOutcomes,
   ] = await Promise.all([
     getExceptionCounts(),
     prisma.emailLog.findMany({
@@ -102,9 +108,20 @@ export default async function ExceptionsPage({
       where: {
         severity: { in: ["warn", "critical"] },
         createdAt: { gte: new Date(now - SEVERITY_WINDOW_MS) },
+        acknowledgedAt: null,
+        entityType: { not: "RouteStop" },
       },
       orderBy: { createdAt: "desc" },
       take: 8,
+    }),
+    // Round-22 §2 — field outcomes: failed / partial stops + proof
+    // overrides, with the actor and the routeId (stored on `after`) for
+    // a deep link into the stop.
+    prisma.auditLog.findMany({
+      where: { ...FIELD_OUTCOME_WHERE },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      include: { actor: { select: { name: true } } },
     }),
   ]);
 
@@ -151,7 +168,7 @@ export default async function ExceptionsPage({
           {failedEmails.map((e) => (
             <li key={e.id} className="flex flex-wrap gap-x-2 text-xs">
               <span className="text-slate-400">
-                {e.createdAt.toISOString().slice(0, 16).replace("T", " ")}
+                <LocalTime date={e.createdAt} mode="datetime" />
               </span>
               {e.ticket && (
                 <Link
@@ -203,7 +220,7 @@ export default async function ExceptionsPage({
           {failedMerges.map((a) => (
             <li key={a.id} className="flex flex-wrap gap-x-2 text-xs">
               <span className="text-slate-400">
-                {a.createdAt.toISOString().slice(0, 16).replace("T", " ")}
+                <LocalTime date={a.createdAt} mode="datetime" />
               </span>
               <code className="rounded bg-surface-muted px-1 text-[10px]">
                 {a.action}
@@ -224,7 +241,7 @@ export default async function ExceptionsPage({
           {orphanStopDevices.map((sd) => (
             <li key={sd.id} className="flex flex-wrap gap-x-2 text-xs">
               <span className="font-medium tracking-tight text-slate-200">
-                {sd.device.serialNumber}
+                {sd.device?.serialNumber ?? "device pending"}
               </span>
               <Link
                 href={`/scheduling/routes/${sd.stop.routeId}`}
@@ -253,7 +270,7 @@ export default async function ExceptionsPage({
               </Link>
               <span className="text-slate-300">{humanise(b.status)}</span>
               <span className="text-slate-400">
-                since {b.createdAt.toISOString().slice(0, 16).replace("T", " ")}
+                since <LocalTime date={b.createdAt} mode="datetime" />
               </span>
             </li>
           ))}
@@ -290,15 +307,62 @@ export default async function ExceptionsPage({
         </Section>
 
         <Section
+          title="Field outcomes — failed / partial stops"
+          count={counts.fieldOutcomes}
+          href="/scheduling"
+          linkLabel="Scheduling"
+        >
+          {fieldOutcomes.map((a) => {
+            const after = (a.after ?? {}) as {
+              status?: string;
+              routeId?: string;
+              proofOverride?: string | null;
+            };
+            const routeId = after.routeId;
+            const label =
+              after.status === "FAILED"
+                ? "Stop failed"
+                : after.status === "PARTIAL"
+                  ? "Stop partially completed"
+                  : after.proofOverride
+                    ? "Completed without required proof"
+                    : formatAuditAction(a.action).label;
+            return (
+              <li key={a.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <span className="rounded bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-200">
+                  {label}
+                </span>
+                <span className="text-slate-400">
+                  <LocalTime date={a.createdAt} mode="datetime" />
+                </span>
+                {a.actor && <span className="text-slate-400">{a.actor.name}</span>}
+                {a.reason && (
+                  <span className="truncate text-slate-300">{a.reason}</span>
+                )}
+                {routeId && (
+                  <Link
+                    href={`/scheduling/routes/${routeId}#stop-${a.entityId}`}
+                    className="text-accent hover:underline"
+                  >
+                    view stop
+                  </Link>
+                )}
+                <AcknowledgeButton auditId={a.id} />
+              </li>
+            );
+          })}
+        </Section>
+
+        <Section
           title="High-severity audit events (7 days)"
           count={counts.severeAudits}
           href="/admin/audit"
           linkLabel="Audit log"
         >
           {severeAudits.map((a) => (
-            <li key={a.id} className="flex flex-wrap gap-x-2 text-xs">
+            <li key={a.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
               <span className="text-slate-400">
-                {a.createdAt.toISOString().slice(0, 16).replace("T", " ")}
+                <LocalTime date={a.createdAt} mode="datetime" />
               </span>
               <span
                 className={
@@ -309,14 +373,30 @@ export default async function ExceptionsPage({
               >
                 {humanise(a.severity ?? "warn")}
               </span>
-              <code className="rounded bg-surface-muted px-1 text-[10px]">
-                {a.action}
-              </code>
+              <span className="text-slate-300">
+                {formatAuditAction(a.action).label}
+              </span>
+              <AcknowledgeButton auditId={a.id} />
             </li>
           ))}
         </Section>
       </div>
     </>
+  );
+}
+
+function AcknowledgeButton({ auditId }: { auditId: string }) {
+  return (
+    <ActionForm action={acknowledgeExceptionAction} className="ml-auto">
+      <input type="hidden" name="auditId" value={auditId} />
+      <button
+        type="submit"
+        className="rounded border border-surface-border px-2 py-0.5 text-[10px] font-semibold text-slate-300 hover:border-accent hover:text-white"
+        title="Acknowledge — clears this from the active exceptions list"
+      >
+        Acknowledge
+      </button>
+    </ActionForm>
   );
 }
 
@@ -368,7 +448,7 @@ function Section({
       </div>
       {extra && <p className="mb-2 text-xs text-amber-200/80">{extra}</p>}
       {clear ? (
-        <p className="text-xs text-slate-500">Clear.</p>
+        <p className="text-xs text-slate-500">All clear — nothing to action here.</p>
       ) : (
         <ul className="space-y-1.5">{children}</ul>
       )}

@@ -4,6 +4,7 @@ import {
   deleteAttachmentAction,
   uploadAttachmentAction,
 } from "@/server/actions/attachments";
+import { ActionForm } from "@/components/action-form";
 import { ConfirmButton } from "@/components/confirm-button";
 import { LocalTime } from "@/components/local-time";
 
@@ -76,7 +77,7 @@ export function AttachmentList({
                 )}
               </div>
               {canWrite && (
-                <form action={deleteAttachmentAction}>
+                <ActionForm action={deleteAttachmentAction}>
                   <input
                     type="hidden"
                     name="attachmentId"
@@ -89,14 +90,14 @@ export function AttachmentList({
                   >
                     Delete
                   </ConfirmButton>
-                </form>
+                </ActionForm>
               )}
             </li>
           ))}
         </ul>
       )}
       {canWrite && (
-        <form
+        <ActionForm
           action={uploadAttachmentAction}
           encType="multipart/form-data"
           className="mt-3 flex flex-wrap items-center gap-2 border-t border-surface-border pt-3"
@@ -117,7 +118,7 @@ export function AttachmentList({
           >
             Upload
           </button>
-        </form>
+        </ActionForm>
       )}
     </div>
   );

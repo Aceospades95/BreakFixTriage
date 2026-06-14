@@ -6,6 +6,7 @@ import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
 import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList } from "@/components/attachment-list";
+import { LocalTime } from "@/components/local-time";
 import { PhotoCapture } from "@/components/photo-capture";
 import { ForceChangeForm } from "@/components/force-change-form";
 import { prisma } from "@/lib/db/prisma";
@@ -689,7 +690,7 @@ export default async function TicketDetailPage({
                       <span className="text-slate-400">→</span>
                       <StatePill state={ev.toState} />
                       <span className="ml-auto text-[10px] text-slate-500">
-                        {ev.createdAt.toISOString().replace("T", " ").slice(0, 16)}
+                        <LocalTime date={ev.createdAt} mode="datetime" />
                       </span>
                     </div>
                     {ev.reason && (

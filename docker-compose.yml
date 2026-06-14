@@ -35,6 +35,9 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # Pool sizing + statement/lock/idle-transaction timeouts are
+      # injected by the app at startup when absent from this URL —
+      # see .env.example for the defaults and how to override them.
       DATABASE_URL: postgresql://${POSTGRES_USER:-breakfix}:${POSTGRES_PASSWORD:-breakfix}@postgres:5432/${POSTGRES_DB:-breakfix}?schema=public
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?set NEXTAUTH_SECRET in .env}

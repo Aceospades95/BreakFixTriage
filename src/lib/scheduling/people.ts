@@ -195,6 +195,40 @@ function persistedToBlock(s: StaffSchedule): ScheduleBlock {
 }
 
 /**
+ * Round-22 §3.1 — merged persisted + derived blocks across a date
+ * RANGE `[from, to)`, for the week/month views on /scheduling/people.
+ * One query per source (not one per day) so a month view stays cheap.
+ */
+export async function getPeopleScheduleForRange(
+  from: Date,
+  to: Date,
+  userIds: string[],
+  fallback: { dayStartMinute: number; dayEndMinute: number },
+  db: PrismaClient = defaultPrisma,
+): Promise<ScheduleBlock[]> {
+  if (userIds.length === 0) return [];
+  const [persisted, routes] = await Promise.all([
+    db.staffSchedule.findMany({
+      where: { userId: { in: userIds }, date: { gte: from, lt: to } },
+      orderBy: [{ date: "asc" }, { startMinute: "asc" }],
+    }),
+    db.route.findMany({
+      where: { assigneeUserId: { in: userIds }, date: { gte: from, lt: to } },
+      select: { id: true, assigneeUserId: true, date: true },
+    }),
+  ]);
+  return [
+    ...persisted.map(persistedToBlock),
+    ...routes.map((r) => routeToBlock(r, fallback)),
+  ];
+}
+
+/** Local YYYY-MM-DD key for grouping blocks by calendar day. */
+export function dayKey(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+/**
  * Driver availability: returns the windows on a given date when
  * the driver has NO scheduled block AND no derived ON_ROUTE block.
  * Output is sorted ascending. Used by `/scheduling/build-route` to

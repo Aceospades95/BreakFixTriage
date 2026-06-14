@@ -101,6 +101,136 @@ export async function createJobAction(formData: FormData) {
 }
 
 // ---------------------------------------------------------------------------
+// previewRouteAction (Round-22 §3.3) — optimize WITHOUT saving
+// ---------------------------------------------------------------------------
+
+export interface RoutePreview {
+  ok: boolean;
+  error?: string;
+  stops: {
+    id: string;
+    sequence: number;
+    label: string;
+    sublabel: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  }[];
+  /** True when the optimizer reordered the stops vs the input order. */
+  changed: boolean;
+  /** Plain-language note of what optimization did. */
+  summary: string;
+  roadRoute: {
+    legs: { distanceKm: number; durationMin: number }[];
+    totalKm: number;
+    totalMin: number;
+  } | null;
+}
+
+/**
+ * Round-22 §3.3 — compute the optimized stop order + map data + estimated
+ * duration for a candidate route WITHOUT persisting anything. Drives the
+ * route-builder preview step that sits between "optimize" and "save".
+ */
+export async function previewRouteAction(
+  formData: FormData,
+): Promise<RoutePreview> {
+  await requireRole(PERMISSIONS.ROUTES_BUILD);
+  const empty: RoutePreview = {
+    ok: false,
+    stops: [],
+    changed: false,
+    summary: "",
+    roadRoute: null,
+  };
+
+  const jobIds = formData
+    .getAll("jobIds")
+    .map((v) => v.toString())
+    .filter(Boolean);
+  if (jobIds.length === 0) {
+    return { ...empty, error: "Pick at least one stop to preview." };
+  }
+
+  const { getOptimizer } = await import("@/lib/routing/optimizer");
+  const { getRoadRoute } = await import("@/lib/routing/road");
+
+  const jobs = await prisma.job.findMany({
+    where: { id: { in: jobIds } },
+    select: {
+      id: true,
+      school: {
+        select: {
+          name: true,
+          code: true,
+          address: { select: { latitude: true, longitude: true } },
+        },
+      },
+    },
+  });
+  // Preserve the operator's input order for the "what changed" diff.
+  const byId = new Map(jobs.map((j) => [j.id, j]));
+  const inputOrder = jobIds.filter((id) => byId.has(id));
+
+  const withCoords = inputOrder
+    .map((id) => byId.get(id)!)
+    .filter(
+      (j) =>
+        j.school.address?.latitude != null &&
+        j.school.address?.longitude != null,
+    );
+
+  let orderedIds = inputOrder;
+  let changed = false;
+  if (withCoords.length === inputOrder.length && inputOrder.length > 1) {
+    const optimizer = getOptimizer();
+    const result = await optimizer.optimize({
+      origin: null,
+      stops: inputOrder.map((id) => {
+        const j = byId.get(id)!;
+        return {
+          id,
+          latitude: j.school.address!.latitude!,
+          longitude: j.school.address!.longitude!,
+        };
+      }),
+    });
+    orderedIds = result.orderedStopIds;
+    changed = orderedIds.join(",") !== inputOrder.join(",");
+  }
+
+  const stops = orderedIds.map((id, idx) => {
+    const j = byId.get(id)!;
+    return {
+      id,
+      sequence: idx + 1,
+      label: j.school.name,
+      sublabel: j.school.code ?? null,
+      latitude: j.school.address?.latitude ?? null,
+      longitude: j.school.address?.longitude ?? null,
+    };
+  });
+
+  const coords = stops
+    .filter((s) => s.latitude != null && s.longitude != null)
+    .map((s) => ({ latitude: s.latitude!, longitude: s.longitude! }));
+  const road = await getRoadRoute(coords);
+  const roadRoute = road
+    ? { legs: road.legs, totalKm: road.totalKm, totalMin: road.totalMin }
+    : null;
+
+  const summary =
+    inputOrder.length <= 1
+      ? "Single stop — nothing to optimize."
+      : withCoords.length < inputOrder.length
+        ? "Some stops have no map coordinates, so the order is left as you picked it. Add lat/lng to those schools for an optimized sequence."
+        : changed
+          ? "Optimizer reordered the stops into a shorter driving sequence (shown below)."
+          : "Your stop order is already the optimized sequence — no change.";
+
+  return { ok: true, stops, changed, summary, roadRoute, error: undefined };
+}
+
+// ---------------------------------------------------------------------------
 // buildRouteAction
 // ---------------------------------------------------------------------------
 

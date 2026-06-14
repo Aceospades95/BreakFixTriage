@@ -5,14 +5,12 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { formatRole } from "@/lib/format";
+import { RouteBuilderForm } from "@/components/route-builder-form";
 import {
   groupReadyTicketsBySchool,
   type ReadyTicketGroup,
 } from "@/lib/scheduling/ready-groups";
-import {
-  buildRouteAction,
-  createJobAction,
-} from "@/server/actions/scheduling";
+import { createJobAction } from "@/server/actions/scheduling";
 
 export const dynamic = "force-dynamic";
 
@@ -155,120 +153,27 @@ export default async function NewRoutePage({
           )}
         </div>
       ) : (
-        <form action={buildRouteAction} className="space-y-6">
-          <div className="grid gap-4 rounded-lg border border-surface-border bg-surface-muted/60 p-4 md:grid-cols-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                Date
-              </span>
-              <input
-                type="date"
-                name="date"
-                defaultValue={isoDate}
-                required
-                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                Assigned to
-              </span>
-              <select
-                name="assigneeUserId"
-                required
-                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
-              >
-                <option value="">Choose a driver…</option>
-                {driverCandidates.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} ({formatRole(u.role)})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                Vehicle (optional)
-              </span>
-              <input
-                type="text"
-                name="vehicleRef"
-                placeholder="e.g. VAN-02"
-                className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
-              />
-            </label>
-          </div>
-
-          <div className="rounded-lg border border-surface-border bg-surface-muted/60">
-            <div className="flex items-center justify-between border-b border-surface-border px-4 py-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                Stops on this route
-              </h2>
-              <span className="text-xs text-slate-400">
-                {unscheduledJobs.length} staged
-              </span>
-            </div>
-            <ul className="divide-y divide-surface-border">
-              {unscheduledJobs.map((j) => {
-                const hasCoords =
-                  j.school.address?.latitude != null &&
-                  j.school.address?.longitude != null;
-                return (
-                  <li key={j.id} className="flex items-start gap-3 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      name="jobIds"
-                      value={j.id}
-                      defaultChecked
-                      aria-label={`Include ${j.school.name}`}
-                      className="mt-1 h-4 w-4 accent-accent"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <span className="rounded bg-surface-border px-1.5 py-0.5 font-medium tracking-tight text-[10px] uppercase">
-                          {j.type}
-                        </span>
-                        <span>{j.school.name}</span>
-                        {j.school.code && (
-                          <span className="font-medium tracking-tight text-xs text-slate-500">
-                            {j.school.code}
-                          </span>
-                        )}
-                        {!hasCoords && (
-                          <span
-                            title="School has no coordinates — this job will be appended in insertion order."
-                            className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-200"
-                          >
-                            no coords
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-0.5 text-xs text-slate-400">
-                        {j.ticketLinks.length} ticket
-                        {j.ticketLinks.length === 1 ? "" : "s"}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              type="submit"
-              className="rounded bg-accent px-4 py-2 text-sm font-semibold hover:bg-accent-strong"
-            >
-              Optimize &amp; save route
-            </button>
-            <Link
-              href="/scheduling"
-              className="rounded border border-surface-border px-4 py-2 text-sm text-slate-300 hover:border-accent"
-            >
-              Cancel
-            </Link>
-          </div>
-        </form>
+        <RouteBuilderForm
+          isoDate={isoDate}
+          drivers={driverCandidates.map((u) => ({
+            id: u.id,
+            name: u.name,
+            role: u.role,
+          }))}
+          roleLabel={Object.fromEntries(
+            driverCandidates.map((u) => [u.id, formatRole(u.role)]),
+          )}
+          jobs={unscheduledJobs.map((j) => ({
+            id: j.id,
+            type: j.type,
+            schoolName: j.school.name,
+            schoolCode: j.school.code ?? null,
+            ticketCount: j.ticketLinks.length,
+            hasCoords:
+              j.school.address?.latitude != null &&
+              j.school.address?.longitude != null,
+          }))}
+        />
       )}
 
       {/* Round-17 — ready tickets are schedulable right here; each

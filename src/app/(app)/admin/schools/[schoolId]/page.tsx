@@ -170,9 +170,11 @@ export default async function SchoolProfilePage({
             </ul>
           )}
           <p className="mt-3 text-[10px] text-slate-500">
-            Scheduled email sends use this same summary; sending is gated on
-            outbound email being configured (see
-            scripts/send-scheduled-reports.ts).
+            This same summary can be emailed to the school&apos;s contacts on a
+            schedule — enable a <code>report_site</code> rule in Admin → Email
+            rules and run <code>npm run reports:site:weekly</code> (or monthly).
+            Sending still requires outbound email to be configured; the CSV
+            export here works regardless.
           </p>
         </section>
       )}

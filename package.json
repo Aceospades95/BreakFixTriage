@@ -35,7 +35,9 @@
     "email:seed-templates": "tsx prisma/seed-email-templates.ts",
     "reports:daily": "tsx scripts/send-scheduled-reports.ts --period=daily",
     "reports:weekly": "tsx scripts/send-scheduled-reports.ts --period=weekly",
-    "reports:monthly": "tsx scripts/send-scheduled-reports.ts --period=monthly"
+    "reports:monthly": "tsx scripts/send-scheduled-reports.ts --period=monthly",
+    "reports:site:weekly": "tsx scripts/send-site-summaries.ts --period=week",
+    "reports:site:monthly": "tsx scripts/send-site-summaries.ts --period=month"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -159,6 +159,33 @@ export async function buildSiteSummary(
   };
 }
 
+/**
+ * Round-22 §4 — the variables for the `report_site` email template
+ * (mirrors the report_operations `{ report: { periodLabel, rangeLabel,
+ * lines } }` shape). `lines` is the same flattened metric block as the
+ * CSV export, rendered as text for the email body.
+ */
+export function siteSummaryReportVariables(s: SiteSummary): {
+  report: {
+    school: string;
+    periodLabel: string;
+    rangeLabel: string;
+    lines: string;
+  };
+} {
+  const lines = siteSummaryToRows(s)
+    .map((r) => `${r.metric}: ${r.value}`)
+    .join("\n");
+  return {
+    report: {
+      school: `${s.schoolName}${s.schoolCode ? ` (${s.schoolCode})` : ""}`,
+      periodLabel: s.period === "week" ? "Weekly" : "Monthly",
+      rangeLabel: `${s.from.toISOString().slice(0, 10)} – ${s.to.toISOString().slice(0, 10)}`,
+      lines,
+    },
+  };
+}
+
 /** Flatten a summary into labeled metric rows for CSV export. */
 export function siteSummaryToRows(
   s: SiteSummary,

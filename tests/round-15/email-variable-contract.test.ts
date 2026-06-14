@@ -69,6 +69,8 @@ const NON_TICKET_TEMPLATES = new Set([
   "daily_digest",
   "report_operations",
   "report_finance",
+  // Round-22 §4 — script-supplied payload (siteSummaryReportVariables).
+  "report_site",
 ]);
 
 describe("Round-15 — email variable contract", () => {

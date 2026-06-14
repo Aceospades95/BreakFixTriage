@@ -484,6 +484,24 @@ const TEMPLATE_SEEDS: TemplateSeed[] = [
       },
     },
   },
+  {
+    // Round-22 §4 — per-site weekly/monthly status summary (external POC).
+    key: "report_site",
+    subject:
+      "{{report.school}} — {{report.periodLabel}} status ({{report.rangeLabel}})",
+    bodyHtml:
+      "<p>Status summary for <strong>{{report.school}}</strong> — {{report.periodLabel}} ({{report.rangeLabel}}).</p>" +
+      "<pre style=\"font-family:monospace;white-space:pre-wrap\">{{report.lines}}</pre>",
+    bodyText:
+      "Status summary for {{report.school}} — {{report.periodLabel}} ({{report.rangeLabel}}).\n\n{{report.lines}}",
+    variables: {
+      type: "object",
+      required: ["report"],
+      properties: {
+        report: { type: "object" },
+      },
+    },
+  },
 ];
 
 /**

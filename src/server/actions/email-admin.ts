@@ -125,7 +125,9 @@ export async function seedExampleRuleAction(): Promise<void> {
       templateId: template.id,
       enabled: true,
       recipients: {
-        to: [{ kind: "school_spoc" }, { kind: "ticket_reporter" }],
+        // Round-22 — "spoc" is the valid kind; the old "school_spoc"
+        // failed isRecipientSet() and silently skipped the send.
+        to: [{ kind: "spoc" }, { kind: "ticket_reporter" }],
         cc: [{ kind: "wynndalco_team" }],
         bcc: [],
       } as unknown as Prisma.InputJsonValue,

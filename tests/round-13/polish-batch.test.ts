@@ -88,19 +88,20 @@ describe("Round-13 §3E — admin kebab hit area expanded", () => {
   });
 });
 
-describe("Round-13 §3F — Seed example button disabled when rule exists", () => {
+describe("Round-13 §3F / Round-22 — Seed example button only in the empty state", () => {
   const src = read("src/app/(app)/admin/email-rules/page.tsx");
 
-  it("disabled prop reads rules.length > 0 || !canManage", () => {
-    // Round-13 hotfix opened /admin/email-rules to OPS_MANAGER
-    // for read-only browsing. The seed button is now disabled
-    // either because the seed already ran OR because the viewer
-    // lacks EMAIL_RULES_MANAGE.
-    expect(src).toMatch(/disabled=\{rules\.length > 0 \|\| !canManage\}/);
+  it("seed button renders only when there are no rules", () => {
+    // Round-22 turned the page into a real editor: the seed button
+    // moved into the empty-state block (rules.length === 0), so it
+    // is structurally absent once any rule exists — the old
+    // duplicate-seed guard is no longer needed.
+    expect(src).toMatch(/rules\.length === 0 \?/);
+    expect(src).toContain("seedExampleRuleAction");
   });
 
-  it("title attribute explains the disabled state", () => {
-    expect(src).toMatch(/Already seeded/);
+  it("seed button stays disabled for non-managers", () => {
+    expect(src).toMatch(/disabled=\{!canManage\}/);
   });
 });
 

@@ -69,6 +69,41 @@ export async function updateSettingsAction(formData: FormData) {
     }
   }
 
+  // Round-22 — email distribution lists. Each textarea is a
+  // newline/comma-separated address list persisted as a JSON array.
+  const listFields: Array<{ field: string; key: string; label: string }> = [
+    { field: "teamEmails", key: SETTINGS_KEYS.WYNNDALCO_TEAM_EMAILS, label: "team" },
+    {
+      field: "districtLeadershipEmails",
+      key: SETTINGS_KEYS.DISTRICT_LEADERSHIP_EMAILS,
+      label: "district leadership",
+    },
+    {
+      field: "internalLeadershipEmails",
+      key: SETTINGS_KEYS.INTERNAL_LEADERSHIP_EMAILS,
+      label: "internal leadership",
+    },
+    {
+      field: "primeLeadershipEmails",
+      key: SETTINGS_KEYS.PRIME_LEADERSHIP_EMAILS,
+      label: "prime leadership",
+    },
+  ];
+  for (const { field, key, label } of listFields) {
+    const raw = formData.get(field)?.toString();
+    if (raw === undefined) continue;
+    const emails = raw
+      .split(/[,\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const invalid = emails.filter((e) => !e.includes("@"));
+    if (invalid.length > 0) {
+      errors.push(`Invalid ${label} emails: ${invalid.join(", ")}`);
+    } else {
+      await setSetting({ key, value: emails, actorUserId: session.userId });
+    }
+  }
+
   // SLA thresholds come in as named fields `sla_<state>`.
   const stateOverrides: Record<string, number | null> = {};
   for (const state of Object.values(TicketState)) {

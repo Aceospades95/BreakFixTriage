@@ -82,6 +82,7 @@ const FAMILY_BY_EVENT: Record<EmailEvent, RecipientContext["family"]> = {
   // and delays; the scheduled reports go to internal lists.
   pickup_scheduled: "delivery",
   stop_delayed: "delivery",
+  stop_delayed_downstream: "delivery",
   report_operations: "internal",
   report_finance: "internal",
 };

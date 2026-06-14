@@ -56,6 +56,11 @@ const EXTRAS_BY_EVENT: Record<string, Record<string, unknown>> = {
     delay: { reason: "Weather", minutes: 45, note: "" },
     visit: { kind: "pickup" },
   },
+  // Round-22 — downstream-delay heads-up to later stops' SPOCs.
+  stop_delayed_downstream: {
+    delay: { reason: "Construction", minutes: 30, note: "" },
+    visit: { kind: "delivery" },
+  },
 };
 
 // Templates that never go through buildTicketEmailVariables — the

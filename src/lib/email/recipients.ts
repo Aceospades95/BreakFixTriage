@@ -15,13 +15,43 @@
 
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
-import { getWynndalcoTeamEmails } from "@/lib/settings/settings";
+import {
+  getWynndalcoTeamEmails,
+  getEmailListSetting,
+  LEADERSHIP_LIST_KEYS,
+} from "@/lib/settings/settings";
 
 export type RecipientKind =
   | "spoc"
   | "ticket_reporter"
   | "wynndalco_team"
+  // Round-22 — leadership distribution lists (settings-backed).
+  | "district_leadership"
+  | "internal_leadership"
+  | "prime_leadership"
   | "literal";
+
+/** Recipient kinds that are valid to store on a rule. */
+export const RECIPIENT_KINDS: RecipientKind[] = [
+  "spoc",
+  "ticket_reporter",
+  "wynndalco_team",
+  "district_leadership",
+  "internal_leadership",
+  "prime_leadership",
+  "literal",
+];
+
+/** Human label for each recipient kind (operator-facing copy). */
+export const RECIPIENT_KIND_LABELS: Record<RecipientKind, string> = {
+  spoc: "School SPOC contacts",
+  ticket_reporter: "Ticket reporter",
+  wynndalco_team: "Internal team list",
+  district_leadership: "District leadership",
+  internal_leadership: "Internal leadership",
+  prime_leadership: "Prime-contract leadership",
+  literal: "Specific address",
+};
 
 export interface Recipient {
   kind: RecipientKind;
@@ -140,6 +170,18 @@ export async function resolveRecipients(
     return teamCache;
   }
 
+  // Round-22 — leadership lists, each fetched (and cached) on demand.
+  const leadershipCache = new Map<string, string[]>();
+  async function leadership(
+    kind: keyof typeof LEADERSHIP_LIST_KEYS,
+  ): Promise<string[]> {
+    const cached = leadershipCache.get(kind);
+    if (cached) return cached;
+    const list = await getEmailListSetting(LEADERSHIP_LIST_KEYS[kind], db);
+    leadershipCache.set(kind, list);
+    return list;
+  }
+
   // Lazily extract the ticket reporter's email from
   // ticket.meta.requesterEmail (set by the import pipeline).
   function reporterEmail(): string | null {
@@ -164,6 +206,12 @@ export async function resolveRecipients(
         }
         case "wynndalco_team": {
           out.push(...(await team()));
+          break;
+        }
+        case "district_leadership":
+        case "internal_leadership":
+        case "prime_leadership": {
+          out.push(...(await leadership(r.kind)));
           break;
         }
         case "literal": {
@@ -215,12 +263,7 @@ export function isRecipientSet(value: unknown): value is RecipientSet {
 function isRecipient(v: unknown): v is Recipient {
   if (!v || typeof v !== "object") return false;
   const r = v as Record<string, unknown>;
-  if (
-    r.kind !== "spoc" &&
-    r.kind !== "ticket_reporter" &&
-    r.kind !== "wynndalco_team" &&
-    r.kind !== "literal"
-  ) {
+  if (typeof r.kind !== "string" || !RECIPIENT_KINDS.includes(r.kind as RecipientKind)) {
     return false;
   }
   if (r.value !== undefined && typeof r.value !== "string") return false;

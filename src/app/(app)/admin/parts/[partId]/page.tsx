@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PartMovementKind } from "@prisma/client";
+import { LocalTime } from "@/components/local-time";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
@@ -153,7 +154,7 @@ export default async function PartDetailPage({
                       )}
                     </div>
                     <div className="text-right text-xs text-slate-500">
-                      {m.createdAt.toISOString().replace("T", " ").slice(0, 16)}
+                      <LocalTime date={m.createdAt} mode="datetime" />
                       {m.user && (
                         <div className="text-slate-400">{m.user.name}</div>
                       )}

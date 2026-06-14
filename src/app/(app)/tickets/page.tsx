@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { PriorityPill } from "@/components/priority-pill";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
+import { ClickableRow } from "@/components/clickable-row";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
@@ -629,7 +630,11 @@ function TicketTable({
       </thead>
       <tbody className="divide-y divide-surface-border">
         {tickets.map((t) => (
-          <tr key={t.id} className="transition hover:bg-surface-muted/40">
+          <ClickableRow
+            key={t.id}
+            href={`/tickets/${t.incidentNumber}`}
+            className="transition hover:bg-surface-muted/40"
+          >
             {withCheckbox && (
               <td className="p-0">
                 {/* Round-22 §4 — fat, label-wrapped tap target (≥44px) so
@@ -692,7 +697,7 @@ function TicketTable({
                 {t.shortDescription}
               </span>
             </td>
-          </tr>
+          </ClickableRow>
         ))}
         {tickets.length === 0 && (
           <tr>

@@ -58,14 +58,27 @@ export function ExceptionsBadge() {
     };
   }, []);
 
-  if (!total) return null;
+  // Round-22 §4 — reserve the slot with a skeleton while the first count
+  // loads, instead of popping in and shoving the topbar around.
+  if (total === null) {
+    return (
+      <span
+        aria-hidden="true"
+        data-testid="exceptions-badge-loading"
+        className="h-8 w-10 shrink-0 animate-pulse rounded border border-surface-border bg-surface-muted"
+      />
+    );
+  }
+  if (total === 0) return null;
 
   return (
     <Link
       href="/admin/exceptions"
       data-testid="exceptions-badge"
       title={`${total} exception${total === 1 ? "" : "s"} need attention`}
-      className="flex h-8 items-center gap-1.5 rounded border border-amber-500/50 bg-amber-500/15 px-2.5 text-xs font-semibold text-amber-200 transition hover:border-amber-400"
+      // shrink-0 + whitespace-nowrap stop the badge wrapping to two lines
+      // in the cramped 390px topbar.
+      className="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded border border-amber-500/50 bg-amber-500/15 px-2.5 text-xs font-semibold text-amber-200 transition hover:border-amber-400"
     >
       <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-amber-400" />
       <span className="tabular-nums">{total}</span>

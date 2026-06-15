@@ -53,6 +53,9 @@ test.describe("§1 bulk actions feedback", () => {
 
     // TRIAGE → ON_HOLD is a legal edge for every selected ticket.
     await page.locator('select[name="to"]').selectOption("ON_HOLD");
+    // Round-22 — a bulk status change now requires a reason (matches the
+    // ticket page's force-change guardrail).
+    await page.locator('input[name="reason"]').fill("Bulk hold for review");
     // Round-21 — selection-aware hint renders before anything fires.
     await expect(page.getByTestId("bulk-eligibility-hint")).toContainText(
       /All 2 selected can move/i,

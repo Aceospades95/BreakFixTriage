@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { isNavItemActive } from "@/lib/nav-active";
 
 /**
  * Primary nav links for the header.
@@ -54,6 +55,12 @@ export function NavLinks({
   const pathname = usePathname() ?? "";
   const groups = buildGroups(isAdmin, isManager);
 
+  // Round-22 §4 — only the most specific nav link highlights (so
+  // /scheduling/people lights up People, not also Scheduling).
+  const allHrefs = groups.flat().map((l) => l.href);
+  const isNavActive = (href: string) =>
+    isNavItemActive(pathname, href, allHrefs);
+
   return (
     <nav className="flex flex-wrap items-center gap-1 text-sm">
       {groups.map((group, gi) => (
@@ -65,11 +72,7 @@ export function NavLinks({
           )}
           <div className="flex gap-3">
             {group.map((link) => {
-              const active =
-                link.href === "/"
-                  ? pathname === "/"
-                  : pathname === link.href ||
-                    pathname.startsWith(`${link.href}/`);
+              const active = isNavActive(link.href);
               return (
                 <Link
                   key={link.href}

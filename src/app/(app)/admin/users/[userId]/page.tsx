@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Role } from "@prisma/client";
+import { LocalTime } from "@/components/local-time";
 import { PageHeader } from "@/components/page-header";
 import { ConfirmButton } from "@/components/confirm-button";
 import { prisma } from "@/lib/db/prisma";
@@ -279,7 +280,7 @@ async function RecentSessionsPanel({ userId }: { userId: string }) {
                   className="grid grid-cols-[12rem_10rem_1fr_5rem] items-center gap-3 py-2"
                 >
                   <span className="tabular-nums text-slate-300">
-                    {s.lastSeenAt.toISOString().replace("T", " ").slice(0, 16)}
+                    <LocalTime date={s.lastSeenAt} mode="datetime" />
                   </span>
                   <span
                     className="truncate text-slate-400"

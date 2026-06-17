@@ -43,13 +43,20 @@ test.describe("§2A driver persona", () => {
     if (route) {
       await prisma.routeStop.updateMany({
         where: { routeId: route.id },
-        data: { status: "SCHEDULED" },
+        // Round-22 — proofRule defaults to PHOTO_AND_SIGNATURE; this spec
+        // walks the happy path without attaching proof, so reset to NONE.
+        data: { status: "SCHEDULED", proofRule: "NONE" },
       });
-      // Round-20 — clear the durable check-offs so the completion
-      // assertion below tests THIS run's stamps, not a prior one's.
+      // Round-20/22 — clear the durable check-offs + per-line states so
+      // the completion assertion tests THIS run's stamps, not a prior one's.
       await prisma.stopDevice.updateMany({
         where: { stop: { routeId: route.id } },
-        data: { confirmedAt: null, confirmedByUserId: null },
+        data: {
+          confirmedAt: null,
+          confirmedByUserId: null,
+          lineState: "EXPECTED",
+          lineNote: null,
+        },
       });
       for (const stop of route.stops) {
         await prisma.job.update({
@@ -113,25 +120,27 @@ test.describe("§2A driver persona", () => {
     await arrivedBtn.click();
     await expect(arrivedBtn).toBeDisabled(settle);
 
-    // Check off every line in the completion panel (device lines
-    // first, then the confirmation — the confirmation checkbox is
-    // disabled until all the work lines are ticked, and DOM order
-    // matches, so a simple sweep works).
-    const completion = firstStop.getByTestId("stop-completion");
+    // Round-22 §1C — Complete moved into the on-site work panel: each
+    // expected line item is resolved (Verified / Not found / Refused),
+    // and "Complete stop" enables once every line is resolved (and the
+    // proof rule — NONE here — is satisfied). Verify every line, then
+    // complete.
+    const completion = firstStop.getByTestId("stop-work-panel");
     await expect(completion).toBeVisible(settle);
-    const checkboxes = completion.locator('input[type="checkbox"]');
-    const boxCount = await checkboxes.count();
-    for (let i = 0; i < boxCount; i++) {
-      await checkboxes.nth(i).check();
+    const lines = completion.locator('[data-testid="panel-line"]');
+    const lineCount = await lines.count();
+    for (let i = 0; i < lineCount; i++) {
+      // First choice per line is VERIFIED (label "Picked up" / "Delivered").
+      await lines.nth(i).locator('label:has(input[value="VERIFIED"])').click();
     }
     const completeBtn = completion.getByRole("button", {
-      name: /complete stop & save/i,
+      name: /^complete stop$/i,
     });
     await expect(completeBtn).toBeEnabled(settle);
     await completeBtn.click();
 
     // The completed stop leaves the active accordion and lands in
-    // the "Completed stops" section.
+    // the "Resolved stops" section.
     await expect(
       page.locator(`[data-testid="route-stop-done"][data-stop-id="${stopRow}"]`),
     ).toBeVisible(settle);

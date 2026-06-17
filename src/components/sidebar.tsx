@@ -4,6 +4,7 @@ import { useState, useEffect, createContext, useContext } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { isNavItemActive } from "@/lib/nav-active";
 
 type NavItem = {
   href: string;
@@ -283,6 +284,12 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   const groups = buildGroups(isAdmin, isManager);
 
+  // Round-22 §4 — only the MOST specific nav item highlights. Without
+  // this, /scheduling/people lit up both "Scheduling" and "People".
+  const allHrefs = groups.flatMap((g) => g.items.map((i) => i.href));
+  const isNavActive = (href: string) =>
+    isNavItemActive(pathname, href, allHrefs);
+
   // Close mobile sidebar on route change
   useEffect(() => {
     setOpen(false);
@@ -394,11 +401,7 @@ export function AppShell({
               )}
               <ul className="space-y-0.5">
                 {group.items.map((item) => {
-                  const active =
-                    item.href === "/"
-                      ? pathname === "/"
-                      : pathname === item.href ||
-                        pathname.startsWith(`${item.href}/`);
+                  const active = isNavActive(item.href);
                   const Icon = item.icon;
                   return (
                     <li key={item.href}>

@@ -85,6 +85,10 @@ const FAMILY_BY_EVENT: Record<EmailEvent, RecipientContext["family"]> = {
   stop_delayed_downstream: "delivery",
   report_operations: "internal",
   report_finance: "internal",
+  // Round-22 §4 — per-site report goes to the school's ticket-contacts
+  // (the external POC), so it resolves like a ticket-family event with
+  // a SCHOOL scope.
+  report_site: "ticket",
 };
 
 interface DispatchedRule {

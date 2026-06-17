@@ -898,6 +898,26 @@ fresh install gets a working (if approximate) map. All map env vars:
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | — | A public Mapbox token switches the route map to Mapbox static-tile imagery instead of the interactive Leaflet map. |
 | `ROUTE_OPTIMIZER` | `nearest-neighbor` | Stop **ordering** (separate from geometry): `nearest-neighbor` (built-in) or `google-routes` (needs `GOOGLE_ROUTES_API_KEY`). |
 
+## Per-site status reports
+
+Each school page (`/admin/schools/[id]`) shows a weekly/monthly **Site
+summary** — devices completed/pending by status, routes run, failed/partial
+stops with reasons, open exceptions, and aging — with a week/month toggle and
+a one-click CSV export (`/api/exports/site-summary?schoolId=…&period=…`).
+
+The same summary emails on a schedule to the school's contacts (the external
+POC). Enable a `report_site` rule in **Admin → Email rules** (recipients:
+`spoc`), then cron the generator:
+
+```
+40 6 * * 1  npm run reports:site:weekly
+50 6 1 * *  npm run reports:site:monthly
+```
+
+Nothing sends until a `report_site` rule is enabled and outbound email is
+configured (`NOTIFICATION_TRANSPORT=smtp` + `SMTP_*`); the on-page CSV export
+works regardless.
+
 **Recommended for the Unraid box:** self-host OSRM with the NYC extract
 (it's small) and set `ROUTING_PROVIDER=osrm` + `OSRM_URL`. The map then
 shows real drive times with no code change — the routing layer

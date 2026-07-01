@@ -287,11 +287,21 @@ export default async function TicketDetailPage({
     <>
       <PageHeader
         title={ticket.incidentNumber}
+        titleAccessory={
+          // Round-22 (demo feedback) — the team couldn't spot "awaiting
+          // parts" in the corner pill. Headline chip with a STATUS
+          // caption, right next to the incident number.
+          <span className="flex flex-col items-start" data-testid="headline-status">
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-slate-500">
+              Status
+            </span>
+            <StatePill state={ticket.state} size="lg" />
+          </span>
+        }
         subtitle={ticket.shortDescription}
         actions={
           <div className="flex items-center gap-2">
             <SlaBadge ticket={ticket} />
-            <StatePill state={ticket.state} />
             {canWrite && (
               <EmailSpocButton
                 ticketId={ticket.id}

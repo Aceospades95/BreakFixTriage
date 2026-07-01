@@ -84,13 +84,27 @@ const STATE_LANE: Record<TicketState, Lane> = {
   PENDING_PICKUP_UNLINKED: "intake",
 };
 
-export function StatePill({ state }: { state: TicketState }) {
+export function StatePill({
+  state,
+  size = "sm",
+}: {
+  state: TicketState;
+  /**
+   * Round-22 (demo feedback) — "lg" renders the headline variant used
+   * next to the ticket number, where "awaiting parts" was too easy to
+   * miss in the small top-right pill.
+   */
+  size?: "sm" | "lg";
+}) {
   const lane = STATE_LANE[state];
   return (
     <span
       title={state}
       className={cn(
-        "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-semibold tracking-wide",
+        "inline-flex items-center whitespace-nowrap rounded border font-semibold tracking-wide",
+        size === "lg"
+          ? "px-3 py-1 text-base"
+          : "px-2 py-0.5 text-[10px]",
         LANE_COLOR[lane],
       )}
     >

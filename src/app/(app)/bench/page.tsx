@@ -98,14 +98,22 @@ export default async function BenchPage({
           title="My bench"
           subtitle={`${tickets.length} active ticket${tickets.length === 1 ? "" : "s"}${breachedCount > 0 ? ` · ${breachedCount} past SLA` : ""}`}
           actions={
-            canSeeAll && (
+            <div className="flex items-center gap-2">
               <Link
-                href="/bench?scope=all"
+                href="/bench/history"
                 className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
               >
-                All benches →
+                History
               </Link>
-            )
+              {canSeeAll && (
+                <Link
+                  href="/bench?scope=all"
+                  className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+                >
+                  All benches →
+                </Link>
+              )}
+            </div>
           }
         />
 
@@ -199,12 +207,20 @@ export default async function BenchPage({
         title="All benches"
         subtitle={`${totalAssignedOpen} assigned · ${unassigned.length} unassigned · ${unlinked.length} unlinked · ${sortedUsers.length} active assignee${sortedUsers.length === 1 ? "" : "s"}`}
         actions={
-          <Link
-            href="/bench?scope=me"
-            className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
-          >
-            ← My bench
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/bench/history"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              History
+            </Link>
+            <Link
+              href="/bench?scope=me"
+              className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
+            >
+              ← My bench
+            </Link>
+          </div>
         }
       />
 

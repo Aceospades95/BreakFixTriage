@@ -120,6 +120,8 @@ function kindColor(kind: string): string {
       return "bg-red-400";
     case "TICKET_ASSIGNED":
       return "bg-indigo-400";
+    case "TICKET_UPDATED":
+      return "bg-sky-400";
     case "TICKET_MENTION":
       return "bg-violet-400";
     default:

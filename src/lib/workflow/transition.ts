@@ -5,6 +5,8 @@ import { writeAudit, type TransitionType } from "@/lib/audit/audit";
 import { publish } from "@/lib/events/bus";
 import { dispatchEmailEvent } from "@/lib/email/send";
 import { buildTicketEmailVariables } from "@/lib/email/variables";
+import { createInAppNotification } from "@/lib/notifications/in-app";
+import { humanizeState } from "@/lib/humanise";
 import {
   getEffectiveNotifyOnEnter,
   getEffectiveTransitions,
@@ -268,6 +270,38 @@ async function transitionInTx(
     },
     tx,
   );
+
+  // Round-22 (demo) — "whoever updates it, I automatically get it":
+  // tell the assignee when someone else (or an automatic sweep) moves
+  // their ticket. Written in the same transaction as the TicketEvent
+  // so a rollback never leaves a phantom notification, and so every
+  // caller — stop-completion cascades, quote sweeps, bulk moves, the
+  // API route — gets it without opting in. A notification row is a
+  // plain DB write, not an external send, so mid-transaction is safe.
+  if (
+    updated.assignedUserId &&
+    updated.assignedUserId !== opts.actorUserId
+  ) {
+    const actor = opts.actorUserId
+      ? await tx.user.findUnique({
+          where: { id: opts.actorUserId },
+          select: { name: true },
+        })
+      : null;
+    const who = actor?.name ?? "BreakFix (automatic)";
+    await createInAppNotification(
+      {
+        recipientUserId: updated.assignedUserId,
+        kind: "TICKET_UPDATED",
+        title: `${updated.incidentNumber} moved to ${humanizeState(to)}`,
+        body: opts.reason
+          ? `${who}: ${opts.reason}`
+          : `${who} moved it from ${humanizeState(from)}.`,
+        linkHref: `/tickets/${updated.id}`,
+      },
+      tx,
+    );
+  }
 
   return updated;
 }

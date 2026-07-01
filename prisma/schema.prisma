@@ -1053,6 +1053,9 @@ model Attachment {
 enum InAppNotificationKind {
   TICKET_ASSIGNED
   TICKET_MENTION
+  /// Round-22 (demo): someone other than the assignee moved the
+  /// ticket — "whoever updates it, I automatically get it".
+  TICKET_UPDATED
   SLA_BREACH
   ESCALATION
   GENERIC

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { TicketState } from "@prisma/client";
+import type { Prisma, TicketState } from "@prisma/client";
 import { StatePill } from "@/components/state-pill";
 import { prisma } from "@/lib/db/prisma";
 import { resolvePortalToken } from "@/lib/portal/tokens";
+import { delayedTicketWhere } from "@/lib/portal/delayed";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,12 @@ const STATUS_FILTERS: Record<
     label: "In Warehouse",
     states: ["IN_WAREHOUSE"],
   },
+  // Round-22 (demo decision) — the school view shows awaiting pickup
+  // alongside awaiting delivery.
+  "awaiting-pickup": {
+    label: "Awaiting Pickup",
+    states: ["AWAITING_PICKUP", "PICKUP_SCHEDULED"],
+  },
   "awaiting-delivery": {
     label: "Awaiting Delivery",
     states: ["PENDING_DELIVERY", "DELIVERY_SCHEDULED"],
@@ -41,6 +48,12 @@ const STATUS_FILTERS: Record<
   "in-repair": {
     label: "Devices in Repair",
     states: ["IN_REPAIR", "DIAGNOSIS"],
+  },
+  // `delayed` uses a relation filter, not a state list — see
+  // delayedTicketWhere below.
+  delayed: {
+    label: "Delayed",
+    states: [],
   },
 };
 
@@ -65,44 +78,52 @@ export default async function PortalPage({
   const filterKey = searchParams?.status ?? null;
   const filter = filterKey ? STATUS_FILTERS[filterKey] : null;
 
-  const openWhereStateClause =
-    filter && filter.states.length > 0
-      ? { in: filter.states }
-      : { not: "CLOSED" as TicketState };
+  const listWhere: Prisma.TicketWhereInput =
+    filterKey === "delayed"
+      ? delayedTicketWhere(resolved.schoolId)
+      : {
+          schoolId: resolved.schoolId,
+          state:
+            filter && filter.states.length > 0
+              ? { in: filter.states }
+              : { not: "CLOSED" as TicketState },
+        };
 
-  const [openTickets, closedTickets, counts] = await Promise.all([
-    prisma.ticket.findMany({
-      where: { schoolId: resolved.schoolId, state: openWhereStateClause },
-      orderBy: { reportedAt: "desc" },
-      include: {
-        device: { select: { serialNumber: true, assetTag: true } },
-      },
-      take: 200,
-    }),
-    prisma.ticket.findMany({
-      where: { schoolId: resolved.schoolId, state: "CLOSED" },
-      orderBy: { closedAt: "desc" },
-      include: {
-        device: { select: { serialNumber: true, assetTag: true } },
-      },
-      take: 20,
-    }),
-    prisma.ticket.groupBy({
-      by: ["state"],
-      where: { schoolId: resolved.schoolId, state: { not: "CLOSED" } },
-      _count: { _all: true },
-    }),
-  ]);
+  const [openTickets, closedTickets, counts, delayedCount] =
+    await Promise.all([
+      prisma.ticket.findMany({
+        where: listWhere,
+        orderBy: { reportedAt: "desc" },
+        include: {
+          device: { select: { serialNumber: true, assetTag: true } },
+        },
+        take: 200,
+      }),
+      prisma.ticket.findMany({
+        where: { schoolId: resolved.schoolId, state: "CLOSED" },
+        orderBy: { closedAt: "desc" },
+        include: {
+          device: { select: { serialNumber: true, assetTag: true } },
+        },
+        take: 20,
+      }),
+      prisma.ticket.groupBy({
+        by: ["state"],
+        where: { schoolId: resolved.schoolId, state: { not: "CLOSED" } },
+        _count: { _all: true },
+      }),
+      prisma.ticket.count({ where: delayedTicketWhere(resolved.schoolId) }),
+    ]);
 
+  const byState = (state: TicketState) =>
+    counts.find((c) => c.state === state)?._count._all ?? 0;
   const totalOpen = counts.reduce((a, c) => a + c._count._all, 0);
-  const inRepair =
-    (counts.find((c) => c.state === "IN_REPAIR")?._count._all ?? 0) +
-    (counts.find((c) => c.state === "DIAGNOSIS")?._count._all ?? 0);
+  const inRepair = byState("IN_REPAIR") + byState("DIAGNOSIS");
+  const awaitingPickup =
+    byState("AWAITING_PICKUP") + byState("PICKUP_SCHEDULED");
   const awaitingDelivery =
-    (counts.find((c) => c.state === "PENDING_DELIVERY")?._count._all ?? 0) +
-    (counts.find((c) => c.state === "DELIVERY_SCHEDULED")?._count._all ?? 0);
-  const inWarehouse =
-    counts.find((c) => c.state === "IN_WAREHOUSE")?._count._all ?? 0;
+    byState("PENDING_DELIVERY") + byState("DELIVERY_SCHEDULED");
+  const inWarehouse = byState("IN_WAREHOUSE");
 
   const listHeading = filter
     ? `${filter.label} (${openTickets.length})`
@@ -131,7 +152,7 @@ export default async function PortalPage({
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-8">
-        <section className="mb-8 grid gap-4 sm:grid-cols-3">
+        <section className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <KpiLink
             label="Open Tickets"
             value={totalOpen}
@@ -145,10 +166,23 @@ export default async function PortalPage({
             active={filterKey === "in-warehouse"}
           />
           <KpiLink
+            label="Awaiting Pickup"
+            value={awaitingPickup}
+            href={`/portal/${params.token}?status=awaiting-pickup`}
+            active={filterKey === "awaiting-pickup"}
+          />
+          <KpiLink
             label="Awaiting Delivery"
             value={awaitingDelivery}
             href={`/portal/${params.token}?status=awaiting-delivery`}
             active={filterKey === "awaiting-delivery"}
+          />
+          <KpiLink
+            label="Delayed"
+            value={delayedCount}
+            href={`/portal/${params.token}?status=delayed`}
+            active={filterKey === "delayed"}
+            tone={delayedCount > 0 ? "warn" : undefined}
           />
         </section>
 
@@ -286,12 +320,15 @@ function KpiLink({
   href,
   active,
   compact = false,
+  tone,
 }: {
   label: string;
   value: number;
   href: string;
   active: boolean;
   compact?: boolean;
+  /** "warn" renders the amber attention style (Delayed with a count). */
+  tone?: "warn";
 }) {
   // Round-6 §2F — every KPI tile is a real <Link> with focus ring.
   // `active` outlines the currently-applied filter so the user sees
@@ -300,12 +337,16 @@ function KpiLink({
     "block rounded-lg border bg-surface-muted p-4 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent";
   const stateCls = active
     ? "border-accent/60 bg-accent/10"
-    : "border-surface-border hover:border-accent";
+    : tone === "warn"
+      ? "border-amber-500/50 bg-amber-500/10 hover:border-amber-400"
+      : "border-surface-border hover:border-accent";
   return (
     <Link href={href} className={`${baseCls} ${stateCls}`}>
       <div className="text-xs font-medium text-slate-400">{label}</div>
       <div
-        className={`${compact ? "mt-0 text-xl" : "mt-1 text-3xl"} font-semibold tabular-nums`}
+        className={`${compact ? "mt-0 text-xl" : "mt-1 text-3xl"} font-semibold tabular-nums ${
+          tone === "warn" && !active ? "text-amber-200" : ""
+        }`}
       >
         {value}
       </div>

@@ -1105,9 +1105,10 @@ function StopBody({
                         <input
                           type="text"
                           name="incidentNumber"
-                          placeholder="Existing INC# (optional)"
+                          required
+                          placeholder="Ticket number (required)"
                           pattern="[A-Za-z0-9\-]{3,40}"
-                          title="Type a known incident number at this school, or leave blank — we'll open a temporary ticket you can link to the real one later."
+                          title="Every pickup needs a ticket number. If the school just created the ticket, ask them for the incident number — the app checks it belongs to this school."
                           className="rounded border border-surface-border bg-surface-muted px-2 py-1 focus:border-accent focus:outline-none"
                         />
                       </div>
@@ -1120,18 +1121,12 @@ function StopBody({
                     </ActionForm>
                     <p className="text-[10px] text-slate-500">
                       Use this for a device you find on site that wasn&apos;t
-                      on the list. If you know its incident number, type it in
-                      to attach the existing ticket; otherwise we&apos;ll open
-                      a temporary ticket for it now and link it to the real
-                      one later from{" "}
-                      <Link
-                        href="/duplicates"
-                        className="text-accent hover:underline"
-                      >
-                        Duplicates
-                      </Link>
-                      . Flip the Pickup/Delivery toggle if you&apos;re
-                      collecting a device during a delivery (or vice versa).
+                      on the list. Every pickup needs a ticket number — if the
+                      school just created the ticket, ask them for the
+                      incident number and type it in; the app checks it
+                      belongs to this school. Flip the Pickup/Delivery toggle
+                      if you&apos;re collecting a device during a delivery (or
+                      vice versa).
                     </p>
                   </div>
                 </details>

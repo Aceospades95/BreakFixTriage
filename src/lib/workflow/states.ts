@@ -8,7 +8,12 @@ import { TicketState } from "@prisma/client";
  * terminal state or has an outgoing edge.
  */
 export const ALLOWED_TRANSITIONS: Record<TicketState, readonly TicketState[]> = {
-  IMPORTED: ["TRIAGE", "ON_HOLD"],
+  // Round-22 (demo) — IN_WAREHOUSE is reachable straight from IMPORTED
+  // and AWAITING_PICKUP: the migration-intake flow scans freshly
+  // imported devices at the warehouse door, and devices sometimes
+  // arrive without a scheduled route. Physically-in-hand beats the
+  // paperwork order.
+  IMPORTED: ["TRIAGE", "IN_WAREHOUSE", "ON_HOLD"],
   TRIAGE: [
     "AWAITING_PICKUP",
     "AWAITING_ONSITE",
@@ -16,7 +21,12 @@ export const ALLOWED_TRANSITIONS: Record<TicketState, readonly TicketState[]> = 
     "CLOSED",
     "ON_HOLD",
   ],
-  AWAITING_PICKUP: ["PICKUP_SCHEDULED", "ON_HOLD", "OUT_OF_SCOPE"],
+  AWAITING_PICKUP: [
+    "PICKUP_SCHEDULED",
+    "IN_WAREHOUSE",
+    "ON_HOLD",
+    "OUT_OF_SCOPE",
+  ],
   PICKUP_SCHEDULED: ["IN_WAREHOUSE", "AWAITING_PICKUP", "ON_HOLD"],
   IN_WAREHOUSE: ["DIAGNOSIS", "ON_HOLD"],
   DIAGNOSIS: [

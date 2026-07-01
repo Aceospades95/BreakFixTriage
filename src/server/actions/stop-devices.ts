@@ -57,12 +57,16 @@ const purposeEnum = z.enum(["PICKUP", "DELIVERY"]).optional();
 // Accept SNOW INC numbers (e.g. INC2200126) and synthetic SYN
 // incident numbers. We match an internal id (cuid) too so an
 // operator pasting a ticket id from a URL bar still works.
+//
+// Round-22 (demo decision) — "all device pickups are now required to
+// include a ticket number for validation": the field is REQUIRED. If
+// the school created the ticket moments ago, ask them for the number —
+// no more picking up devices without one.
 const incidentNumberSchema = z
-  .string()
+  .string({ required_error: "Ticket number is required" })
   .trim()
-  .min(3)
-  .max(40)
-  .optional();
+  .min(3, "Ticket number is required — ask the school for the incident number")
+  .max(40);
 
 const addExistingSchema = z.object({
   stopId: z.string().min(1),

@@ -189,7 +189,7 @@ export default async function SettingsPage({
                   : ""
               }
               placeholder={"Apple = https://gsx.apple.com/cases/{case}"}
-              className="w-full rounded border border-surface-border bg-surface px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none"
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-xs focus:border-accent focus:outline-none"
             />
           </Field>
         </section>

@@ -47,11 +47,15 @@ const ROUTES: Array<{ path: string; lowestRole: string }> = [
   { path: "/profile/2fa", lowestRole: "READ_ONLY" },
   { path: "/forbidden", lowestRole: "READ_ONLY" },
   { path: "/people", lowestRole: "READ_ONLY" },
+  // Round-22 (demo) — help center behind the ? icon.
+  { path: "/help", lowestRole: "READ_ONLY" },
 
   // Tickets
   { path: "/tickets", lowestRole: "READ_ONLY" },
   { path: "/tickets/kanban", lowestRole: "READ_ONLY" },
   { path: "/bench", lowestRole: "READ_ONLY" },
+  // Round-22 (demo) — closure log + monthly leaderboard.
+  { path: "/bench/history", lowestRole: "READ_ONLY" },
   { path: "/duplicates", lowestRole: "READ_ONLY" },
   { path: "/scan", lowestRole: "READ_ONLY" },
   { path: "/scan/warehouse", lowestRole: "TECHNICIAN" },

@@ -124,15 +124,16 @@ test("§2 leadership lists save and resolve", async ({ page }) => {
     data: { enabled: true },
   });
 
+  // Inherit the ambient DATABASE_URL so the child script writes to
+  // the same database the spec (and the app under test) read from.
+  // A hardcoded URL here matched neither CI (bf@breakfix_e2e) nor
+  // local dev, so the EmailLog assertion below could never see the
+  // script's writes.
   execFileSync(
     "npx",
     ["tsx", "scripts/send-scheduled-reports.ts", "--period=weekly"],
     {
-      env: {
-        ...process.env,
-        DATABASE_URL:
-          "postgresql://breakfix:breakfix@localhost:5432/breakfix_e2e?schema=public",
-      },
+      env: { ...process.env },
       stdio: "pipe",
     },
   );

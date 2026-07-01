@@ -129,7 +129,7 @@ export default async function HelpPage({
                   rows={16}
                   maxLength={20000}
                   placeholder={"## Device intake\nScan every device at the warehouse door…\n\n## Printer on-sites\nAlways record the printer model, asset tag, IP address…"}
-                  className="w-full rounded border border-surface-border bg-surface px-3 py-2 font-mono text-xs leading-relaxed focus:border-accent focus:outline-none"
+                  className="w-full rounded border border-surface-border bg-surface px-3 py-2 text-xs leading-relaxed focus:border-accent focus:outline-none"
                 />
                 <div className="flex gap-2">
                   <button

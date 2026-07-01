@@ -8,11 +8,13 @@ import {
   getDigestRecipients,
   getEscalationMultiplier,
   getHoldDays,
+  getRawSetting,
   getSlaThresholds,
   getWynndalcoTeamEmails,
   getEmailListSetting,
   SETTINGS_KEYS,
 } from "@/lib/settings/settings";
+import { WARRANTY_URL_TEMPLATES_SETTING_KEY } from "@/lib/warranty";
 import { ConfirmButton } from "@/components/confirm-button";
 import { updateSettingsAction } from "@/server/actions/settings";
 import { bulkCloseStaleAction } from "@/server/actions/maintenance";
@@ -47,6 +49,7 @@ export default async function SettingsPage({
     districtLeadership,
     internalLeadership,
     primeLeadership,
+    caseUrlTemplatesRaw,
   ] = await Promise.all([
     getHoldDays(),
     getEscalationMultiplier(),
@@ -56,6 +59,7 @@ export default async function SettingsPage({
     getEmailListSetting(SETTINGS_KEYS.DISTRICT_LEADERSHIP_EMAILS),
     getEmailListSetting(SETTINGS_KEYS.INTERNAL_LEADERSHIP_EMAILS),
     getEmailListSetting(SETTINGS_KEYS.PRIME_LEADERSHIP_EMAILS),
+    getRawSetting(WARRANTY_URL_TEMPLATES_SETTING_KEY),
   ]);
 
   return (
@@ -153,6 +157,41 @@ export default async function SettingsPage({
               );
             })}
           </div>
+        </section>
+
+        {/* Round-22 (demo) — vendor case URL templates: RMA/case numbers
+            on tickets hyperlink to the vendor's case page when its URL
+            shape is predictable (Apple GSX is; Keon is documenting the
+            rest). */}
+        <section className="rounded-lg border border-surface-border bg-surface-muted p-5">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-300">
+            Manufacturer case links
+          </h2>
+          <p className="mb-3 text-xs text-slate-400">
+            One vendor per line as{" "}
+            <code className="rounded bg-surface px-1">
+              Vendor = https://…&#123;case&#125;
+            </code>
+            . RMA numbers on tickets become links to the vendor&apos;s case
+            page when the vendor matches (case-insensitive). Lines starting
+            with # are comments.
+          </p>
+          <Field
+            label="Case URL templates"
+            hint='Example: Apple = https://gsx.apple.com/cases/{case}'
+          >
+            <textarea
+              name="caseUrlTemplates"
+              rows={4}
+              defaultValue={
+                typeof caseUrlTemplatesRaw === "string"
+                  ? caseUrlTemplatesRaw
+                  : ""
+              }
+              placeholder={"Apple = https://gsx.apple.com/cases/{case}"}
+              className="w-full rounded border border-surface-border bg-surface px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none"
+            />
+          </Field>
         </section>
 
         <section className="rounded-lg border border-surface-border bg-surface-muted p-5">

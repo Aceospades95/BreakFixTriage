@@ -21,6 +21,8 @@ import {
   proofPresence,
 } from "@/lib/scheduling/stop-lines";
 import { getRoadRoute } from "@/lib/routing/road";
+import { isOutOfWarranty } from "@/lib/warranty";
+import { WarrantyChip } from "@/components/warranty-chip";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
@@ -115,6 +117,10 @@ async function loadRoute(routeId: string) {
                   id: true,
                   serialNumber: true,
                   assetTag: true,
+                  // Round-22 (demo) — surfaces the out-of-warranty
+                  // badge on pickup lines so we stop collecting
+                  // devices we'd just have to send back.
+                  warrantyExpires: true,
                   model: {
                     select: { manufacturer: true, modelName: true },
                   },
@@ -589,6 +595,9 @@ function StopBody({
         | "PICKUP"
         | "DELIVERY",
       label: inc ? `${inc} · ${deviceLabel}` : deviceLabel,
+      // Round-22 (demo) — warn before collecting a device we'd have
+      // to send back.
+      outOfWarranty: isOutOfWarranty(sd.device?.warrantyExpires),
     };
   });
 
@@ -940,6 +949,12 @@ function StopBody({
                         "device pending"}
                     </code>
                     <LineStateBadge state={sd.lineState} />
+                    {isOutOfWarranty(sd.device?.warrantyExpires) && (
+                      <WarrantyChip
+                        warrantyExpires={sd.device!.warrantyExpires}
+                        compact
+                      />
+                    )}
                     {sd.device?.model && (
                       <span className="text-[10px] text-slate-500">
                         {sd.device.model.manufacturer}{" "}

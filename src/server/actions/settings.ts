@@ -7,6 +7,10 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { SETTINGS_KEYS, setSetting } from "@/lib/settings/settings";
+import {
+  validateCaseUrlTemplates,
+  WARRANTY_URL_TEMPLATES_SETTING_KEY,
+} from "@/lib/warranty";
 
 /**
  * Admin settings update.
@@ -101,6 +105,23 @@ export async function updateSettingsAction(formData: FormData) {
       errors.push(`Invalid ${label} emails: ${invalid.join(", ")}`);
     } else {
       await setSetting({ key, value: emails, actorUserId: session.userId });
+    }
+  }
+
+  // Round-22 (demo) — manufacturer case URL templates. Stored as the
+  // raw text block; parse/validate here so a typo'd line is called out
+  // instead of silently never matching.
+  const caseTemplatesRaw = formData.get("caseUrlTemplates")?.toString();
+  if (caseTemplatesRaw !== undefined) {
+    const problems = validateCaseUrlTemplates(caseTemplatesRaw);
+    if (problems.length > 0) {
+      errors.push(`Case link templates: ${problems.join("; ")}`);
+    } else {
+      await setSetting({
+        key: WARRANTY_URL_TEMPLATES_SETTING_KEY,
+        value: caseTemplatesRaw.trim(),
+        actorUserId: session.userId,
+      });
     }
   }
 

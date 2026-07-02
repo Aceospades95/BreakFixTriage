@@ -76,7 +76,9 @@ describe("Round-11 §1B — placeholder convention", () => {
       'placeholder="e.g. INC2200126, SN-1234, BX-101"',
     );
     expect(read("src/app/(app)/scan/warehouse/scan-warehouse-client.tsx")).toContain(
-      'placeholder="e.g. SN-0001 / AT-0001"',
+      // Round-22 follow-up: the warehouse scan accepts ticket numbers
+      // too, so the hint shows all three shapes.
+      'placeholder="e.g. SN-0001 / AT-0001 / INC0012345"',
     );
   });
 

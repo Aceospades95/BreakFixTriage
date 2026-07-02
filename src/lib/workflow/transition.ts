@@ -5,6 +5,8 @@ import { writeAudit, type TransitionType } from "@/lib/audit/audit";
 import { publish } from "@/lib/events/bus";
 import { dispatchEmailEvent } from "@/lib/email/send";
 import { buildTicketEmailVariables } from "@/lib/email/variables";
+import { createInAppNotification } from "@/lib/notifications/in-app";
+import { humanizeState } from "@/lib/humanise";
 import {
   getEffectiveNotifyOnEnter,
   getEffectiveTransitions,
@@ -59,6 +61,15 @@ export interface TransitionOptions {
    * Stamped on the audit row's `after.transitionType`. See ADR 0006.
    */
   transitionType?: TransitionType;
+  /**
+   * Skip the per-ticket TICKET_UPDATED notification to the assignee.
+   * ONLY for bulk operations that write their own per-assignee
+   * summary instead (e.g. admin bulk-close) — 500 individual rows
+   * would bury the bell. Never set this without a replacement
+   * notification: "whoever updates it, I automatically get it" is a
+   * team decision.
+   */
+  suppressAssigneeNotification?: boolean;
 }
 
 export type PrismaLike = PrismaClient | Prisma.TransactionClient;
@@ -269,6 +280,39 @@ async function transitionInTx(
     tx,
   );
 
+  // Round-22 (demo) — "whoever updates it, I automatically get it":
+  // tell the assignee when someone else (or an automatic sweep) moves
+  // their ticket. Written in the same transaction as the TicketEvent
+  // so a rollback never leaves a phantom notification, and so every
+  // caller — stop-completion cascades, quote sweeps, bulk moves, the
+  // API route — gets it without opting in. A notification row is a
+  // plain DB write, not an external send, so mid-transaction is safe.
+  if (
+    updated.assignedUserId &&
+    updated.assignedUserId !== opts.actorUserId &&
+    !opts.suppressAssigneeNotification
+  ) {
+    const actor = opts.actorUserId
+      ? await tx.user.findUnique({
+          where: { id: opts.actorUserId },
+          select: { name: true },
+        })
+      : null;
+    const who = actor?.name ?? "BreakFix (automatic)";
+    await createInAppNotification(
+      {
+        recipientUserId: updated.assignedUserId,
+        kind: "TICKET_UPDATED",
+        title: `${updated.incidentNumber} moved to ${humanizeState(to)}`,
+        body: opts.reason
+          ? `${who}: ${opts.reason}`
+          : `${who} moved it from ${humanizeState(from)}.`,
+        linkHref: `/tickets/${updated.id}`,
+      },
+      tx,
+    );
+  }
+
   return updated;
 }
 
@@ -308,6 +352,29 @@ export async function transitionTicket(
   // `notifyOnEnter` config flag (server-side, authoritative).
   await maybeDispatchTransitionEmail(db as PrismaClient, updated, opts);
   return updated;
+}
+
+/**
+ * Post-commit side effects for a transition that ran inside a
+ * caller-owned transaction: the SSE publish and the notifyOnEnter
+ * email. `transitionTicket` does both automatically on the
+ * full-client path; TransactionClient callers (quote lifecycle,
+ * sweeps, duplicate resolution) call this AFTER their transaction
+ * commits — never inside it, since a queued send must not reference
+ * a state that might roll back. Safe to call when the transition
+ * was skipped: it re-reads the ticket and dispatches off its actual
+ * state.
+ */
+export async function emitTransitionSideEffects(
+  ticketId: string,
+  opts: TransitionOptions = {},
+  db: PrismaClient = defaultPrisma,
+): Promise<void> {
+  publish({ topic: "tickets.changed", ticketId });
+  const ticket = await db.ticket.findUnique({ where: { id: ticketId } });
+  if (ticket) {
+    await maybeDispatchTransitionEmail(db, ticket, opts);
+  }
 }
 
 async function maybeDispatchTransitionEmail(

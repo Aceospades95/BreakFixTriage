@@ -8,6 +8,13 @@ import { CommentThread } from "@/components/comment-thread";
 import { AttachmentList } from "@/components/attachment-list";
 import { LocalTime } from "@/components/local-time";
 import { PhotoCapture } from "@/components/photo-capture";
+import { WarrantyChip } from "@/components/warranty-chip";
+import {
+  caseUrlFor,
+  parseCaseUrlTemplates,
+  WARRANTY_URL_TEMPLATES_SETTING_KEY,
+} from "@/lib/warranty";
+import { getRawSetting } from "@/lib/settings/settings";
 import { ForceChangeForm } from "@/components/force-change-form";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
@@ -269,6 +276,13 @@ export default async function TicketDetailPage({
   // may be customized and some states disabled — keep those out of the
   // picker.
   const statusConfig = canForceTransition ? await readStatusConfig() : null;
+
+  // Round-22 (demo) — vendor case URL templates for RMA hyperlinks.
+  const caseUrlTemplates = parseCaseUrlTemplates(
+    (await getRawSetting(WARRANTY_URL_TEMPLATES_SETTING_KEY)) as
+      | string
+      | null,
+  );
   const allStatesForPicker: { state: TicketStateEnum; label: string }[] =
     statusConfig
       ? (Object.values(TicketStateEnum) as TicketStateEnum[])
@@ -287,11 +301,21 @@ export default async function TicketDetailPage({
     <>
       <PageHeader
         title={ticket.incidentNumber}
+        titleAccessory={
+          // Round-22 (demo feedback) — the team couldn't spot "awaiting
+          // parts" in the corner pill. Headline chip with a STATUS
+          // caption, right next to the incident number.
+          <span className="flex flex-col items-start" data-testid="headline-status">
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-slate-500">
+              Status
+            </span>
+            <StatePill state={ticket.state} size="lg" />
+          </span>
+        }
         subtitle={ticket.shortDescription}
         actions={
           <div className="flex items-center gap-2">
             <SlaBadge ticket={ticket} />
-            <StatePill state={ticket.state} />
             {canWrite && (
               <EmailSpocButton
                 ticketId={ticket.id}
@@ -483,6 +507,14 @@ export default async function TicketDetailPage({
                         {ticket.device.model.modelName}
                       </div>
                     )}
+                    {/* Round-22 (demo) — warranty at a glance, so an
+                        out-of-warranty device never gets scheduled for
+                        a pickup we'd have to undo. */}
+                    <div className="mt-1">
+                      <WarrantyChip
+                        warrantyExpires={ticket.device.warrantyExpires}
+                      />
+                    </div>
                   </>
                 ) : (
                   <span className="text-slate-500">—</span>
@@ -980,15 +1012,36 @@ export default async function TicketDetailPage({
               </p>
             ) : (
               <ul className="space-y-2 text-sm">
-                {ticket.manufacturerRmas.map((rma) => (
+                {ticket.manufacturerRmas.map((rma) => {
+                  // Round-22 (demo) — hyperlink the vendor case number
+                  // when a URL template is configured for that vendor
+                  // (Admin → Settings → Manufacturer case links).
+                  const caseUrl = caseUrlFor(
+                    rma.vendor,
+                    rma.rmaNumber,
+                    caseUrlTemplates,
+                  );
+                  return (
                   <li
                     key={rma.id}
                     className="rounded border border-surface-border bg-surface px-3 py-2"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium tracking-tight text-xs">
-                        {rma.rmaNumber}
-                      </span>
+                      {caseUrl ? (
+                        <a
+                          href={caseUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium tracking-tight text-xs text-accent hover:underline"
+                          title={`Open the ${rma.vendor} case page`}
+                        >
+                          {rma.rmaNumber} ↗
+                        </a>
+                      ) : (
+                        <span className="font-medium tracking-tight text-xs">
+                          {rma.rmaNumber}
+                        </span>
+                      )}
                       <span className="text-xs text-slate-400">
                         {rma.vendor}
                       </span>
@@ -1071,7 +1124,8 @@ export default async function TicketDetailPage({
                       </form>
                     )}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
             {canWrite && ticket.state === "MANUFACTURER_RMA" && (

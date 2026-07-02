@@ -110,17 +110,25 @@ test.describe("§2G admin-destructive persona", () => {
     const signOutBtn = page.getByRole("button", { name: /sign out all/i });
     if (await signOutBtn.isVisible().catch(() => false)) {
       await signOutBtn.click();
-      await page.waitForURL(/\/admin\/users\//);
-      const revokeAudit = await prisma.auditLog.findFirst({
-        where: {
-          actorUserId: alex!.id,
-          entityType: "User",
-          entityId: tess!.id,
-          action: "user.sessions.revoke_all",
-        },
-        orderBy: { createdAt: "desc" },
-      });
-      expect(revokeAudit).not.toBeNull();
+      // The click stays on /admin/users/[id] (redirect back to the same
+      // page), so waitForURL would resolve against the CURRENT url
+      // before the server action commits. Poll the audit row instead —
+      // same pattern as round-22.spec.ts.
+      await expect
+        .poll(
+          async () =>
+            prisma.auditLog.findFirst({
+              where: {
+                actorUserId: alex!.id,
+                entityType: "User",
+                entityId: tess!.id,
+                action: "user.sessions.revoke_all",
+              },
+              orderBy: { createdAt: "desc" },
+            }),
+          { timeout: 15_000 },
+        )
+        .not.toBeNull();
     }
 
     // (3) — Bulk close stale ticket preview is reachable.

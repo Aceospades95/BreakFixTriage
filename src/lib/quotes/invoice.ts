@@ -25,7 +25,7 @@ import {
 } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
-import { transitionTicket } from "@/lib/workflow";
+import { transitionTicket, emitTransitionSideEffects } from "@/lib/workflow";
 
 export interface AttachPurchaseOrderInput {
   quoteId: string;
@@ -128,7 +128,7 @@ export async function markPoInvoiced(
   input: MarkPoInvoicedInput,
   db: PrismaClient = defaultPrisma,
 ): Promise<MarkPoInvoicedResult> {
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     const po = await tx.purchaseOrder.findUnique({
       where: { id: input.poId },
       include: { quote: { include: { ticket: true } } },
@@ -136,7 +136,7 @@ export async function markPoInvoiced(
     if (!po) throw new Error(`PurchaseOrder ${input.poId} not found`);
     if (po.invoicedAt) {
       // Idempotent: already invoiced.
-      return { po, ticketClosed: false };
+      return { po, ticketClosed: false, ticketId: null };
     }
 
     const now = new Date();
@@ -198,6 +198,22 @@ export async function markPoInvoiced(
       }
     }
 
-    return { po: updated, ticketClosed };
+    return {
+      po: updated,
+      ticketClosed,
+      ticketId: ticketClosed ? po.quote.ticket.id : null,
+    };
   });
+  // Post-commit: SSE + the ticket_closed notifyOnEnter email. The
+  // close ran on the transaction client, so the wrapper couldn't
+  // emit these; a queued send must never reference a rolled-back
+  // close, hence after the commit.
+  if (result.ticketClosed && result.ticketId) {
+    await emitTransitionSideEffects(
+      result.ticketId,
+      { actorUserId: input.actorUserId, reason: input.reason },
+      db,
+    );
+  }
+  return { po: result.po, ticketClosed: result.ticketClosed };
 }

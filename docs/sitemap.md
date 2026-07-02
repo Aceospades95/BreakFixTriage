@@ -34,6 +34,7 @@ Every signed-in user reaches them.
 | `/profile/2fa` | any | Personal 2FA setup |
 | `/people` | any | Round-15 (B11) staff directory (was a redirect) |
 | `/forbidden` | any | Round-14 (B8) chromed access-denied page; `requireRole` redirects here |
+| `/help` | any | Round-22 (demo) help center: guide, FAQ, team SOPs (managers edit in place) |
 
 ## Tickets
 
@@ -44,6 +45,7 @@ Every signed-in user reaches them.
 | `/tickets/[ticketId]` | READ_ONLY | TICKETS_READ |
 | `/tickets/[ticketId]/print` | READ_ONLY | TICKETS_READ |
 | `/bench` | READ_ONLY | TICKETS_READ |
+| `/bench/history` | READ_ONLY | TICKETS_READ — Round-22 (demo) closure log + monthly leaderboard |
 | `/duplicates` | READ_ONLY | TICKETS_READ (resolve gate inside) |
 | `/scan` | READ_ONLY | TICKETS_READ |
 | `/scan/warehouse` | TECHNICIAN | TICKETS_TRANSITION |

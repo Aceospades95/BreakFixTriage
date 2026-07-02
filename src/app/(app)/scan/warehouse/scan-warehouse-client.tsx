@@ -36,7 +36,7 @@ export function ScanWarehouseClient() {
     <div className="space-y-4">
       <QrScanner
         onScan={handleScan}
-        label="Scan device serial or asset tag to receive into warehouse"
+        label="Scan a device serial, asset tag, or ticket number to receive into warehouse"
       />
 
       <form
@@ -50,7 +50,7 @@ export function ScanWarehouseClient() {
             type="text"
             name="serial"
             ref={inputRef}
-            placeholder="e.g. SN-0001 / AT-0001"
+            placeholder="e.g. SN-0001 / AT-0001 / INC0012345"
             className="flex-1 rounded border border-surface-border bg-surface px-2 py-1 font-medium tracking-tight text-xs focus:border-accent focus:outline-none"
           />
         </label>
@@ -71,14 +71,16 @@ export function ScanWarehouseClient() {
       <div className="rounded border border-surface-border bg-surface-muted/40 px-3 py-2 text-xs text-slate-400">
         {/* Round-3 §G29: state names rendered humanised, not as
             ALL_CAPS_UNDERSCORE. Round-3 §G14: dropped font-medium tracking-tight. */}
-        Tip: point the camera at a device barcode or QR label. The action
-        finds every open ticket on that device in{" "}
+        Tip: point the camera at a device barcode, QR label, or the ticket
+        number sticker. A device scan finds every open ticket on it in{" "}
+        <strong className="font-medium text-slate-300">Imported</strong> /{" "}
         <strong className="font-medium text-slate-300">Awaiting pickup</strong> /
         {" "}
         <strong className="font-medium text-slate-300">Pickup scheduled</strong>
         {" "}and moves it to{" "}
         <strong className="font-medium text-slate-300">In warehouse</strong>{" "}
-        automatically.
+        automatically; a ticket-number scan moves that one ticket. Freshly
+        imported migration batches scan straight in — no per-ticket clicking.
       </div>
     </div>
   );

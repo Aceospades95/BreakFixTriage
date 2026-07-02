@@ -21,6 +21,8 @@ import {
   proofPresence,
 } from "@/lib/scheduling/stop-lines";
 import { getRoadRoute } from "@/lib/routing/road";
+import { isOutOfWarranty } from "@/lib/warranty";
+import { WarrantyChip } from "@/components/warranty-chip";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
@@ -115,6 +117,10 @@ async function loadRoute(routeId: string) {
                   id: true,
                   serialNumber: true,
                   assetTag: true,
+                  // Round-22 (demo) — surfaces the out-of-warranty
+                  // badge on pickup lines so we stop collecting
+                  // devices we'd just have to send back.
+                  warrantyExpires: true,
                   model: {
                     select: { manufacturer: true, modelName: true },
                   },
@@ -589,6 +595,13 @@ function StopBody({
         | "PICKUP"
         | "DELIVERY",
       label: inc ? `${inc} · ${deviceLabel}` : deviceLabel,
+      // Round-22 (demo) — warn before collecting a device we'd have
+      // to send back. Pickup lines only: on a delivery line the
+      // repaired device is going BACK to the school, and telling the
+      // driver not to collect it reads as "don't deliver this".
+      outOfWarranty:
+        sd.purpose !== "DELIVERY" &&
+        isOutOfWarranty(sd.device?.warrantyExpires),
     };
   });
 
@@ -940,6 +953,12 @@ function StopBody({
                         "device pending"}
                     </code>
                     <LineStateBadge state={sd.lineState} />
+                    {isOutOfWarranty(sd.device?.warrantyExpires) && (
+                      <WarrantyChip
+                        warrantyExpires={sd.device!.warrantyExpires}
+                        compact
+                      />
+                    )}
                     {sd.device?.model && (
                       <span className="text-[10px] text-slate-500">
                         {sd.device.model.manufacturer}{" "}
@@ -1090,9 +1109,10 @@ function StopBody({
                         <input
                           type="text"
                           name="incidentNumber"
-                          placeholder="Existing INC# (optional)"
+                          required
+                          placeholder="Ticket number (required)"
                           pattern="[A-Za-z0-9\-]{3,40}"
-                          title="Type a known incident number at this school, or leave blank — we'll open a temporary ticket you can link to the real one later."
+                          title="Every pickup needs a ticket number. If the school just created the ticket, ask them for the incident number — the app checks it belongs to this school."
                           className="rounded border border-surface-border bg-surface-muted px-2 py-1 focus:border-accent focus:outline-none"
                         />
                       </div>
@@ -1105,18 +1125,14 @@ function StopBody({
                     </ActionForm>
                     <p className="text-[10px] text-slate-500">
                       Use this for a device you find on site that wasn&apos;t
-                      on the list. If you know its incident number, type it in
-                      to attach the existing ticket; otherwise we&apos;ll open
-                      a temporary ticket for it now and link it to the real
-                      one later from{" "}
-                      <Link
-                        href="/duplicates"
-                        className="text-accent hover:underline"
-                      >
-                        Duplicates
-                      </Link>
-                      . Flip the Pickup/Delivery toggle if you&apos;re
-                      collecting a device during a delivery (or vice versa).
+                      on the list. Every pickup needs a ticket number — if the
+                      school just created the ticket, ask them for the
+                      incident number and type it in. If the number isn&apos;t
+                      in the app yet (fresh ServiceNow tickets arrive with the
+                      next import), the device is still tracked and links up
+                      automatically once the import lands. Flip the
+                      Pickup/Delivery toggle if you&apos;re collecting a
+                      device during a delivery (or vice versa).
                     </p>
                   </div>
                 </details>

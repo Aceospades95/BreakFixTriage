@@ -30,6 +30,12 @@ export interface PanelLine {
   /** Human label: incident number + device, or "device to be recorded". */
   label: string;
   purpose: "PICKUP" | "DELIVERY";
+  /**
+   * Round-22 (demo) — flags a device whose warranty already expired so
+   * the technician double-checks before collecting it ("we have picked
+   * up out-of-warranty devices and had to end up sending them back").
+   */
+  outOfWarranty?: boolean;
 }
 
 // Only the three on-site resolution states are pickable here.
@@ -114,7 +120,17 @@ export function StopWorkPanel({
                 data-testid="panel-line"
                 className="rounded border border-surface-border bg-surface-muted/40 p-2"
               >
-                <div className="text-sm text-slate-200">{line.label}</div>
+                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-200">
+                  <span>{line.label}</span>
+                  {line.outOfWarranty && (
+                    <span
+                      className="rounded border border-red-500/50 bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-200"
+                      title="This device's warranty already expired — confirm with dispatch before collecting it. Out-of-warranty pickups get sent back."
+                    >
+                      Out of warranty
+                    </span>
+                  )}
+                </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <ChoiceButton
                     name={`line:${line.id}`}

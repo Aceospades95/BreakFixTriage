@@ -9,6 +9,7 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { transitionTicket, canTransition } from "@/lib/workflow";
+import { createInAppNotification } from "@/lib/notifications/in-app";
 
 /**
  * Admin maintenance actions for data hygiene.
@@ -118,25 +119,44 @@ export async function bulkCloseStaleAction(formData: FormData) {
       state: parsed.data.state,
       stateEnteredAt: { lt: cutoff },
     },
-    select: { id: true, incidentNumber: true },
+    select: { id: true, incidentNumber: true, assignedUserId: true },
     take: 500,
   });
 
   let closed = 0;
   const errors: string[] = [];
+  // One summary notification per assignee instead of up to 500
+  // individual TICKET_UPDATED rows burying the bell.
+  const closedByAssignee = new Map<string, string[]>();
   for (const t of stale) {
     try {
       await transitionTicket(t.id, TicketState.CLOSED, {
         actorUserId: session.userId,
         reason: parsed.data.reason ?? `Bulk closed (stale > ${parsed.data.daysOld}d in ${parsed.data.state})`,
         payload: { bulkClose: true, daysOld: parsed.data.daysOld },
+        suppressAssigneeNotification: true,
       });
       closed += 1;
+      if (t.assignedUserId && t.assignedUserId !== session.userId) {
+        const list = closedByAssignee.get(t.assignedUserId) ?? [];
+        list.push(t.incidentNumber);
+        closedByAssignee.set(t.assignedUserId, list);
+      }
     } catch (err) {
       errors.push(
         `${t.incidentNumber}: ${err instanceof Error ? err.message : "unknown"}`,
       );
     }
+  }
+
+  for (const [assigneeId, incidents] of closedByAssignee) {
+    await createInAppNotification({
+      recipientUserId: assigneeId,
+      kind: "TICKET_UPDATED",
+      title: `${incidents.length} of your tickets ${incidents.length === 1 ? "was" : "were"} bulk-closed as stale`,
+      body: `${session.name}: ${parsed.data.reason ?? `stale > ${parsed.data.daysOld}d in ${parsed.data.state}`} — ${incidents.slice(0, 8).join(", ")}${incidents.length > 8 ? `, +${incidents.length - 8} more` : ""}`,
+      linkHref: "/bench/history",
+    });
   }
 
   await writeAudit({

@@ -14,6 +14,8 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { formatStopLabel } from "@/lib/audit/format";
+import { canTransition, transitionTicket } from "@/lib/workflow";
+import { humanizeState } from "@/lib/humanise";
 
 /**
  * Add / remove a device line on a route stop.
@@ -57,12 +59,16 @@ const purposeEnum = z.enum(["PICKUP", "DELIVERY"]).optional();
 // Accept SNOW INC numbers (e.g. INC2200126) and synthetic SYN
 // incident numbers. We match an internal id (cuid) too so an
 // operator pasting a ticket id from a URL bar still works.
+//
+// Round-22 (demo decision) — "all device pickups are now required to
+// include a ticket number for validation": the field is REQUIRED. If
+// the school created the ticket moments ago, ask them for the number —
+// no more picking up devices without one.
 const incidentNumberSchema = z
-  .string()
+  .string({ required_error: "Ticket number is required" })
   .trim()
-  .min(3)
-  .max(40)
-  .optional();
+  .min(3, "Ticket number is required — ask the school for the incident number")
+  .max(40);
 
 const addExistingSchema = z.object({
   stopId: z.string().min(1),
@@ -112,6 +118,14 @@ export interface AddDeviceResult {
   attachedExistingTicket: boolean;
   /** PICKUP or DELIVERY — what this device is doing on the stop. */
   purpose: "PICKUP" | "DELIVERY";
+  /** The operator supplied a ticket number that isn't in the app
+      (not imported yet) — a synthetic was minted to track the
+      device and this carries the number for the toast. */
+  unmatchedIncidentNumber?: string;
+  /** The attached ticket's current status can't reach the
+      stop-completion target, so completing the stop won't move it.
+      Carries the raw TicketState; the toast humanises it. */
+  cascadeWarning?: TicketState;
 }
 
 /**
@@ -233,54 +247,119 @@ export async function addDeviceToStop(
 
     // 1. Operator supplied an incidentNumber → look that one up
     //    explicitly. Tenant-scoped on the stop's school so a typo
-    //    can't attach a ticket from a different district.
+    //    can't attach a ticket from a different district. Matched on
+    //    the raw + uppercased value so a lowercase phone-keyboard
+    //    entry still resolves (both forms hit the unique index).
     let resolvedTicket: {
       id: string;
       incidentNumber: string;
       state: TicketState;
     } | null = null;
+    let unmatchedIncidentNumber: string | undefined;
     if (input.incidentNumber) {
       const supplied = input.incidentNumber.trim();
       resolvedTicket = await tx.ticket.findFirst({
         where: {
           schoolId,
           OR: [
-            { incidentNumber: supplied },
+            {
+              incidentNumber: {
+                in: [...new Set([supplied, supplied.toUpperCase()])],
+              },
+            },
             { id: supplied },
           ],
         },
         select: { id: true, incidentNumber: true, state: true },
       });
       if (!resolvedTicket) {
+        // Round-22 follow-up — the school often creates the SNOW
+        // ticket while the driver is standing there, and SNOW only
+        // reaches the app via batch import, so "not found" is the
+        // EXPECTED case for a fresh number, not an operator error.
+        // Fall through to the synthetic-ticket path with the number
+        // recorded; the SNOW reconciler links them up after the next
+        // import. Hard-failing here would strand the device at the
+        // school with no record at all.
+        unmatchedIncidentNumber = supplied.toUpperCase();
+      }
+      if (resolvedTicket?.state === TicketState.CLOSED) {
         throw new Error(
-          `Ticket ${supplied} not found at this school. Check the incident number.`,
+          `Ticket ${resolvedTicket.incidentNumber} is closed — reopen it first, or double-check the number.`,
         );
       }
     }
 
     // 2. No explicit number → look for an existing open ticket on
     //    (deviceId, schoolId). Falls back to minting a synthetic.
+    //    When the operator DID name a ticket and it wasn't found, we
+    //    skip auto-resolve — silently attaching a different ticket
+    //    than the one they typed would be worse than a synthetic.
     const openTicket =
       resolvedTicket ??
-      (await tx.ticket.findFirst({
-        where: {
-          deviceId,
-          schoolId,
-          // Open = not CLOSED. Past Round-3 patterns use this.
-          state: { not: TicketState.CLOSED },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, incidentNumber: true, state: true },
-      }));
+      (unmatchedIncidentNumber
+        ? null
+        : await tx.ticket.findFirst({
+            where: {
+              deviceId,
+              schoolId,
+              // Open = not CLOSED. Past Round-3 patterns use this.
+              state: { not: TicketState.CLOSED },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true, incidentNumber: true, state: true },
+          }));
 
     let ticketId: string;
     let resolvedIncidentNumber: string;
     let syntheticTicketCreated = false;
     let attachedExistingTicket = false;
+    let cascadeWarning: TicketState | undefined;
     if (openTicket) {
       ticketId = openTicket.id;
       resolvedIncidentNumber = openTicket.incidentNumber;
       attachedExistingTicket = true;
+
+      // Round-22 follow-up — make the attach coherent with the stop
+      // lifecycle instead of silently no-oping at completion:
+      // a pickup line whose ticket is still AWAITING_PICKUP moves to
+      // PICKUP_SCHEDULED (this job), a delivery line whose ticket is
+      // PENDING_DELIVERY moves to DELIVERY_SCHEDULED. Anything that
+      // STILL can't reach the completion target gets a heads-up in
+      // the toast rather than a silent skip later.
+      const scheduleTo =
+        finalPurpose === StopDevicePurpose.PICKUP &&
+        openTicket.state === TicketState.AWAITING_PICKUP
+          ? TicketState.PICKUP_SCHEDULED
+          : finalPurpose === StopDevicePurpose.DELIVERY &&
+              openTicket.state === TicketState.PENDING_DELIVERY
+            ? TicketState.DELIVERY_SCHEDULED
+            : null;
+      let effectiveState: TicketState = openTicket.state;
+      if (scheduleTo) {
+        await transitionTicket(
+          openTicket.id,
+          scheduleTo,
+          {
+            actorUserId: session.userId,
+            reason: `Added to the ${stop.job.school.name} stop`,
+            payload: {
+              jobId: stop.jobId,
+              stopId: input.stopId,
+              source: "stop-device-add",
+            },
+          },
+          tx,
+        );
+        effectiveState = scheduleTo;
+      }
+      const completionTarget =
+        finalPurpose === StopDevicePurpose.DELIVERY
+          ? TicketState.RETURNED
+          : TicketState.IN_WAREHOUSE;
+      if (!canTransition(effectiveState, completionTarget)) {
+        cascadeWarning = effectiveState;
+      }
     } else {
       // No open ticket → mint a synthetic one in PENDING_PICKUP_UNLINKED.
       // Round-5 §1: "SYN-" prefix per the brief — easy to grep, easy to
@@ -289,15 +368,19 @@ export async function addDeviceToStop(
       // into the URL bar.
       const stamp = Date.now().toString(36).toUpperCase().slice(-7);
       const incidentNumber = `SYN-${stamp}`;
+      const baseDescription =
+        input.kind === "placeholder"
+          ? `On-route pickup: serial ${input.serial}${input.condition ? ` (${input.condition})` : ""}`
+          : "On-route pickup";
       const created = await tx.ticket.create({
         data: {
           incidentNumber,
           schoolId,
           deviceId,
           reportedAt: new Date(),
-          shortDescription: input.kind === "placeholder"
-            ? `On-route pickup: serial ${input.serial}${input.condition ? ` (${input.condition})` : ""}`
-            : "On-route pickup",
+          shortDescription: unmatchedIncidentNumber
+            ? `${baseDescription} — school ticket ${unmatchedIncidentNumber} (awaiting import)`
+            : baseDescription,
           state: TicketState.PENDING_PICKUP_UNLINKED,
           source: TicketSource.ROUTE_PICKUP,
           priority: "NORMAL",
@@ -319,7 +402,13 @@ export async function addDeviceToStop(
           toState: TicketState.PENDING_PICKUP_UNLINKED,
           actorUserId: session.userId,
           reason: `Created via on-route pickup by ${session.name}`,
-          payload: { stopId: input.stopId, source: "ROUTE_PICKUP" },
+          payload: {
+            stopId: input.stopId,
+            source: "ROUTE_PICKUP",
+            ...(unmatchedIncidentNumber
+              ? { suppliedIncidentNumber: unmatchedIncidentNumber }
+              : {}),
+          },
         },
       });
       await writeAudit(
@@ -398,6 +487,8 @@ export async function addDeviceToStop(
       attachedExistingTicket,
       purpose:
         finalPurpose === StopDevicePurpose.DELIVERY ? "DELIVERY" : "PICKUP",
+      unmatchedIncidentNumber,
+      cascadeWarning,
     };
   });
 }
@@ -606,9 +697,13 @@ export async function addDeviceToStopAction(formData: FormData) {
   const verb =
     result?.purpose === "DELIVERY" ? "delivery" : "pickup";
   const inc = result?.incidentNumber ?? "ticket";
-  redirect(
-    `${routeRedirect}?ok=${encodeURIComponent(`Device added (${verb}) → ${inc}`)}`,
-  );
+  let message = `Device added (${verb}) → ${inc}`;
+  if (result?.unmatchedIncidentNumber) {
+    message = `Ticket ${result.unmatchedIncidentNumber} isn't in the app yet — created ${inc} to track the device. It links up automatically after the next import.`;
+  } else if (result?.cascadeWarning) {
+    message += `. Heads-up: this ticket is currently ${humanizeState(result.cascadeWarning)}, so completing the stop won't change its status.`;
+  }
+  redirect(`${routeRedirect}?ok=${encodeURIComponent(message)}`);
 }
 
 /**

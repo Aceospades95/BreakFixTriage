@@ -30,7 +30,7 @@ import {
 } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
-import { transitionTicket } from "@/lib/workflow";
+import { transitionTicket, emitTransitionSideEffects } from "@/lib/workflow";
 import { enqueueNotification, renderQuoteSent } from "@/lib/notifications";
 
 /**
@@ -206,7 +206,7 @@ export async function sendQuote(
   if (holdDays < 0) {
     throw new Error("holdDays must be non-negative");
   }
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     const quote = await tx.quote.findUnique({
       where: { id: input.quoteId },
       include: {
@@ -341,6 +341,16 @@ export async function sendQuote(
 
     return { quote: updated, ticketTransitioned };
   });
+  // Post-commit: SSE + notifyOnEnter email. The transition ran on
+  // the transaction client, so the wrapper couldn't emit these.
+  if (result.ticketTransitioned) {
+    await emitTransitionSideEffects(
+      result.quote.ticketId,
+      { actorUserId: input.actorUserId, reason: input.reason },
+      db,
+    );
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -370,7 +380,7 @@ export async function respondToQuote(
   input: RespondToQuoteInput,
   db: PrismaClient = defaultPrisma,
 ): Promise<Quote> {
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     const quote = await tx.quote.findUnique({
       where: { id: input.quoteId },
       include: { ticket: true },
@@ -416,6 +426,7 @@ export async function respondToQuote(
       tx,
     );
 
+    let ticketTransitioned = false;
     if (quote.ticket.state === TicketState.QUOTE_SENT) {
       try {
         await transitionTicket(
@@ -428,6 +439,7 @@ export async function respondToQuote(
           },
           tx,
         );
+        ticketTransitioned = true;
       } catch (err) {
         await writeAudit(
           {
@@ -445,8 +457,16 @@ export async function respondToQuote(
       }
     }
 
-    return updated;
+    return { updated, ticketId: quote.ticketId, ticketTransitioned };
   });
+  if (result.ticketTransitioned) {
+    await emitTransitionSideEffects(
+      result.ticketId,
+      { actorUserId: input.actorUserId, reason: input.reason },
+      db,
+    );
+  }
+  return result.updated;
 }
 
 // ---------------------------------------------------------------------------

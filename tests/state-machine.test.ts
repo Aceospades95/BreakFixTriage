@@ -40,6 +40,14 @@ describe("state machine: allowed transitions", () => {
     expect(canTransition("REOPENED", "TRIAGE")).toBe(true);
   });
 
+  it("warehouse intake scan edges (Round-22 demo)", () => {
+    // Migration intake: import the batch, scan the pile — each scan
+    // moves its ticket straight to the warehouse.
+    expect(canTransition("IMPORTED", "IN_WAREHOUSE")).toBe(true);
+    // A device that physically arrives without a scheduled route.
+    expect(canTransition("AWAITING_PICKUP", "IN_WAREHOUSE")).toBe(true);
+  });
+
   it("rejects nonsense jumps", () => {
     expect(canTransition("IMPORTED", "CLOSED")).toBe(false);
     expect(canTransition("IN_REPAIR", "AWAITING_PICKUP")).toBe(false);

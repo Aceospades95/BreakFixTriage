@@ -18,6 +18,51 @@ export default async function ProfilePage({
     include: { districts: { include: { district: true } } },
   });
 
+  // Round-22 (demo feedback) — "Raman can see his own stats": personal
+  // 30-day numbers right on the profile, same definitions as the
+  // productivity dashboard and bench history.
+  const statsFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [closedCount, minuteSum, myRoutes] = await Promise.all([
+    prisma.ticketEvent.count({
+      where: {
+        toState: "CLOSED",
+        actorUserId: session.userId,
+        createdAt: { gte: statsFrom },
+      },
+    }),
+    prisma.timeEntry.aggregate({
+      where: { userId: session.userId, endedAt: { gte: statsFrom } },
+      _sum: { minutes: true },
+    }),
+    prisma.route.findMany({
+      where: { assigneeUserId: session.userId, date: { gte: statsFrom } },
+      select: {
+        stops: {
+          select: {
+            status: true,
+            stopDevices: {
+              where: { removedAt: null },
+              select: { lineState: true },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+  const myStops = myRoutes.flatMap((r) => r.stops);
+  const stopsDone = myStops.filter(
+    (s) => s.status === "COMPLETED" || s.status === "PARTIAL",
+  ).length;
+  const devicesVerified = myStops.reduce(
+    (acc, s) =>
+      acc +
+      s.stopDevices.filter(
+        (d) => d.lineState === "VERIFIED" || d.lineState === "EXTRA_ADDED",
+      ).length,
+    0,
+  );
+  const hoursLogged = ((minuteSum._sum.minutes ?? 0) / 60).toFixed(1);
+
   return (
     <>
       <PageHeader
@@ -57,6 +102,25 @@ export default async function ProfilePage({
           {searchParams.ok}
         </div>
       )}
+
+      {/* ── My last 30 days ── */}
+      <section className="mb-6" data-testid="my-stats">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          My last 30 days
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <MyStat label="Tickets closed" value={String(closedCount)} />
+          <MyStat label="Hours logged" value={`${hoursLogged}h`} />
+          <MyStat label="Routes run" value={String(myRoutes.length)} />
+          <MyStat label="Stops done" value={String(stopsDone)} />
+          <MyStat label="Devices verified" value={String(devicesVerified)} />
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Tickets closed counts closures you performed (same attribution
+          as Bench → History); hours, routes, stops, and devices come
+          from your time entries and route work.
+        </p>
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-lg border border-surface-border bg-surface-muted p-6">
@@ -157,6 +221,17 @@ function Field({
         minLength={minLength}
         className="w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
       />
+    </div>
+  );
+}
+
+function MyStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-surface-border bg-surface-muted p-3">
+      <div className="text-[10px] uppercase tracking-wide text-slate-400">
+        {label}
+      </div>
+      <div className="mt-0.5 text-2xl font-semibold tabular-nums">{value}</div>
     </div>
   );
 }

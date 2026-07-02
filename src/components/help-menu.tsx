@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { PopoverMenu, usePopoverClose } from "@/components/popover-menu";
+import { GUIDE_SECTIONS } from "@/lib/help/content";
 
 /**
  * Help menu in the header toolbar.
@@ -14,40 +16,7 @@ import { PopoverMenu, usePopoverClose } from "@/components/popover-menu";
  * triggers; only the dropdown changed.
  */
 
-const WIKI_SECTIONS = [
-  {
-    title: "Tickets",
-    body: "Tickets track a device from intake to return. Each ticket flows through states like Triage, Diagnosis, Repair, and Delivery. Drag tickets on the Kanban board or use bulk actions on the table view.",
-  },
-  {
-    title: "Bench",
-    body: "Your bench is your personal work queue — tickets assigned to you sorted oldest-first. Managers can view all benches to see who has what.",
-  },
-  {
-    title: "Scheduling & Routes",
-    body: "Create jobs from tickets that need pickup or delivery. Group jobs into a route, assign a driver, and the optimizer sequences the stops. Drivers see their route on the homepage with one-tap status buttons.",
-  },
-  {
-    title: "SLA Tracking",
-    body: "Each ticket state has an SLA threshold. Badges show green (on track), amber (warning), or red (breached). The manager dashboard surfaces all breached tickets.",
-  },
-  {
-    title: "Quotes & Invoices",
-    body: "When a repair is out of scope or over budget, create a quote and send it to the school contact. Approved quotes generate a PO. Invoice tracking ensures billing is complete before closing.",
-  },
-  {
-    title: "Scanning",
-    body: "Use the Scan page to scan device barcodes or QR codes. Warehouse scan-in auto-transitions pickup tickets to IN_WAREHOUSE.",
-  },
-  {
-    title: "Time Tracking",
-    body: "On each ticket, start and stop a timer to log your work. Minutes aggregate in the productivity dashboard.",
-  },
-  {
-    title: "Keyboard Shortcuts",
-    body: "Press ? anywhere to see all shortcuts. Press / to focus search. Use g + letter for quick navigation (g t = tickets, g b = bench, g s = scheduling).",
-  },
-];
+
 
 export function HelpMenu() {
   const [showWiki, setShowWiki] = useState(false);
@@ -90,6 +59,9 @@ export function HelpMenu() {
         </div>
         <ul className="py-1 text-sm">
           <li>
+            <HelpCenterLink />
+          </li>
+          <li>
             <RestartTourButton />
           </li>
           <li>
@@ -128,7 +100,7 @@ export function HelpMenu() {
                 </button>
               </div>
               <div className="space-y-5">
-                {WIKI_SECTIONS.map((section) => (
+                {GUIDE_SECTIONS.map((section) => (
                   <div key={section.title}>
                     <h3 className="text-sm font-semibold text-slate-200">
                       {section.title}
@@ -152,6 +124,19 @@ export function HelpMenu() {
           document.body,
         )}
     </>
+  );
+}
+
+function HelpCenterLink() {
+  const close = usePopoverClose();
+  return (
+    <Link
+      href="/help"
+      onClick={close}
+      className="block w-full px-3 py-2 text-left font-medium text-accent hover:bg-surface-border/40"
+    >
+      Open help center →
+    </Link>
   );
 }
 

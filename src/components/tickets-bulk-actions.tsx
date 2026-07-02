@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // Round-11 §HOTFIX-1 — replaces the Round-10 BulkSelectionWatcher
 // render-prop. A function-children prop cannot cross the
@@ -46,6 +46,8 @@ export function TicketsBulkActions({
 }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [target, setTarget] = useState("");
+  const [reason, setReason] = useState("");
+  const reasonRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const form = document.getElementById(
@@ -98,12 +100,33 @@ export function TicketsBulkActions({
       );
       return;
     }
+    // Round-22 (demo feedback: "Apply broke — it's not actually
+    // transitioning") — the server requires a reason for a bulk status
+    // change; rejecting only after the round-trip made Apply look like
+    // a silent no-op. Gate it here with a plain-language message and
+    // put the cursor in the field.
+    if (reason.trim().length < 3) {
+      e.preventDefault();
+      window.alert(
+        "Add a short reason for the status change first — it's recorded on every ticket that moves. Then hit Apply.",
+      );
+      reasonRef.current?.focus();
+      return;
+    }
     const skipped = count - eligibleForTarget;
     const message =
       skipped > 0
         ? `Move ${eligibleForTarget} of ${count} selected ticket${count === 1 ? "" : "s"} to “${targetLabel}”?\n\n${skipped} will be skipped — the status flow does not allow “${targetLabel}” from their current status. They stay unchanged.`
         : `Move ${count} ticket${count === 1 ? "" : "s"} to “${targetLabel}”?`;
-    if (!window.confirm(message)) e.preventDefault();
+    if (!window.confirm(message)) {
+      e.preventDefault();
+      return;
+    }
+    // The submit is going ahead: clear the reason AFTER the browser
+    // serializes the form (microtask), so the next bulk operation
+    // can't silently reuse this operation's reason. Soft navigation
+    // keeps this component's state alive across the redirect.
+    setTimeout(() => setReason(""), 0);
   }
 
   function confirmAssign(e: React.MouseEvent<HTMLButtonElement>) {
@@ -164,10 +187,18 @@ export function TicketsBulkActions({
             })}
           </select>
           <input
+            ref={reasonRef}
             type="text"
             name="reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
             placeholder="reason (required to apply)"
-            className="w-40 rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
+            aria-label="Reason for the bulk status change (required)"
+            className={`w-40 rounded border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none ${
+              target && count > 0 && reason.trim().length < 3
+                ? "border-amber-500/70"
+                : "border-surface-border"
+            }`}
           />
           <button
             type="submit"
@@ -219,8 +250,8 @@ export function TicketsBulkActions({
             {eligibleForTarget === 0
               ? `None of the selected tickets can move to ${targetLabel} from their current status.`
               : eligibleForTarget < count
-                ? `${eligibleForTarget} of ${count} selected will move to ${targetLabel}; the rest will be skipped.`
-                : `All ${count} selected can move to ${targetLabel}.`}
+                ? `${eligibleForTarget} of ${count} selected will move to ${targetLabel}; the rest will be skipped.${reason.trim().length < 3 ? " Add a reason to apply." : ""}`
+                : `All ${count} selected can move to ${targetLabel}.${reason.trim().length < 3 ? " Add a reason to apply." : ""}`}
           </span>
         ) : (
           <span className="text-slate-500">

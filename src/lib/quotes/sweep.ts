@@ -37,7 +37,7 @@ import {
 } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
-import { transitionTicket } from "@/lib/workflow";
+import { transitionTicket, emitTransitionSideEffects } from "@/lib/workflow";
 import {
   enqueueNotification,
   renderQuoteNoResponse,
@@ -117,6 +117,7 @@ export async function sweepExpiredQuotes(
 
   for (const quote of candidates) {
     const priorStatus = quote.status;
+    const movedBefore = report.ticketsMoved;
     try {
       await db.$transaction(async (tx) => {
         await tx.quote.update({
@@ -230,6 +231,16 @@ export async function sweepExpiredQuotes(
           }
         }
       });
+      // Post-commit: SSE so open ticket views refresh. (No
+      // notifyOnEnter email is mapped to QUOTE_NO_RESPONSE; the
+      // school follow-up above is queued inside the transaction.)
+      if (report.ticketsMoved > movedBefore) {
+        await emitTransitionSideEffects(
+          quote.ticketId,
+          { actorUserId, transitionType: "scheduled" },
+          db,
+        );
+      }
     } catch (err) {
       report.errors.push({
         quoteId: quote.id,

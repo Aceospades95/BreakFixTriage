@@ -9,6 +9,7 @@ import {
   attachPurchaseOrderAction,
   markPoInvoicedAction,
 } from "@/server/actions/quotes";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,8 @@ export default async function InvoicesPage({
   const canWrite = can(session.role, PERMISSIONS.QUOTES_WRITE);
 
   const tickets = await prisma.ticket.findMany({
-    where: { state: "INVOICE_REQUIRED" },
+    // ADR 0014 — district scope, matching the CSV export.
+    where: { ...ticketWhereForSession(session), state: "INVOICE_REQUIRED" },
     orderBy: { reportedAt: "asc" },
     include: {
       school: { select: { name: true, code: true } },

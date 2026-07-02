@@ -148,3 +148,117 @@ describe.skipIf(!process.env.DATABASE_URL)("ticket state machine", () => {
   // is covered end-to-end (rule → render → queue → memory-provider
   // send) by dispatch-email-event.test.ts — Round-15, B12 option b.
 });
+
+/**
+ * Round-22 (demo) — "whoever updates it, I automatically get it":
+ * transitions on an assigned ticket write a TICKET_UPDATED in-app
+ * notification to the assignee unless the assignee did it themselves.
+ */
+describe.skipIf(!process.env.DATABASE_URL)(
+  "assignee update notifications",
+  () => {
+    async function fixtureUser(email: string, name: string) {
+      return prisma.user.upsert({
+        where: { email },
+        create: { email, name, role: "TECHNICIAN" },
+        update: { name },
+      });
+    }
+
+    async function assignedTicket(assigneeId: string) {
+      const ticket = await createFixtureTicket("IMPORTED");
+      return prisma.ticket.update({
+        where: { id: ticket.id },
+        data: { assignedUserId: assigneeId },
+      });
+    }
+
+    afterAll(async () => {
+      await prisma.inAppNotification.deleteMany({
+        where: { title: { startsWith: `INC${RUN_TAG}` } },
+      });
+    });
+
+    it("notifies the assignee when someone else moves their ticket", async () => {
+      const assignee = await fixtureUser(
+        "it-assignee@integration.test",
+        "IT Assignee",
+      );
+      const actor = await fixtureUser("it-actor@integration.test", "IT Actor");
+      const ticket = await assignedTicket(assignee.id);
+
+      await transitionTicket(ticket.id, "TRIAGE", {
+        actorUserId: actor.id,
+        reason: "needs a second look",
+      });
+
+      const note = await prisma.inAppNotification.findFirst({
+        where: {
+          recipientUserId: assignee.id,
+          kind: "TICKET_UPDATED",
+          title: { contains: ticket.incidentNumber },
+        },
+      });
+      expect(note).not.toBeNull();
+      expect(note?.title).toBe(`${ticket.incidentNumber} moved to Triage`);
+      expect(note?.body).toContain("IT Actor");
+      expect(note?.body).toContain("needs a second look");
+      expect(note?.linkHref).toBe(`/tickets/${ticket.id}`);
+    });
+
+    it("stays quiet when the assignee moves their own ticket", async () => {
+      const assignee = await fixtureUser(
+        "it-assignee@integration.test",
+        "IT Assignee",
+      );
+      const ticket = await assignedTicket(assignee.id);
+
+      await transitionTicket(ticket.id, "TRIAGE", {
+        actorUserId: assignee.id,
+      });
+
+      const note = await prisma.inAppNotification.findFirst({
+        where: {
+          kind: "TICKET_UPDATED",
+          title: { contains: ticket.incidentNumber },
+        },
+      });
+      expect(note).toBeNull();
+    });
+
+    it("attributes actorless (automatic) transitions", async () => {
+      const assignee = await fixtureUser(
+        "it-assignee@integration.test",
+        "IT Assignee",
+      );
+      const ticket = await assignedTicket(assignee.id);
+
+      await transitionTicket(ticket.id, "TRIAGE");
+
+      const note = await prisma.inAppNotification.findFirst({
+        where: {
+          recipientUserId: assignee.id,
+          kind: "TICKET_UPDATED",
+          title: { contains: ticket.incidentNumber },
+        },
+      });
+      expect(note).not.toBeNull();
+      expect(note?.body).toContain("BreakFix (automatic)");
+    });
+
+    it("unassigned tickets produce no notification", async () => {
+      const actor = await fixtureUser("it-actor@integration.test", "IT Actor");
+      const ticket = await createFixtureTicket("IMPORTED");
+
+      await transitionTicket(ticket.id, "TRIAGE", { actorUserId: actor.id });
+
+      const note = await prisma.inAppNotification.findFirst({
+        where: {
+          kind: "TICKET_UPDATED",
+          title: { contains: ticket.incidentNumber },
+        },
+      });
+      expect(note).toBeNull();
+    });
+  },
+);

@@ -21,7 +21,10 @@ import { createTicketFromTemplateAction } from "@/server/actions/templates";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_SIZE = 50;
+// Round-22 (demo feedback, Jorge) — operators choose how many tickets
+// render per page. 50 stays the default.
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 50;
 
 export default async function TicketsPage({
   searchParams,
@@ -30,6 +33,7 @@ export default async function TicketsPage({
     state?: string;
     q?: string;
     page?: string;
+    perPage?: string;
     sort?: string;
     dir?: string;
     school?: string;
@@ -60,6 +64,12 @@ export default async function TicketsPage({
   const slaBreachedOnly = searchParams?.slaHealth === "breached";
   const query = searchParams?.q?.trim() ?? "";
   const page = Math.max(1, parseInt(searchParams?.page ?? "1", 10) || 1);
+  const perPageParsed = parseInt(searchParams?.perPage ?? "", 10);
+  const perPage = (PAGE_SIZE_OPTIONS as readonly number[]).includes(
+    perPageParsed,
+  )
+    ? perPageParsed
+    : DEFAULT_PAGE_SIZE;
 
   // Sort parsing. The `sort` param is the column key; `dir` is asc|desc.
   // Limits sort keys to the ones with a real database column so
@@ -141,8 +151,8 @@ export default async function TicketsPage({
     await Promise.all([
     prisma.ticket.findMany({
       where,
-      take: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
+      take: perPage,
+      skip: (page - 1) * perPage,
       orderBy:
         sortKey === "schoolName"
           ? { school: { name: sortDir } }
@@ -187,7 +197,7 @@ export default async function TicketsPage({
     }),
   ]);
 
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(total / perPage));
   const allStates = Object.values(TicketState);
   const activeFilters: Record<string, string> = {
     ...(stateFilter ? { state: stateFilter } : {}),
@@ -197,8 +207,19 @@ export default async function TicketsPage({
     ...(schoolFilter ? { school: schoolFilter } : {}),
     ...(manufacturerFilter ? { manufacturer: manufacturerFilter } : {}),
     ...(assigneeFilter ? { assignee: assigneeFilter } : {}),
+    // Non-default sort travels with every derived link (per-page
+    // picker, pagination, export) — otherwise changing the page size
+    // or page silently snaps the table back to reported-date order.
+    ...(sortKey !== "reportedAt" ? { sort: sortKey } : {}),
+    ...(sortDir !== "desc" ? { dir: sortDir } : {}),
+    ...(perPage !== DEFAULT_PAGE_SIZE ? { perPage: String(perPage) } : {}),
     ...(page > 1 ? { page: String(page) } : {}),
   };
+  // Sort links rebuild the URL from this map — page resets to 1 on a
+  // re-sort but every FILTER survives (pre-Round-22, sorting silently
+  // dropped school/manufacturer/assignee/SLA filters).
+  const sortBaseQuery: Record<string, string> = { ...activeFilters };
+  delete sortBaseQuery.page;
   const activeQs = new URLSearchParams(activeFilters).toString();
   const returnTo = activeQs ? `/tickets?${activeQs}` : "/tickets";
 
@@ -318,6 +339,16 @@ export default async function TicketsPage({
         method="get"
         className="mb-5 space-y-3 rounded border border-surface-border bg-surface-muted/40 p-3"
       >
+        {/* Applying filters keeps the chosen page size and sort —
+            a GET form replaces the whole query string, so anything
+            not re-submitted here would silently reset. */}
+        {perPage !== DEFAULT_PAGE_SIZE && (
+          <input type="hidden" name="perPage" value={perPage} />
+        )}
+        {sortKey !== "reportedAt" && (
+          <input type="hidden" name="sort" value={sortKey} />
+        )}
+        {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">
@@ -437,13 +468,41 @@ export default async function TicketsPage({
               Clear all filters
             </Link>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-3">
+            {/* Round-22 (demo) — per-page picker: 10 / 25 / 50 / 100. */}
+            <span className="flex items-center gap-1 text-xs text-slate-400">
+              Show
+              {PAGE_SIZE_OPTIONS.map((n) => {
+                const sp = new URLSearchParams(activeFilters);
+                sp.delete("page");
+                if (n === DEFAULT_PAGE_SIZE) sp.delete("perPage");
+                else sp.set("perPage", String(n));
+                const qs = sp.toString();
+                const active = n === perPage;
+                return (
+                  <Link
+                    key={n}
+                    href={`/tickets${qs ? `?${qs}` : ""}`}
+                    aria-current={active ? "true" : undefined}
+                    className={`rounded px-1.5 py-0.5 tabular-nums ${
+                      active
+                        ? "bg-accent/20 font-semibold text-accent"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {n}
+                  </Link>
+                );
+              })}
+              <span className="text-slate-500">per page</span>
+            </span>
             <a
               href={(() => {
                 // Every active filter, no paging — the download is
                 // the full matching set, exactly what's on screen.
                 const sp = new URLSearchParams(activeFilters);
                 sp.delete("page");
+                sp.delete("perPage");
                 const qs = sp.toString();
                 return `/api/exports/tickets${qs ? `?${qs}` : ""}`;
               })()}
@@ -479,10 +538,7 @@ export default async function TicketsPage({
             withCheckbox
             sortKey={sortKey}
             sortDir={sortDir}
-            baseQuery={{
-              ...(stateFilter ? { state: stateFilter } : {}),
-              ...(query ? { q: query } : {}),
-            }}
+            baseQuery={sortBaseQuery}
           />
         </TicketsBulkActions>
       )}
@@ -493,10 +549,7 @@ export default async function TicketsPage({
             tickets={tickets}
             sortKey={sortKey}
             sortDir={sortDir}
-            baseQuery={{
-              ...(stateFilter ? { state: stateFilter } : {}),
-              ...(query ? { q: query } : {}),
-            }}
+            baseQuery={sortBaseQuery}
           />
         </div>
       )}

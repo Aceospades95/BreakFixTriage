@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { formatCents } from "@/lib/format";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,15 @@ export default async function PurchaseOrderPrintPage({
 }: {
   params: { quoteId: string };
 }) {
-  await requireRole(PERMISSIONS.QUOTES_READ);
+  const session = await requireRole(PERMISSIONS.QUOTES_READ);
 
-  const quote = await prisma.quote.findUnique({
-    where: { id: params.quoteId },
+  const quote = await prisma.quote.findFirst({
+    // ADR 0014 — 404 (not 403) on a cross-district quote id so the
+    // printable PO can't leak another district's billing details.
+    where: {
+      id: params.quoteId,
+      ticket: ticketWhereForSession(session),
+    },
     include: {
       purchaseOrder: true,
       ticket: {

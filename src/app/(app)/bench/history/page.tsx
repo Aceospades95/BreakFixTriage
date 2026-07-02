@@ -31,7 +31,12 @@ export default async function BenchHistoryPage({
   const scope = ticketWhereForSession(session);
 
   const days = searchParams?.days === "90" ? 90 : 30;
-  const whoFilter = searchParams?.who || undefined;
+  // Narrow to a plain string — a repeated ?who= arrives as an array
+  // and would crash the Prisma query with a 500.
+  const whoFilter =
+    typeof searchParams?.who === "string" && searchParams.who
+      ? searchParams.who
+      : undefined;
 
   const now = new Date();
   const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
@@ -39,14 +44,15 @@ export default async function BenchHistoryPage({
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
   );
 
-  const [closures, monthGroups] = await Promise.all([
+  const closureWhere = {
+    toState: "CLOSED" as const,
+    createdAt: { gte: from },
+    ...(whoFilter ? { actorUserId: whoFilter } : {}),
+    ticket: scope,
+  };
+  const [closures, closureTotal, monthGroups] = await Promise.all([
     prisma.ticketEvent.findMany({
-      where: {
-        toState: "CLOSED",
-        createdAt: { gte: from },
-        ...(whoFilter ? { actorUserId: whoFilter } : {}),
-        ticket: scope,
-      },
+      where: closureWhere,
       orderBy: { createdAt: "desc" },
       take: 300,
       include: {
@@ -62,6 +68,9 @@ export default async function BenchHistoryPage({
         },
       },
     }),
+    // True window count — the log below caps at 300 rows, and the
+    // subtitle must not present the cap as the total.
+    prisma.ticketEvent.count({ where: closureWhere }),
     prisma.ticketEvent.groupBy({
       by: ["actorUserId"],
       where: {
@@ -103,7 +112,7 @@ export default async function BenchHistoryPage({
     <>
       <PageHeader
         title="Bench history"
-        subtitle={`${closures.length} closure${closures.length === 1 ? "" : "s"} in the last ${days} days`}
+        subtitle={`${closureTotal.toLocaleString()} closure${closureTotal === 1 ? "" : "s"} in the last ${days} days${closureTotal > closures.length ? ` (showing the latest ${closures.length})` : ""}`}
         actions={
           <div className="flex items-center gap-2">
             {WINDOW_OPTIONS.map((d) => (

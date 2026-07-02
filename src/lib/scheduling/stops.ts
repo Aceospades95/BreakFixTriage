@@ -27,6 +27,7 @@
 import {
   JobStatus,
   JobType,
+  StopDevicePurpose,
   StopLineState,
   RouteStatus,
   type PrismaClient,
@@ -457,11 +458,21 @@ async function cascadeStopTickets(
 ): Promise<void> {
   const activeLines = await tx.stopDevice.findMany({
     where: { stopId: stop.id, removedAt: null, ticketId: { not: null } },
-    select: { ticketId: true, lineState: true },
+    select: { ticketId: true, lineState: true, purpose: true },
   });
 
-  // ticketId → "completed" | "failed"
-  const outcomes = new Map<string, CascadeKind>();
+  // ticketId → outcome + the direction that line represents. A
+  // cross-purpose line (the Pickup/Delivery toggle on combined
+  // visits) cascades by ITS purpose, not the job's natural type —
+  // otherwise a delivery line on a pickup job aims the ticket at
+  // IN_WAREHOUSE, the machine rejects it, and the line silently
+  // never transitions. Only PICKUP/DELIVERY jobs honour the
+  // override: ONSITE_REPAIR/OTHER jobs never cascade (their lines
+  // carry a defaulted purpose the operator never chose).
+  const outcomes = new Map<
+    string,
+    { kind: CascadeKind; jobType: JobType }
+  >();
   const stopFailed = input.status === JobStatus.FAILED;
   for (const l of activeLines) {
     if (!l.ticketId) continue;
@@ -470,29 +481,52 @@ async function cascadeStopTickets(
       : isLineSuccessful(l.lineState)
         ? "completed"
         : "failed";
-    outcomes.set(l.ticketId, outcome);
+    outcomes.set(l.ticketId, {
+      kind: outcome,
+      jobType: effectiveCascadeType(stop.job.type, l.purpose),
+    });
   }
   // Expected tickets with no line row (legacy routes / device-less
-  // tickets) follow the stop's overall outcome.
+  // tickets) follow the stop's overall outcome and the job's type.
   for (const link of stop.job.ticketLinks) {
     if (outcomes.has(link.ticketId)) continue;
-    outcomes.set(link.ticketId, stopFailed ? "failed" : "completed");
+    outcomes.set(link.ticketId, {
+      kind: stopFailed ? "failed" : "completed",
+      jobType: stop.job.type,
+    });
   }
 
-  for (const [ticketId, kind] of outcomes) {
+  for (const [ticketId, outcome] of outcomes) {
     const reason =
-      kind === "failed"
+      outcome.kind === "failed"
         ? input.reason
           ? `${capitalize(stopLabel)} failed: ${input.reason}`
           : `${capitalize(stopLabel)} — item not collected/delivered`
         : `${capitalize(stopLabel)} completed`;
-    await cascadeOneTicket(tx, stop.job.type, ticketId, kind, {
+    await cascadeOneTicket(tx, outcome.jobType, ticketId, outcome.kind, {
       actorUserId: input.actorUserId,
       reason,
       stopId: stop.id,
       jobId: stop.jobId,
     });
   }
+}
+
+/**
+ * The cascade direction for one stop line. Lines on PICKUP/DELIVERY
+ * jobs follow their own purpose (cross-purpose adds are the point of
+ * the toggle); other job types keep their no-cascade behaviour.
+ */
+function effectiveCascadeType(
+  jobType: JobType,
+  purpose: StopDevicePurpose | null,
+): JobType {
+  if (jobType !== JobType.PICKUP && jobType !== JobType.DELIVERY) {
+    return jobType;
+  }
+  if (purpose === StopDevicePurpose.DELIVERY) return JobType.DELIVERY;
+  if (purpose === StopDevicePurpose.PICKUP) return JobType.PICKUP;
+  return jobType;
 }
 
 function capitalize(s: string): string {

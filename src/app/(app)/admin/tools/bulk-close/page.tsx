@@ -4,6 +4,7 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
+import { canTransition } from "@/lib/workflow";
 import {
   bulkCloseStaleAction,
   previewBulkCloseStale,
@@ -48,7 +49,12 @@ export default async function BulkCloseToolPage({
     1,
     parseInt(searchParams?.daysOld ?? "0", 10) || 0,
   );
-  const showPreview = searchParams?.preview === "1" && state && daysOld > 0;
+  // Only states with a legal edge to CLOSED are offered — the commit
+  // step enforces the same rule, so previewing an ineligible state
+  // would count tickets the commit then refuses to touch.
+  const closableState = state && canTransition(state, TicketState.CLOSED);
+  const showPreview =
+    searchParams?.preview === "1" && state && closableState && daysOld > 0;
 
   let preview: Awaited<ReturnType<typeof previewBulkCloseStale>> | null = null;
   if (showPreview) {
@@ -89,7 +95,12 @@ export default async function BulkCloseToolPage({
             className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
           >
             {Object.values(TicketState)
-              .filter((s) => s !== "CLOSED" && s !== "ON_HOLD")
+              .filter(
+                (s) =>
+                  s !== "CLOSED" &&
+                  s !== "ON_HOLD" &&
+                  canTransition(s, TicketState.CLOSED),
+              )
               .map((s) => (
                 <option key={s} value={s}>
                   {humanise(s)}

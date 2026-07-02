@@ -31,6 +31,7 @@ import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
 import { NormalizedImportRow } from "./schema";
 import { commitRow, type ImportResult } from "./pipeline";
+import { reconcileSnowImport } from "@/lib/snow-merge";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -317,6 +318,17 @@ export async function runServiceNowSync(
     }
   }
 
+  // Round-7 §3C parity with the CSV path: auto-merge synthetic
+  // on-route pickups against the SNOW INCs this sync just created.
+  // Without this, a synthetic that would have reconciled on a CSV
+  // import stayed unmerged forever when the same INC arrived via the
+  // API sync instead.
+  const reconcile = await reconcileSnowImport(
+    batch.id,
+    input.triggeredByUserId,
+    db,
+  );
+
   const stats: Prisma.JsonObject = {
     parsed: records.length,
     invalid: invalidCount,
@@ -324,6 +336,8 @@ export async function runServiceNowSync(
     updated,
     duplicates,
     rejected,
+    mergedFromSynthetic: reconcile.mergedFromSynthetic,
+    crossSchoolCollisions: reconcile.crossSchoolCollisions,
     source: "servicenow-api",
   };
 

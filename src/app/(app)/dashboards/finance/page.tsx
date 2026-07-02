@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,10 @@ export const dynamic = "force-dynamic";
  * aggregate table, so it stays honest as records change.
  */
 export default async function FinanceDashboardPage() {
-  await requireRole(PERMISSIONS.REPORTS_READ);
+  const session = await requireRole(PERMISSIONS.REPORTS_READ);
+  // ADR 0014 — district-scoped roles see their districts' money only.
+  const ticketScope = ticketWhereForSession(session);
+  const poScope = { quote: { ticket: ticketScope } };
 
   const now = new Date();
   const twelveMonthsAgo = new Date(
@@ -24,23 +28,37 @@ export default async function FinanceDashboardPage() {
   );
 
   const [pos, pendingInvoices, recentPos, parts, partMovements] = await Promise.all([
+    // Uncapped over the 12-month window — the money totals below are
+    // reduced from this set, and a `take` cap would silently
+    // understate them once volume grows. The slim select keeps the
+    // row cost trivial.
     prisma.purchaseOrder.findMany({
-      where: { issuedAt: { gte: twelveMonthsAgo } },
-      include: {
+      where: { ...poScope, issuedAt: { gte: twelveMonthsAgo } },
+      select: {
+        amountCents: true,
+        invoicedAt: true,
+        issuedAt: true,
         quote: {
-          include: {
+          select: {
             ticket: {
-              include: { school: { include: { district: true } } },
+              select: {
+                school: {
+                  select: {
+                    district: { select: { id: true, name: true } },
+                  },
+                },
+              },
             },
           },
         },
       },
       orderBy: { issuedAt: "desc" },
-      take: 500,
     }),
-    prisma.ticket.count({ where: { state: "INVOICE_REQUIRED" } }),
+    prisma.ticket.count({
+      where: { ...ticketScope, state: "INVOICE_REQUIRED" },
+    }),
     prisma.purchaseOrder.findMany({
-      where: { invoicedAt: null },
+      where: { ...poScope, invoicedAt: null },
       include: {
         quote: {
           include: { ticket: { select: { incidentNumber: true, id: true } } },

@@ -75,8 +75,19 @@ export default async function PortalPage({
   });
   if (!school) return notFound();
 
-  const filterKey = searchParams?.status ?? null;
-  const filter = filterKey ? STATUS_FILTERS[filterKey] : null;
+  // Narrow to a plain string and require an OWN key: a crafted
+  // ?status=constructor (or a repeated ?status=) must fall back to
+  // the default view, not crash the public page on a
+  // prototype-inherited lookup.
+  const rawStatus = searchParams?.status;
+  const filterKey =
+    typeof rawStatus === "string" && Object.hasOwn(STATUS_FILTERS, rawStatus)
+      ? rawStatus
+      : null;
+  const filter = filterKey ? STATUS_FILTERS[filterKey]! : null;
+  // Round-13 §2L — MINIMAL tokens hide serial / asset tag / short
+  // description; the school sees counts, numbers, and statuses only.
+  const minimal = resolved.dataScope === "MINIMAL";
 
   const listWhere: Prisma.TicketWhereInput =
     filterKey === "delayed"
@@ -246,7 +257,7 @@ export default async function PortalPage({
                       {t.incidentNumber}
                     </span>
                     <StatePill state={t.state} />
-                    {t.device && (
+                    {!minimal && t.device && (
                       <span className="font-medium tracking-tight text-xs text-slate-500">
                         {t.device.assetTag ?? t.device.serialNumber}
                       </span>
@@ -255,9 +266,11 @@ export default async function PortalPage({
                       reported {t.reportedAt.toISOString().slice(0, 10)}
                     </span>
                   </div>
-                  <div className="mt-1 text-sm text-slate-300">
-                    {t.shortDescription}
-                  </div>
+                  {!minimal && (
+                    <div className="mt-1 text-sm text-slate-300">
+                      {t.shortDescription}
+                    </div>
+                  )}
                   </a>
                 </li>
               ))}
@@ -287,13 +300,13 @@ export default async function PortalPage({
                     <span className="font-medium tracking-tight text-xs text-slate-400">
                       {t.incidentNumber}
                     </span>
-                    {t.device && (
+                    {!minimal && t.device && (
                       <span className="font-medium tracking-tight text-xs text-slate-500">
                         {t.device.assetTag ?? t.device.serialNumber}
                       </span>
                     )}
                     <span className="flex-1 truncate text-slate-300">
-                      {t.shortDescription}
+                      {minimal ? "" : t.shortDescription}
                     </span>
                     <span className="text-xs text-slate-500">
                       closed {t.closedAt?.toISOString().slice(0, 10) ?? "—"}

@@ -366,9 +366,18 @@ export async function commitRow(
       },
     });
 
-    // If the detector saw an open ticket for this same serial, queue a
+    // If the detector saw another ticket on this same serial, queue a
     // conflict so an operator can decide whether these are related.
-    if (detection.kind === "SERIAL_OPEN_MATCH") {
+    // SERIAL_ON_CLOSED is the reopen candidate: a NEW incident number
+    // on a device whose last ticket is closed. (The detector only
+    // reports serial kinds when no incident-number match exists, so
+    // this create branch is the one place they can land — a previous
+    // revision guarded the reopen case behind `existing`, which is
+    // always null here, and never filed it.)
+    if (
+      detection.kind === "SERIAL_OPEN_MATCH" ||
+      detection.kind === "SERIAL_ON_CLOSED"
+    ) {
       await db.duplicateConflict.create({
         data: {
           batchId,
@@ -376,52 +385,13 @@ export async function commitRow(
           leftTicketId: detection.existingTicketId,
           rightTicketId: ticket.id,
           notes:
-            "New ticket opened on a device that already has an open ticket.",
+            detection.kind === "SERIAL_ON_CLOSED"
+              ? "Serial matches a closed ticket — review whether this is a reopen."
+              : "New ticket opened on a device that already has an open ticket.",
         },
       });
     }
 
-    await db.importRow.update({
-      where: { id: row.id },
-      data: {
-        status: ImportRowStatus.CREATED,
-        resultingTicketId: ticket.id,
-      },
-    });
-    return "CREATED";
-  }
-
-  // 5. Closed ticket re-seen via serial number → reopen candidate.
-  if (
-    existing.state === "CLOSED" &&
-    detection.kind === "SERIAL_ON_CLOSED" &&
-    existing.incidentNumber !== n.incidentNumber
-  ) {
-    // New incident number but same serial as a closed ticket → create a new
-    // ticket AND flag a reopen duplicate conflict for operator review.
-    const ticket = await db.ticket.create({
-      data: {
-        incidentNumber: n.incidentNumber,
-        serviceNowSysId: n.serviceNowSysId ?? null,
-        deviceId: deviceId ?? null,
-        schoolId: school.id,
-        reportedAt: n.reportedAt,
-        shortDescription: n.shortDescription,
-        longDescription: n.longDescription ?? null,
-        priority: n.priority,
-        state: "IMPORTED",
-      },
-    });
-    await db.duplicateConflict.create({
-      data: {
-        batchId,
-        kind: "SERIAL",
-        leftTicketId: existing.id,
-        rightTicketId: ticket.id,
-        notes:
-          "Serial matches a closed ticket — review whether this is a reopen.",
-      },
-    });
     await db.importRow.update({
       where: { id: row.id },
       data: {
@@ -695,7 +665,11 @@ export async function runDeviceImport(
         });
         deviceModelId = dm.id;
       }
-      // Upsert device by serial number
+      // Upsert device by serial number. Warranty End (mapped from
+      // "warranty end" / "warranty expiry" columns) persists to
+      // Device.warrantyExpires — the warranty chip / out-of-warranty
+      // pickup warnings run off this field, so dropping it here left
+      // imported fleets permanently "No warranty date on file".
       const existing = await db.device.findFirst({ where: { serialNumber: { equals: n.serialNumber, mode: "insensitive" } } });
       if (existing) {
         await db.device.update({
@@ -704,6 +678,7 @@ export async function runDeviceImport(
             ownerSchoolId: school.id,
             ...(n.assetTag ? { assetTag: n.assetTag } : {}),
             ...(deviceModelId ? { modelId: deviceModelId } : {}),
+            ...(n.warrantyEnd ? { warrantyExpires: n.warrantyEnd } : {}),
           },
         });
         updated++;
@@ -715,6 +690,7 @@ export async function runDeviceImport(
             ownerSchoolId: school.id,
             ...(n.assetTag ? { assetTag: n.assetTag } : {}),
             ...(deviceModelId ? { modelId: deviceModelId } : {}),
+            ...(n.warrantyEnd ? { warrantyExpires: n.warrantyEnd } : {}),
           },
         });
         created++;

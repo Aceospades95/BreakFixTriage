@@ -443,6 +443,12 @@ model TicketEvent {
 
   @@index([ticketId])
   @@index([toState])
+  /// Round-22 — /bench/history closure log + monthly leaderboard
+  /// filter (toState, createdAt window); /profile my-stats filters
+  /// (actorUserId, createdAt window). Without these, both pages
+  /// walk every CLOSED event ever recorded on each view.
+  @@index([toState, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 // ---------------------------------------------------------------------------

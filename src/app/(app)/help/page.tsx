@@ -26,7 +26,10 @@ export default async function HelpPage({
   searchParams?: { ok?: string; error?: string; edit?: string };
 }) {
   const session = await requireSession();
-  const canEditSops = can(session.role, PERMISSIONS.USERS_MANAGE);
+  // TEAM_NOTES_MANAGE, not USERS_MANAGE: SOPs are team-facing
+  // operational content, the same class as urgent team notes — ops
+  // managers and dispatchers maintain them, not just admins.
+  const canEditSops = can(session.role, PERMISSIONS.TEAM_NOTES_MANAGE);
   const sopsRaw = (await getRawSetting(HELP_SOPS_SETTING_KEY)) as
     | string
     | null;

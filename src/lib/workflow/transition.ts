@@ -61,6 +61,15 @@ export interface TransitionOptions {
    * Stamped on the audit row's `after.transitionType`. See ADR 0006.
    */
   transitionType?: TransitionType;
+  /**
+   * Skip the per-ticket TICKET_UPDATED notification to the assignee.
+   * ONLY for bulk operations that write their own per-assignee
+   * summary instead (e.g. admin bulk-close) — 500 individual rows
+   * would bury the bell. Never set this without a replacement
+   * notification: "whoever updates it, I automatically get it" is a
+   * team decision.
+   */
+  suppressAssigneeNotification?: boolean;
 }
 
 export type PrismaLike = PrismaClient | Prisma.TransactionClient;
@@ -280,7 +289,8 @@ async function transitionInTx(
   // plain DB write, not an external send, so mid-transaction is safe.
   if (
     updated.assignedUserId &&
-    updated.assignedUserId !== opts.actorUserId
+    updated.assignedUserId !== opts.actorUserId &&
+    !opts.suppressAssigneeNotification
   ) {
     const actor = opts.actorUserId
       ? await tx.user.findUnique({
@@ -342,6 +352,29 @@ export async function transitionTicket(
   // `notifyOnEnter` config flag (server-side, authoritative).
   await maybeDispatchTransitionEmail(db as PrismaClient, updated, opts);
   return updated;
+}
+
+/**
+ * Post-commit side effects for a transition that ran inside a
+ * caller-owned transaction: the SSE publish and the notifyOnEnter
+ * email. `transitionTicket` does both automatically on the
+ * full-client path; TransactionClient callers (quote lifecycle,
+ * sweeps, duplicate resolution) call this AFTER their transaction
+ * commits — never inside it, since a queued send must not reference
+ * a state that might roll back. Safe to call when the transition
+ * was skipped: it re-reads the ticket and dispatches off its actual
+ * state.
+ */
+export async function emitTransitionSideEffects(
+  ticketId: string,
+  opts: TransitionOptions = {},
+  db: PrismaClient = defaultPrisma,
+): Promise<void> {
+  publish({ topic: "tickets.changed", ticketId });
+  const ticket = await db.ticket.findUnique({ where: { id: ticketId } });
+  if (ticket) {
+    await maybeDispatchTransitionEmail(db, ticket, opts);
+  }
 }
 
 async function maybeDispatchTransitionEmail(

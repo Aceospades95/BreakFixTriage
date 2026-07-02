@@ -8,6 +8,10 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
 import { transitionTicket, canTransition } from "@/lib/workflow";
+import {
+  deviceWhereForSession,
+  ticketWhereForSession,
+} from "@/lib/data/forSession";
 
 const schema = z.object({
   serial: z.string().trim().min(1),
@@ -30,12 +34,25 @@ const INTAKE_STATES = [
  *      one ticket the scanned incident number names
  *   2. Transition each to IN_WAREHOUSE via the state machine, which
  *      stamps the intake date on the event timeline
- *   3. Report the count of transitions + any that skipped
+ *   3. Clean up now-pointless unscheduled pickup jobs, and flag
+ *      tickets already on a scheduled route so dispatch hears about
+ *      it before the driver does
+ *   4. Report the count of transitions + any that skipped
  *
  * Round-22 (demo) — the migration-intake flow: import the batch, then
  * scan gun down the pile; each scan marks its ticket "brought into the
  * warehouse" with the date, no per-ticket clicking. (ServiceNow still
  * needs its own update until we have API access.)
+ *
+ * Tenant scoping (ADR 0014): both lookups are constrained to the
+ * session's districts, mirroring src/lib/scan/resolve.ts. A scan of a
+ * foreign district's INC or serial falls through to the generic
+ * "Nothing matched" error — no existence or state oracle.
+ *
+ * Lookups are exact-match on the raw and uppercased scan value so the
+ * unique indexes on incidentNumber / serialNumber / assetTag are
+ * used. Scan guns emit exactly what's printed on the label, so a
+ * fuzzy match isn't worth a sequential scan per trigger pull.
  */
 export async function scanInDeviceAction(formData: FormData) {
   const session = await requireRole(PERMISSIONS.TICKETS_TRANSITION);
@@ -46,11 +63,16 @@ export async function scanInDeviceAction(formData: FormData) {
   }
 
   const scanned = parsed.data.serial.trim();
+  const variants = [...new Set([scanned, scanned.toUpperCase()])];
+  const ticketScope = ticketWhereForSession(session);
+  const deviceScope = deviceWhereForSession(session);
 
   // Ticket-number path: the label on the pile is sometimes the INC
-  // sticker, not the device barcode. Exact match, any case.
+  // sticker, not the device barcode.
   const byIncident = await prisma.ticket.findFirst({
-    where: { incidentNumber: { equals: scanned, mode: "insensitive" } },
+    where: {
+      AND: [ticketScope, { incidentNumber: { in: variants } }],
+    },
     select: { id: true, incidentNumber: true, state: true, deviceId: true },
   });
 
@@ -66,15 +88,21 @@ export async function scanInDeviceAction(formData: FormData) {
   } else {
     const device = await prisma.device.findFirst({
       where: {
-        OR: [
-          { serialNumber: { equals: scanned, mode: "insensitive" } },
-          { assetTag: { equals: scanned, mode: "insensitive" } },
+        AND: [
+          deviceScope,
+          {
+            OR: [
+              { serialNumber: { in: variants } },
+              { assetTag: { in: variants } },
+            ],
+          },
         ],
       },
       include: {
         tickets: {
           where: { state: { in: [...INTAKE_STATES] } },
           orderBy: { reportedAt: "desc" },
+          take: 25,
         },
       },
     });
@@ -99,6 +127,7 @@ export async function scanInDeviceAction(formData: FormData) {
 
   let transitioned = 0;
   const skipped: string[] = [];
+  const dispatchHeadsUp: string[] = [];
   for (const t of candidates) {
     if (!canTransition(t.state as Parameters<typeof canTransition>[0], "IN_WAREHOUSE")) {
       skipped.push(`${t.incidentNumber} (${t.state})`);
@@ -111,6 +140,38 @@ export async function scanInDeviceAction(formData: FormData) {
         payload: { source: "warehouse-scan", deviceId },
       });
       transitioned += 1;
+
+      // The device is physically here, so a pickup visit is
+      // pointless. Unlink this ticket from pickup jobs dispatch
+      // hasn't put on a route yet, and cancel any job left empty.
+      // Jobs already SCHEDULED stay untouched — the route exists and
+      // silently mutating it would surprise the driver — but the
+      // operator gets a heads-up to tell dispatch.
+      const links = await prisma.ticketJob.findMany({
+        where: {
+          ticketId: t.id,
+          job: { type: "PICKUP", status: { in: ["UNSCHEDULED", "SCHEDULED"] } },
+        },
+        select: { job: { select: { id: true, status: true } } },
+      });
+      for (const link of links) {
+        if (link.job.status !== "UNSCHEDULED") {
+          dispatchHeadsUp.push(t.incidentNumber);
+          continue;
+        }
+        await prisma.ticketJob.delete({
+          where: { ticketId_jobId: { ticketId: t.id, jobId: link.job.id } },
+        });
+        const remaining = await prisma.ticketJob.count({
+          where: { jobId: link.job.id },
+        });
+        if (remaining === 0) {
+          await prisma.job.update({
+            where: { id: link.job.id },
+            data: { status: "CANCELLED" },
+          });
+        }
+      }
     } catch (err) {
       skipped.push(
         `${t.incidentNumber} (${err instanceof Error ? err.message : "error"})`,
@@ -127,14 +188,19 @@ export async function scanInDeviceAction(formData: FormData) {
       scanned: scanLabel,
       transitioned,
       skipped,
+      dispatchHeadsUp,
     },
   });
 
+  const headsUp =
+    dispatchHeadsUp.length > 0
+      ? ` Heads-up: ${dispatchHeadsUp.join(", ")} ${dispatchHeadsUp.length === 1 ? "is" : "are"} on a scheduled route — tell dispatch the device is already here.`
+      : "";
   const summary =
     transitioned > 0
       ? `${scanLabel}: moved ${transitioned}/${candidates.length} to In warehouse${
           skipped.length > 0 ? ` (${skipped.length} skipped)` : ""
-        }`
+        }.${headsUp}`
       : `${scanLabel}: nothing moved — ${skipped.join("; ")}`;
   revalidatePath("/scan/warehouse");
   revalidatePath("/tickets");

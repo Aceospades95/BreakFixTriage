@@ -17,13 +17,24 @@ export type WarrantyStatus =
   | { kind: "out"; expired: Date }
   | { kind: "unknown" };
 
-/** Classify a device's warranty from its expiry date. */
+/**
+ * Classify a device's warranty from its expiry date. The expiry DAY
+ * is inclusive: warranty dates arrive as date-only values (midnight
+ * UTC), and a device whose warranty runs "until 2026-07-02" is
+ * covered for the whole of July 2nd — comparing against raw midnight
+ * would flag it out-of-warranty at breakfast on its last covered day.
+ */
 export function warrantyStatus(
   warrantyExpires: Date | null | undefined,
   now: Date = new Date(),
 ): WarrantyStatus {
   if (!warrantyExpires) return { kind: "unknown" };
-  return warrantyExpires.getTime() >= now.getTime()
+  const endOfExpiryDay = Date.UTC(
+    warrantyExpires.getUTCFullYear(),
+    warrantyExpires.getUTCMonth(),
+    warrantyExpires.getUTCDate() + 1,
+  );
+  return now.getTime() < endOfExpiryDay
     ? { kind: "in", expires: warrantyExpires }
     : { kind: "out", expired: warrantyExpires };
 }
@@ -49,7 +60,10 @@ export function isOutOfWarranty(
 export function parseCaseUrlTemplates(
   raw: string | null | undefined,
 ): Record<string, string> {
-  const out: Record<string, string> = {};
+  // Null prototype: vendor names are attacker-ish input (they come
+  // from RMA rows), and a vendor literally named "constructor" must
+  // not resolve to Object.prototype members downstream.
+  const out: Record<string, string> = Object.create(null);
   if (!raw) return out;
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -95,7 +109,15 @@ export function caseUrlFor(
   caseNumber: string,
   templates: Record<string, string>,
 ): string | null {
-  const template = templates[vendor.trim().toLowerCase()];
-  if (!template) return null;
+  const key = vendor.trim().toLowerCase();
+  // Own-key + type + scheme checks are defense in depth: the map
+  // usually comes from parseCaseUrlTemplates (null prototype, http(s)
+  // enforced), but callers can hand us any object and the rendered
+  // <a href> must never carry a javascript:/data: URL.
+  if (!Object.hasOwn(templates, key)) return null;
+  const template = templates[key];
+  if (typeof template !== "string" || !/^https?:\/\//i.test(template)) {
+    return null;
+  }
   return template.replaceAll("{case}", encodeURIComponent(caseNumber.trim()));
 }

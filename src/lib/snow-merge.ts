@@ -159,6 +159,24 @@ export async function reconcileSnowImport(
         });
         mergedSyntheticIds.add(winner.id);
         mergedFromSynthetic++;
+
+        // Close out any open duplicate conflicts on the merged
+        // synthetic — commitRow files a SERIAL conflict moments
+        // before this reconciler runs, and leaving it open invites
+        // an operator to "Treat as reopen" a ticket that no longer
+        // exists as an open line of work.
+        await db.duplicateConflict.updateMany({
+          where: {
+            resolvedAt: null,
+            OR: [{ leftTicketId: winner.id }, { rightTicketId: winner.id }],
+          },
+          data: {
+            resolution: "MERGE_INTO_RIGHT",
+            resolvedAt: new Date(),
+            resolvedByUserId: actorUserId,
+            notes: `Auto-resolved by SNOW import reconcile (batch ${importBatchId}) — synthetic merged into ${t.incidentNumber}.`,
+          },
+        });
       } catch (err) {
         // The merge can throw if a concurrent operation just merged
         // either side — leave the synthetic open and log so an

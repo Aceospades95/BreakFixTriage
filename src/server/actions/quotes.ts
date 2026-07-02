@@ -32,7 +32,10 @@ function parseAmountCents(raw: FormDataEntryValue | null): number | null {
   if (raw == null) return null;
   const str = raw.toString().trim().replace(/,/g, "");
   if (!str) return null;
-  if (!/^-?\d+(\.\d{1,2})?$/.test(str)) {
+  // No negatives: a typo'd "-199.00" must not become a negative
+  // quote that a school can approve and turn into a negative PO.
+  // Credits/refunds are out of scope for the quote form.
+  if (!/^\d+(\.\d{1,2})?$/.test(str)) {
     throw new Error(`Invalid amount: ${str}`);
   }
   const parsed = Math.round(parseFloat(str) * 100);

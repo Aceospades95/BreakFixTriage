@@ -16,7 +16,10 @@ import { withFeedback } from "@/lib/url";
  * AppSetting; `## Heading` lines split it into sections on render.
  */
 export async function updateHelpSopsAction(formData: FormData) {
-  const session = await requireRole(PERMISSIONS.USERS_MANAGE);
+  // Same gate as team notes: SOPs are team-facing operational
+  // content, maintained by ops managers and dispatchers — not an
+  // admin-only user-management concern.
+  const session = await requireRole(PERMISSIONS.TEAM_NOTES_MANAGE);
   const body = (formData.get("sops")?.toString() ?? "").slice(0, 20_000);
 
   try {

@@ -207,6 +207,11 @@ export default async function TicketsPage({
     ...(schoolFilter ? { school: schoolFilter } : {}),
     ...(manufacturerFilter ? { manufacturer: manufacturerFilter } : {}),
     ...(assigneeFilter ? { assignee: assigneeFilter } : {}),
+    // Non-default sort travels with every derived link (per-page
+    // picker, pagination, export) — otherwise changing the page size
+    // or page silently snaps the table back to reported-date order.
+    ...(sortKey !== "reportedAt" ? { sort: sortKey } : {}),
+    ...(sortDir !== "desc" ? { dir: sortDir } : {}),
     ...(perPage !== DEFAULT_PAGE_SIZE ? { perPage: String(perPage) } : {}),
     ...(page > 1 ? { page: String(page) } : {}),
   };
@@ -334,6 +339,16 @@ export default async function TicketsPage({
         method="get"
         className="mb-5 space-y-3 rounded border border-surface-border bg-surface-muted/40 p-3"
       >
+        {/* Applying filters keeps the chosen page size and sort —
+            a GET form replaces the whole query string, so anything
+            not re-submitted here would silently reset. */}
+        {perPage !== DEFAULT_PAGE_SIZE && (
+          <input type="hidden" name="perPage" value={perPage} />
+        )}
+        {sortKey !== "reportedAt" && (
+          <input type="hidden" name="sort" value={sortKey} />
+        )}
+        {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">

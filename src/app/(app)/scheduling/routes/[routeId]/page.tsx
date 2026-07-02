@@ -596,8 +596,12 @@ function StopBody({
         | "DELIVERY",
       label: inc ? `${inc} · ${deviceLabel}` : deviceLabel,
       // Round-22 (demo) — warn before collecting a device we'd have
-      // to send back.
-      outOfWarranty: isOutOfWarranty(sd.device?.warrantyExpires),
+      // to send back. Pickup lines only: on a delivery line the
+      // repaired device is going BACK to the school, and telling the
+      // driver not to collect it reads as "don't deliver this".
+      outOfWarranty:
+        sd.purpose !== "DELIVERY" &&
+        isOutOfWarranty(sd.device?.warrantyExpires),
     };
   });
 
@@ -1123,10 +1127,12 @@ function StopBody({
                       Use this for a device you find on site that wasn&apos;t
                       on the list. Every pickup needs a ticket number — if the
                       school just created the ticket, ask them for the
-                      incident number and type it in; the app checks it
-                      belongs to this school. Flip the Pickup/Delivery toggle
-                      if you&apos;re collecting a device during a delivery (or
-                      vice versa).
+                      incident number and type it in. If the number isn&apos;t
+                      in the app yet (fresh ServiceNow tickets arrive with the
+                      next import), the device is still tracked and links up
+                      automatically once the import lands. Flip the
+                      Pickup/Delivery toggle if you&apos;re collecting a
+                      device during a delivery (or vice versa).
                     </p>
                   </div>
                 </details>

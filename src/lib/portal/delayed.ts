@@ -15,6 +15,14 @@ export const WAITING_ON_VISIT_STATES: TicketState[] = [
  * not there…), CANCELLED (route cancelled), or is running late right
  * now (an active reported delay). Once the visit succeeds and the
  * ticket moves on, it drops out of this bucket.
+ *
+ * Trouble only counts against the KIND of visit the ticket is
+ * currently waiting on: a pickup that failed in May must not re-flag
+ * the same ticket as Delayed in June while it waits on its delivery —
+ * that stop's failure was resolved by the successful re-pickup.
+ * Pickup-phase states match PICKUP jobs (or pickup-purpose stop
+ * lines), delivery-phase states match DELIVERY jobs (or
+ * delivery-purpose lines), and AWAITING_ONSITE matches on-site jobs.
  */
 export function delayedTicketWhere(
   schoolId: string,
@@ -28,12 +36,45 @@ export function delayedTicketWhere(
       },
     ],
   };
+
+  const phase = (
+    states: TicketState[],
+    jobType: "PICKUP" | "DELIVERY" | "ONSITE_REPAIR",
+    linePurpose: "PICKUP" | "DELIVERY" | null,
+  ): Prisma.TicketWhereInput => ({
+    state: { in: states },
+    OR: [
+      {
+        jobLinks: {
+          some: {
+            job: { type: jobType, routeStops: { some: stopTrouble } },
+          },
+        },
+      },
+      {
+        stopDevices: {
+          some: {
+            removedAt: null,
+            ...(linePurpose ? { purpose: linePurpose } : {}),
+            stop: linePurpose
+              ? stopTrouble
+              : { AND: [stopTrouble, { job: { type: jobType } }] },
+          },
+        },
+      },
+    ],
+  });
+
   return {
     schoolId,
-    state: { in: WAITING_ON_VISIT_STATES },
     OR: [
-      { jobLinks: { some: { job: { routeStops: { some: stopTrouble } } } } },
-      { stopDevices: { some: { removedAt: null, stop: stopTrouble } } },
+      phase(["AWAITING_PICKUP", "PICKUP_SCHEDULED"], "PICKUP", "PICKUP"),
+      phase(
+        ["PENDING_DELIVERY", "DELIVERY_SCHEDULED"],
+        "DELIVERY",
+        "DELIVERY",
+      ),
+      phase(["AWAITING_ONSITE"], "ONSITE_REPAIR", null),
     ],
   };
 }

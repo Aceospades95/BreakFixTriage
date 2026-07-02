@@ -1,4 +1,4 @@
-export { transitionTicket } from "./transition";
+export { transitionTicket, emitTransitionSideEffects } from "./transition";
 export type { TransitionOptions } from "./transition";
 export {
   ALLOWED_TRANSITIONS,

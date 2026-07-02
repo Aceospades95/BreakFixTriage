@@ -118,7 +118,15 @@ export function TicketsBulkActions({
       skipped > 0
         ? `Move ${eligibleForTarget} of ${count} selected ticket${count === 1 ? "" : "s"} to “${targetLabel}”?\n\n${skipped} will be skipped — the status flow does not allow “${targetLabel}” from their current status. They stay unchanged.`
         : `Move ${count} ticket${count === 1 ? "" : "s"} to “${targetLabel}”?`;
-    if (!window.confirm(message)) e.preventDefault();
+    if (!window.confirm(message)) {
+      e.preventDefault();
+      return;
+    }
+    // The submit is going ahead: clear the reason AFTER the browser
+    // serializes the form (microtask), so the next bulk operation
+    // can't silently reuse this operation's reason. Soft navigation
+    // keeps this component's state alive across the redirect.
+    setTimeout(() => setReason(""), 0);
   }
 
   function confirmAssign(e: React.MouseEvent<HTMLButtonElement>) {

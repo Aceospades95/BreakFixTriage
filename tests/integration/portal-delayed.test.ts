@@ -109,5 +109,40 @@ describe.skipIf(!process.env.DATABASE_URL)("portal delayed bucket", () => {
       data: { state: "IN_WAREHOUSE" },
     });
     expect(await countDelayed()).toBe(0);
+
+    // Cross-phase regression: months later the same ticket waits on
+    // its DELIVERY. The old FAILED pickup stop must not re-flag it —
+    // that failure was resolved by the successful re-pickup.
+    await prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { state: "PENDING_DELIVERY" },
+    });
+    expect(await countDelayed()).toBe(0);
+
+    // But a troubled DELIVERY stop does flag it while it waits.
+    const deliveryJob = await prisma.job.create({
+      data: {
+        type: JobType.DELIVERY,
+        schoolId: school.id,
+        status: JobStatus.SCHEDULED,
+        ticketLinks: { create: { ticketId: ticket.id } },
+      },
+    });
+    await prisma.route.create({
+      data: {
+        date: new Date(),
+        assigneeUserId: driver.id,
+        status: RouteStatus.PLANNED,
+        stops: {
+          create: {
+            jobId: deliveryJob.id,
+            sequence: 1,
+            status: JobStatus.FAILED,
+            proofRule: "NONE",
+          },
+        },
+      },
+    });
+    expect(await countDelayed()).toBe(1);
   });
 });

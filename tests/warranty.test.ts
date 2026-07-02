@@ -28,6 +28,17 @@ describe("warrantyStatus", () => {
     // Unknown is NOT out — we warn on known-expired only.
     expect(isOutOfWarranty(null, NOW)).toBe(false);
   });
+
+  it("the expiry day itself is still in warranty (dates are date-only)", () => {
+    // NOW is midday June 18; a warranty that "expires 2026-06-18"
+    // covers the whole day and flips at midnight UTC.
+    expect(warrantyStatus(new Date("2026-06-18T00:00:00Z"), NOW).kind).toBe(
+      "in",
+    );
+    expect(warrantyStatus(new Date("2026-06-17T00:00:00Z"), NOW).kind).toBe(
+      "out",
+    );
+  });
 });
 
 describe("case URL templates", () => {
@@ -64,5 +75,22 @@ describe("case URL templates", () => {
   it("empty / null input parses to no templates", () => {
     expect(parseCaseUrlTemplates("")).toEqual({});
     expect(parseCaseUrlTemplates(null)).toEqual({});
+  });
+
+  it("prototype-key vendors resolve to nothing, not to Object internals", () => {
+    const t = parseCaseUrlTemplates(RAW);
+    expect(caseUrlFor("constructor", "X1", t)).toBeNull();
+    expect(caseUrlFor("__proto__", "X1", t)).toBeNull();
+    expect(caseUrlFor("toString", "X1", t)).toBeNull();
+  });
+
+  it("non-http templates never become links, even if handed in directly", () => {
+    // Defense in depth: parse enforces http(s), but caseUrlFor must
+    // hold the line when given an arbitrary map (e.g. a hand-edited
+    // AppSetting row).
+    expect(
+      caseUrlFor("evil", "X1", { evil: "javascript:alert({case})" }),
+    ).toBeNull();
+    expect(caseUrlFor("evil", "X1", { evil: "data:text/html,{case}" })).toBeNull();
   });
 });

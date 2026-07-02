@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { formatCents, humanise } from "@/lib/format";
 import { sweepQuotesAction } from "@/server/actions/quotes";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,14 @@ export default async function QuotesPage({
       ? (filterParam as QuoteStatus)
       : undefined;
 
-  const where: Prisma.QuoteWhereInput = filter ? { status: filter } : {};
+  // ADR 0014 — same district scope the CSV export applies; a
+  // district-scoped role must not read other districts' money.
+  const scope: Prisma.QuoteWhereInput = {
+    ticket: ticketWhereForSession(session),
+  };
+  const where: Prisma.QuoteWhereInput = filter
+    ? { ...scope, status: filter }
+    : scope;
 
   const [quotes, counts, expiringSoonCount] = await Promise.all([
     prisma.quote.findMany({
@@ -51,10 +59,12 @@ export default async function QuotesPage({
     }),
     prisma.quote.groupBy({
       by: ["status"],
+      where: scope,
       _count: { _all: true },
     }),
     prisma.quote.count({
       where: {
+        ...scope,
         status: { in: [QuoteStatus.SENT, QuoteStatus.APPROVED] },
         holdUntil: { lte: new Date() },
       },

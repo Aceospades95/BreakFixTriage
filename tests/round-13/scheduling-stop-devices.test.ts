@@ -64,7 +64,18 @@ describe("Round-13 scheduling — addDeviceToStop", () => {
     // district. Source-pin checks the literal `schoolId,` next to
     // an incidentNumber predicate.
     expect(src).toMatch(/where:\s*{\s*schoolId,\s*OR:/);
-    expect(src).toContain("Ticket ${supplied} not found at this school");
+  });
+
+  it("an unknown ticket number falls back to a synthetic, not a dead end", () => {
+    // Round-22 follow-up: the school often creates the SNOW ticket on
+    // the spot and it only reaches the app via the next import — so a
+    // not-found number mints the synthetic with the number recorded
+    // instead of hard-failing (which would strand the device).
+    expect(src).toContain("unmatchedIncidentNumber");
+    expect(src).toContain("suppliedIncidentNumber");
+    expect(src).toContain("awaiting import");
+    // A closed ticket is the one hard block — nothing can cascade.
+    expect(src).toContain("is closed — reopen it first");
   });
 
   it("returns incidentNumber + purpose in the result", () => {

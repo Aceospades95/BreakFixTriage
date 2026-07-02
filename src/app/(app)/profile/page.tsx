@@ -116,7 +116,9 @@ export default async function ProfilePage({
           <MyStat label="Devices verified" value={String(devicesVerified)} />
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          Same definitions as Dashboards → Productivity and Bench → History.
+          Tickets closed counts closures you performed (same attribution
+          as Bench → History); hours, routes, stops, and devices come
+          from your time entries and route work.
         </p>
       </section>
 

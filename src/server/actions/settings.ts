@@ -125,8 +125,13 @@ export async function updateSettingsAction(formData: FormData) {
     }
   }
 
-  // SLA thresholds come in as named fields `sla_<state>`.
+  // SLA thresholds come in as named fields `sla_<state>`. Like every
+  // other field group in this action, they save independently: a
+  // problem in an unrelated field (say a typo'd case-link template)
+  // must not silently discard valid SLA edits from the same submit.
+  // Only an error in the SLA fields themselves blocks the SLA save.
   const stateOverrides: Record<string, number | null> = {};
+  let slaHasErrors = false;
   for (const state of Object.values(TicketState)) {
     const raw = formData.get(`sla_${state}`)?.toString();
     if (raw === undefined) continue;
@@ -137,12 +142,13 @@ export async function updateSettingsAction(formData: FormData) {
       const n = Number(trimmed);
       if (!Number.isFinite(n) || n < 0 || n > 365) {
         errors.push(`SLA for ${state} must be 0–365 or blank`);
+        slaHasErrors = true;
       } else {
         stateOverrides[state] = n;
       }
     }
   }
-  if (Object.keys(stateOverrides).length > 0 && errors.length === 0) {
+  if (Object.keys(stateOverrides).length > 0 && !slaHasErrors) {
     await setSetting({
       key: SETTINGS_KEYS.SLA_THRESHOLDS,
       value: stateOverrides,

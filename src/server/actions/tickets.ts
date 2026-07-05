@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
+import { publish } from "@/lib/events/bus";
 import { createInAppNotification } from "@/lib/notifications/in-app";
 import { dispatchEmailEvent } from "@/lib/email";
 import { buildTicketEmailVariables } from "@/lib/email/variables";
@@ -151,6 +152,15 @@ const updateSchema = z.object({
   longDescription: z.string().trim().max(5000).nullable().optional(),
   assignedUserId: z.string().nullable().optional(),
   invoiceRequired: z.boolean().optional(),
+  /**
+   * Round-2 QA audit — optimistic concurrency: the detail page
+   * stamps the ticket's updatedAt into every edit form. A submit
+   * whose stamp no longer matches the row means someone else saved
+   * in between; the write is rejected instead of silently clobbering
+   * theirs. Optional so older tabs/forms without the stamp keep
+   * working (they keep last-write-wins until reloaded once).
+   */
+  expectedUpdatedAt: z.coerce.date().optional(),
 });
 
 /**
@@ -180,6 +190,8 @@ export async function updateTicketAction(formData: FormData) {
     invoiceRequired: formData.has("invoiceRequired")
       ? formData.get("invoiceRequired") === "true"
       : undefined,
+    expectedUpdatedAt:
+      formData.get("expectedUpdatedAt")?.toString() || undefined,
   };
 
   const parsed = updateSchema.safeParse(raw);
@@ -242,7 +254,37 @@ export async function updateTicketAction(formData: FormData) {
         after.invoiceRequired = parsed.data.invoiceRequired;
       }
 
-      if (Object.keys(data).length > 0) {
+      // Round-2 QA audit — stale-write rejection. If another session
+      // saved after this form was rendered, refuse the write and tell
+      // the operator; the error redirect re-renders the page with the
+      // current values. The rejected attempt is audited so a conflict
+      // leaves a trace instead of a silent overwrite. (Sets
+      // errorMessage rather than redirecting here — the enclosing try
+      // would swallow the redirect signal.)
+      const stale =
+        Object.keys(data).length > 0 &&
+        parsed.data.expectedUpdatedAt !== undefined &&
+        existing.updatedAt.getTime() !==
+          parsed.data.expectedUpdatedAt.getTime();
+      if (stale) {
+        await writeAudit({
+          actorUserId: session.userId,
+          entityType: "Ticket",
+          entityId: parsed.data.ticketId,
+          action: "update:stale-rejected",
+          before: { updatedAt: existing.updatedAt.toISOString() },
+          after: {
+            attempted: JSON.stringify(after),
+            formLoadedAt: parsed.data.expectedUpdatedAt!.toISOString(),
+          },
+          reason:
+            "Edit submitted from a stale page — another session saved this ticket first",
+        });
+        errorMessage =
+          "This ticket changed while you had it open — your edit was NOT saved. The page now shows the latest values; re-apply your change if it still applies.";
+      }
+
+      if (!stale && Object.keys(data).length > 0) {
         await prisma.ticket.update({
           where: { id: parsed.data.ticketId },
           data,
@@ -255,6 +297,11 @@ export async function updateTicketAction(formData: FormData) {
           before,
           after,
         });
+        // Round-2 QA audit — field edits now announce themselves so
+        // other open tabs (LiveTicket subscriber) refresh instead of
+        // showing stale values until a manual reload. Transitions
+        // already published; plain edits never did.
+        publish({ topic: "tickets.changed", ticketId: parsed.data.ticketId });
 
         // Fire an in-app notification to the new assignee (if the
         // assignee actually changed to someone other than the actor

@@ -13,6 +13,7 @@ import {
   STUCK_IMPORT_THRESHOLD_MS,
   TOKEN_EXPIRY_WINDOW_MS,
   SEVERITY_WINDOW_MS,
+  IMPORTED_BACKLOG_THRESHOLD_MS,
 } from "@/lib/exceptions/counts";
 import { requeueDeadLetteredEmailJobAction } from "@/server/actions/email-admin";
 import { acknowledgeExceptionAction } from "@/server/actions/exceptions";
@@ -47,9 +48,13 @@ export default async function ExceptionsPage({
     failedEmails,
     deadJobs,
     failedMerges,
+    dupConflicts,
+    dupSynthetics,
     orphanStopDevices,
     stuckImports,
+    expiredTokens,
     expiringTokens,
+    importedBacklog,
     severeAudits,
     fieldOutcomes,
   ] = await Promise.all([
@@ -74,6 +79,28 @@ export default async function ExceptionsPage({
       orderBy: { createdAt: "desc" },
       take: 8,
     }),
+    // QA audit BUG-1 — the duplicate queue's two work-item kinds,
+    // matching the /duplicates page definition exactly.
+    prisma.duplicateConflict.findMany({
+      where: { resolvedAt: null },
+      orderBy: { createdAt: "asc" },
+      take: 4,
+      include: {
+        leftTicket: { select: { incidentNumber: true } },
+        rightTicket: { select: { incidentNumber: true } },
+      },
+    }),
+    prisma.ticket.findMany({
+      where: { state: "PENDING_PICKUP_UNLINKED" },
+      orderBy: { reportedAt: "asc" },
+      take: 4,
+      select: {
+        id: true,
+        incidentNumber: true,
+        reportedAt: true,
+        school: { select: { name: true } },
+      },
+    }),
     prisma.stopDevice.findMany({
       // Removed rows stay for audit and aren't orphans to act on.
       where: { ticketId: null, removedAt: null },
@@ -92,17 +119,47 @@ export default async function ExceptionsPage({
       orderBy: { createdAt: "asc" },
       take: 8,
     }),
+    // QA audit BUG-2 — expired and expiring-soon are separate
+    // urgencies: expired needs reissue NOW.
+    prisma.portalToken.findMany({
+      where: {
+        revokedAt: null,
+        expiresAt: { not: null, lt: new Date(now) },
+      },
+      orderBy: { expiresAt: "asc" },
+      take: 8,
+      include: { school: { select: { name: true, id: true } } },
+    }),
     prisma.portalToken.findMany({
       where: {
         revokedAt: null,
         expiresAt: {
           not: null,
+          gte: new Date(now),
           lt: new Date(now + TOKEN_EXPIRY_WINDOW_MS),
         },
       },
       orderBy: { expiresAt: "asc" },
       take: 8,
       include: { school: { select: { name: true, id: true } } },
+    }),
+    // QA audit BUG-5 — the triage backlog: oldest first, these are
+    // the tickets nobody has started work on.
+    prisma.ticket.findMany({
+      where: {
+        state: "IMPORTED",
+        stateEnteredAt: {
+          lt: new Date(now - IMPORTED_BACKLOG_THRESHOLD_MS),
+        },
+      },
+      orderBy: { stateEnteredAt: "asc" },
+      take: 8,
+      select: {
+        id: true,
+        incidentNumber: true,
+        stateEnteredAt: true,
+        school: { select: { name: true } },
+      },
     }),
     prisma.auditLog.findMany({
       where: {
@@ -211,8 +268,50 @@ export default async function ExceptionsPage({
           ))}
         </Section>
 
+        {/* QA audit BUG-1 — the queue itself, counted the same way
+            /duplicates counts it. The old "Synthetic-merge conflicts"
+            section (below) only counted merge FAILURES, so unresolved
+            queue items were invisible here. */}
         <Section
-          title="Synthetic-merge conflicts"
+          title="Duplicate queue — unresolved items"
+          count={counts.duplicateQueue}
+          href="/duplicates"
+          linkLabel="Duplicates queue"
+        >
+          {dupConflicts.map((c) => (
+            <li key={c.id} className="flex flex-wrap gap-x-2 text-xs">
+              <span className="rounded bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-200">
+                conflict
+              </span>
+              <span className="font-medium text-slate-200">
+                {c.leftTicket.incidentNumber} ↔ {c.rightTicket.incidentNumber}
+              </span>
+              <span className="text-slate-400">
+                since <LocalTime date={c.createdAt} mode="datetime" />
+              </span>
+            </li>
+          ))}
+          {dupSynthetics.map((t) => (
+            <li key={t.id} className="flex flex-wrap gap-x-2 text-xs">
+              <span className="rounded bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-200">
+                unlinked synthetic
+              </span>
+              <Link
+                href={`/tickets/${t.incidentNumber}`}
+                className="font-medium text-accent hover:underline"
+              >
+                {t.incidentNumber}
+              </Link>
+              <span className="text-slate-300">{t.school.name}</span>
+              <span className="text-slate-400">
+                since <LocalTime date={t.reportedAt} mode="date" />
+              </span>
+            </li>
+          ))}
+        </Section>
+
+        <Section
+          title="SNOW merge failures"
           count={failedMergeCount}
           href="/duplicates"
           linkLabel="Duplicates queue"
@@ -276,6 +375,31 @@ export default async function ExceptionsPage({
           ))}
         </Section>
 
+        {/* QA audit BUG-2 — expired tokens are their own bucket. An
+            already-dead link under an "expiring soon" heading reads
+            as less urgent than it is. */}
+        <Section
+          title="Expired portal tokens — reissue now"
+          count={counts.expiredTokens}
+          href="/admin/schools"
+          linkLabel="Schools"
+        >
+          {expiredTokens.map((t) => (
+            <li key={t.id} className="flex flex-wrap gap-x-2 text-xs">
+              <Link
+                href={`/admin/schools/${t.school.id}`}
+                className="font-medium text-accent hover:underline"
+              >
+                {t.school.name}
+              </Link>
+              <span className="text-slate-300">{t.label ?? "(no label)"}</span>
+              <span className="font-semibold text-red-300">
+                expired {t.expiresAt?.toISOString().slice(0, 10)}
+              </span>
+            </li>
+          ))}
+        </Section>
+
         <Section
           title="Portal tokens expiring within 30 days"
           count={counts.expiringTokens}
@@ -291,16 +415,33 @@ export default async function ExceptionsPage({
                 {t.school.name}
               </Link>
               <span className="text-slate-300">{t.label ?? "(no label)"}</span>
-              <span
-                className={
-                  t.expiresAt && t.expiresAt.getTime() < now
-                    ? "font-semibold text-red-300"
-                    : "text-amber-300"
-                }
+              <span className="text-amber-300">
+                expires {t.expiresAt?.toISOString().slice(0, 10)}
+              </span>
+            </li>
+          ))}
+        </Section>
+
+        {/* QA audit BUG-5 — the triage backlog gets its own alert
+            instead of blending into generic ticket aging. Bulk
+            selection on /tickets moves batches to Triage. */}
+        <Section
+          title="Imported backlog — no triage after 30 days"
+          count={counts.importedBacklog}
+          href="/tickets?state=IMPORTED"
+          linkLabel="Bulk-triage on Tickets"
+        >
+          {importedBacklog.map((t) => (
+            <li key={t.id} className="flex flex-wrap gap-x-2 text-xs">
+              <Link
+                href={`/tickets/${t.incidentNumber}`}
+                className="font-medium text-accent hover:underline"
               >
-                {t.expiresAt && t.expiresAt.getTime() < now
-                  ? `expired ${t.expiresAt.toISOString().slice(0, 10)}`
-                  : `expires ${t.expiresAt?.toISOString().slice(0, 10)}`}
+                {t.incidentNumber}
+              </Link>
+              <span className="text-slate-300">{t.school.name}</span>
+              <span className="text-slate-400">
+                imported <LocalTime date={t.stateEnteredAt} mode="date" />
               </span>
             </li>
           ))}

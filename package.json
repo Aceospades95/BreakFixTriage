@@ -24,6 +24,7 @@
     "db:seed:test": "tsx prisma/seed-test.ts",
     "db:reset": "prisma migrate reset --force",
     "quotes:sweep": "tsx prisma/sweep-quotes.ts",
+    "quotes:repair-consumed": "tsx scripts/repair-consumed-quote-approvals.ts",
     "servicenow:sync": "tsx prisma/sync-servicenow.ts",
     "cutover:compare": "tsx prisma/cutover-compare.ts",
     "cutover:integrity": "tsx prisma/cutover-integrity.ts",

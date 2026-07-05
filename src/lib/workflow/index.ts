@@ -5,6 +5,7 @@ export {
   TERMINAL_STATES,
   allowedNextStates,
   canTransition,
+  isReversionTransition,
   isTerminal,
 } from "./states";
 export {

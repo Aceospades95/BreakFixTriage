@@ -3,6 +3,7 @@ import {
   ALLOWED_TRANSITIONS,
   allowedNextStates,
   canTransition,
+  isReversionTransition,
   isTerminal,
 } from "@/lib/workflow/states";
 import type { TicketState } from "@prisma/client";
@@ -93,6 +94,30 @@ describe("state machine: allowed transitions", () => {
         canTransition(s, "ON_HOLD"),
         `${s} should be able to go ON_HOLD`,
       ).toBe(true);
+    }
+  });
+
+  it("reversion edges are exactly the documented escape hatches (BUG-4)", () => {
+    // Backward moves that require a reason at the engine level.
+    expect(isReversionTransition("DELIVERY_SCHEDULED", "REPAIR_COMPLETED")).toBe(true);
+    expect(isReversionTransition("PENDING_DELIVERY", "IN_REPAIR")).toBe(true);
+    expect(isReversionTransition("REPAIR_COMPLETED", "DIAGNOSIS")).toBe(true);
+    expect(isReversionTransition("PICKUP_SCHEDULED", "AWAITING_PICKUP")).toBe(true);
+    expect(isReversionTransition("RETURNED", "REPAIR_COMPLETED")).toBe(true);
+    // Forward flow, branch loops, holds, and reopen are NOT reversions.
+    expect(isReversionTransition("IN_REPAIR", "AWAITING_PARTS")).toBe(false);
+    expect(isReversionTransition("IN_REPAIR", "REPAIR_COMPLETED")).toBe(false);
+    expect(isReversionTransition("DIAGNOSIS", "QUOTE_REQUIRED")).toBe(false);
+    expect(isReversionTransition("CLOSED", "REOPENED")).toBe(false);
+    expect(isReversionTransition("ON_HOLD", "IN_REPAIR")).toBe(false);
+    // Every reversion edge must itself be a LEGAL edge — the set
+    // annotates the graph, it doesn't extend it.
+    for (const from of ALL_STATES) {
+      for (const to of ALL_STATES) {
+        if (isReversionTransition(from, to)) {
+          expect(canTransition(from, to), `${from}>${to} reversion must be a real edge`).toBe(true);
+        }
+      }
     }
   });
 

@@ -134,6 +134,41 @@ export const ALLOWED_TRANSITIONS: Record<TicketState, readonly TicketState[]> = 
 
 export const TERMINAL_STATES: readonly TicketState[] = ["CLOSED"];
 
+/**
+ * QA audit (July 2026), BUG-4 — the reversion / escape-hatch edges:
+ * legal transitions that move a ticket BACKWARD in the lifecycle
+ * (un-schedule, un-complete, walk back into repair). They stay
+ * one-click legal, but the engine requires a reason for them — the
+ * same auditability Force Change already enforces for its bypasses.
+ * Every system caller (failed-stop re-queues, kanban) already sends
+ * one; this closes the silent path on the ticket page.
+ *
+ * Deliberately NOT here: branch moves (IN_REPAIR → AWAITING_PARTS,
+ * → QUOTE_REQUIRED) are forward flow through a loop, ON_HOLD
+ * round-trips are a pause not a regression, and CLOSED → REOPENED
+ * is its own audited reopen flow.
+ */
+const REVERSION_EDGES: ReadonlySet<string> = new Set([
+  "PICKUP_SCHEDULED>AWAITING_PICKUP",
+  "PARTS_ORDERED>AWAITING_PARTS",
+  "REPAIR_COMPLETED>IN_REPAIR",
+  "REPAIR_COMPLETED>DIAGNOSIS",
+  "PENDING_DELIVERY>REPAIR_COMPLETED",
+  "PENDING_DELIVERY>IN_REPAIR",
+  "PENDING_DELIVERY>DIAGNOSIS",
+  "DELIVERY_SCHEDULED>PENDING_DELIVERY",
+  "DELIVERY_SCHEDULED>REPAIR_COMPLETED",
+  "RETURNED>REPAIR_COMPLETED",
+  "INVOICE_REQUIRED>RETURNED",
+]);
+
+export function isReversionTransition(
+  from: TicketState,
+  to: TicketState,
+): boolean {
+  return REVERSION_EDGES.has(`${from}>${to}`);
+}
+
 export function isTerminal(state: TicketState): boolean {
   return TERMINAL_STATES.includes(state);
 }

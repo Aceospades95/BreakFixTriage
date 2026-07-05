@@ -124,6 +124,30 @@ describe.skipIf(!process.env.DATABASE_URL)("ticket state machine", () => {
     ).rejects.toBeInstanceOf(GuardFailedError);
   });
 
+  it("a backward move without a reason is refused; with a reason it lands (BUG-4)", async () => {
+    const ticket = await createFixtureTicket("IMPORTED");
+    // Walk forward to REPAIR_COMPLETED via force (fixture shortcut),
+    // then exercise the real reversion edge.
+    await transitionTicket(ticket.id, "REPAIR_COMPLETED", {
+      force: true,
+      reason: "fixture: jump to repair completed",
+    });
+
+    await expect(
+      transitionTicket(ticket.id, "IN_REPAIR"),
+    ).rejects.toBeInstanceOf(GuardFailedError);
+
+    const updated = await transitionTicket(ticket.id, "IN_REPAIR", {
+      reason: "QA found a loose cable after completion was clicked",
+    });
+    expect(updated.state).toBe("IN_REPAIR");
+    const event = await prisma.ticketEvent.findFirst({
+      where: { ticketId: ticket.id, toState: "IN_REPAIR" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(event?.reason).toContain("loose cable");
+  });
+
   it("force bypasses the edge check and writes a warn-severity audit row", async () => {
     const ticket = await createFixtureTicket("IMPORTED");
     const updated = await transitionTicket(ticket.id, "CLOSED", {

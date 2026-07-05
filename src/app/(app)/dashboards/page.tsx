@@ -8,6 +8,7 @@ import {
   agingTickets,
   closedTicketsByMonth,
   duplicateQueueCount,
+  importedBacklogCount,
   invoiceQueueCount,
   openTicketsByState,
 } from "@/lib/reports/dashboards";
@@ -17,13 +18,15 @@ export const dynamic = "force-dynamic";
 export default async function DashboardsPage() {
   await requireRole(PERMISSIONS.REPORTS_READ);
 
-  const [byState, closedByMonth, dupes, invoices, aging] = await Promise.all([
-    openTicketsByState(),
-    closedTicketsByMonth(),
-    duplicateQueueCount(),
-    invoiceQueueCount(),
-    agingTickets(),
-  ]);
+  const [byState, closedByMonth, dupes, invoices, aging, importedBacklog] =
+    await Promise.all([
+      openTicketsByState(),
+      closedTicketsByMonth(),
+      duplicateQueueCount(),
+      invoiceQueueCount(),
+      agingTickets(),
+      importedBacklogCount(),
+    ]);
 
   const openTotal = byState.reduce((acc, r) => acc + r.count, 0);
   const maxByState = byState[0]?.count ?? 0;
@@ -44,7 +47,7 @@ export default async function DashboardsPage() {
       {/* Tab nav now lives in dashboards/layout.tsx so it renders on
           every sub-route — see findings bug A1. */}
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Kpi label="Open tickets" value={openTotal} href="/tickets" />
         <Kpi
           label="Duplicate queue"
@@ -56,6 +59,15 @@ export default async function DashboardsPage() {
           label="Invoice required"
           value={invoices}
           href="/tickets?state=INVOICE_REQUIRED"
+        />
+        {/* QA audit BUG-5 — the triage bottleneck as its own alert:
+            imported tickets nobody has started triage on. Bulk
+            selection on the tickets list moves batches to Triage. */}
+        <Kpi
+          label="Imported, no triage > 30d"
+          value={importedBacklog}
+          href="/tickets?state=IMPORTED"
+          tone={importedBacklog > 0 ? "warn" : undefined}
         />
         <Kpi
           label="Aging > 30d"

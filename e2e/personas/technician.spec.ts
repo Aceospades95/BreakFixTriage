@@ -29,53 +29,87 @@ import { signInAs, PERSONA } from "../lib/sign-in-as";
  */
 
 const prisma = new PrismaClient();
+const STAMP = Date.now().toString(36).toUpperCase();
 
 test.describe("§2B technician persona", () => {
   test.afterAll(async () => {
+    await prisma.ticket.deleteMany({
+      where: { incidentNumber: { startsWith: `INCTECH${STAMP}` } },
+    });
     await prisma.$disconnect();
   });
 
   test("ticket lifecycle: pick up → triage → diagnosis → repair", async ({
     page,
   }) => {
+    // Self-sufficient fixture: every run of this spec permanently
+    // consumes one unassigned bench ticket (pick-up assigns it and
+    // the seed's upsert never resets it), so after enough runs the
+    // pool in Tess's district goes dry and the Pick up button
+    // vanishes. Create our own unassigned warehouse ticket in her
+    // district instead of depending on leftovers.
+    const tessDistricts = await prisma.user.findUniqueOrThrow({
+      where: { email: PERSONA.TECHNICIAN },
+      include: { districts: { select: { districtId: true } } },
+    });
+    const school = await prisma.school.findFirstOrThrow({
+      where: {
+        districtId: { in: tessDistricts.districts.map((d) => d.districtId) },
+      },
+    });
+    // Backdated stateEnteredAt: the unassigned column lists the ten
+    // OLDEST tickets, so a fresh fixture could sort out of view.
+    const fixture = await prisma.ticket.create({
+      data: {
+        incidentNumber: `INCTECH${STAMP}`,
+        shortDescription: "tech persona bench fixture",
+        state: "IN_WAREHOUSE",
+        schoolId: school.id,
+        reportedAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        stateEnteredAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      },
+    });
+
     await signInAs(page, PERSONA.TECHNICIAN);
 
     // (1)
     await page.goto("/my-day");
     await expect(page.getByRole("heading", { name: /my day/i })).toBeVisible();
 
-    // (2) — Pick up an unassigned ticket from /bench.
+    // (2) — Pick up OUR fixture from /bench. Scoped to its row:
+    // `.first()` grabbed whatever unassigned ticket sorted oldest,
+    // which in a full-suite run can be another spec's fixture that
+    // gets deleted mid-flow.
     await page.goto("/bench");
-    const pickUpButton = page
-      .getByRole("button", { name: /^pick up$/i })
+    const fixtureRow = page
+      .locator("li", { hasText: `INCTECH${STAMP}` })
       .first();
-    await expect(pickUpButton).toBeVisible();
-    await pickUpButton.click();
+    await expect(fixtureRow).toBeVisible();
+    await fixtureRow.getByRole("button", { name: /^pick up$/i }).click();
 
     // The Pick up button writes a ticket.pick_up audit row.
     const tess = await prisma.user.findUnique({
       where: { email: PERSONA.TECHNICIAN },
       select: { id: true },
     });
-    const audit = await prisma.auditLog.findFirst({
-      where: {
-        actorUserId: tess!.id,
-        action: "ticket.pick_up",
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    expect(audit).not.toBeNull();
+    await expect
+      .poll(
+        async () =>
+          prisma.auditLog.findFirst({
+            where: {
+              actorUserId: tess!.id,
+              action: "ticket.pick_up",
+              entityId: fixture.id,
+            },
+          }),
+        { timeout: 15_000 },
+      )
+      .not.toBeNull();
 
     // (6) — Tess on /tickets/[INC#] cannot see the CHANGE STATUS
     // (ADMIN) panel. The panel is gated on USERS_MANAGE, which
     // technicians don't hold.
-    const ticketId = audit?.entityId as string;
-    const ticketRow = await prisma.ticket.findUnique({
-      where: { id: ticketId },
-      select: { incidentNumber: true },
-    });
-    expect(ticketRow?.incidentNumber).toBeTruthy();
-    await page.goto(`/tickets/${ticketRow!.incidentNumber}`);
+    await page.goto(`/tickets/${fixture.incidentNumber}`);
     await expect(
       page.getByText(/CHANGE STATUS \(ADMIN\)/i),
     ).toHaveCount(0);

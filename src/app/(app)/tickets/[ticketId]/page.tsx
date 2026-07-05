@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { QuoteStatus, TicketPriority, TicketState as TicketStateEnum } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { LiveTicket } from "@/components/live-ticket";
 import { StatePill } from "@/components/state-pill";
 import { SlaBadge } from "@/components/sla-badge";
 import { CommentThread } from "@/components/comment-thread";
@@ -299,6 +300,10 @@ export default async function TicketDetailPage({
 
   return (
     <>
+      {/* Round-2 QA audit — SSE subscriber: another session's save
+          refreshes this tab within a second instead of it sitting on
+          stale values until a manual reload. */}
+      <LiveTicket />
       <PageHeader
         title={ticket.incidentNumber}
         titleAccessory={
@@ -424,6 +429,11 @@ export default async function TicketDetailPage({
                 {canWrite ? (
                   <form action={updateTicketAction} className="inline-flex items-center gap-2">
                     <input type="hidden" name="ticketId" value={ticket.id} />
+                    <input
+                      type="hidden"
+                      name="expectedUpdatedAt"
+                      value={ticket.updatedAt.toISOString()}
+                    />
                     <select
                       name="priority"
                       defaultValue={ticket.priority}
@@ -451,6 +461,11 @@ export default async function TicketDetailPage({
                 {canWrite ? (
                   <form action={updateTicketAction} className="inline-flex items-center gap-2">
                     <input type="hidden" name="ticketId" value={ticket.id} />
+                    <input
+                      type="hidden"
+                      name="expectedUpdatedAt"
+                      value={ticket.updatedAt.toISOString()}
+                    />
                     <select
                       name="assignedUserId"
                       defaultValue={ticket.assignedUserId ?? ""}
@@ -529,6 +544,11 @@ export default async function TicketDetailPage({
                 {canWrite ? (
                   <form action={updateTicketAction} className="inline-flex items-center gap-2">
                     <input type="hidden" name="ticketId" value={ticket.id} />
+                    <input
+                      type="hidden"
+                      name="expectedUpdatedAt"
+                      value={ticket.updatedAt.toISOString()}
+                    />
                     <select
                       name="invoiceRequired"
                       defaultValue={String(ticket.invoiceRequired)}
@@ -556,6 +576,11 @@ export default async function TicketDetailPage({
                 className="mt-4 space-y-2 border-t border-surface-border pt-3"
               >
                 <input type="hidden" name="ticketId" value={ticket.id} />
+                <input
+                  type="hidden"
+                  name="expectedUpdatedAt"
+                  value={ticket.updatedAt.toISOString()}
+                />
                 <label className="block text-[10px] uppercase tracking-wide text-slate-400">
                   Short description
                 </label>

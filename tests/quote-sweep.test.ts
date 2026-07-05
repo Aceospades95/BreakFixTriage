@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { QuoteStatus } from "@prisma/client";
-import { isQuoteExpired } from "@/lib/quotes/sweep";
+import { QuoteStatus, TicketState } from "@prisma/client";
+import { isApprovalConsumed, isQuoteExpired } from "@/lib/quotes/sweep";
 
 /**
  * Bug 4b fix (audit branch claude/breakfix-triage-audit-ZDYuJ):
@@ -129,5 +129,41 @@ describe("isQuoteExpired", () => {
         now,
       ),
     ).toBe(true);
+  });
+});
+
+/**
+ * QA audit (July 2026), BUG-3 — the sweep flipped an APPROVED quote
+ * to NO_RESPONSE after its ticket had already used the approval to
+ * enter repair, making quote.status contradict the ticket timeline.
+ * A consumed approval is off-limits to the sweep; a stalled one
+ * (ticket still AT the quote gate) keeps the Bug-4b expiry.
+ */
+describe("isApprovalConsumed", () => {
+  it("APPROVED quote + ticket past the gate = consumed (sweep must skip)", () => {
+    for (const state of [
+      TicketState.IN_REPAIR,
+      TicketState.REPAIR_COMPLETED,
+      TicketState.PENDING_DELIVERY,
+      TicketState.DELIVERY_SCHEDULED,
+      TicketState.CLOSED,
+    ]) {
+      expect(isApprovalConsumed(QuoteStatus.APPROVED, state)).toBe(true);
+    }
+  });
+
+  it("APPROVED quote + ticket still in QUOTE_APPROVED = stalled, still sweepable", () => {
+    expect(
+      isApprovalConsumed(QuoteStatus.APPROVED, TicketState.QUOTE_APPROVED),
+    ).toBe(false);
+  });
+
+  it("SENT quotes are never 'consumed' — no response is no response", () => {
+    expect(isApprovalConsumed(QuoteStatus.SENT, TicketState.IN_REPAIR)).toBe(
+      false,
+    );
+    expect(
+      isApprovalConsumed(QuoteStatus.SENT, TicketState.QUOTE_SENT),
+    ).toBe(false);
   });
 });

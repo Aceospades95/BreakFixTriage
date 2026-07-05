@@ -2,6 +2,8 @@ import type { PrismaClient, TicketState } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { isAgingOpenTicket } from "@/lib/reports/sla";
 import { monthBuckets } from "@/lib/charts/buckets";
+import { duplicateQueueCounts } from "@/lib/duplicates/counts";
+import { IMPORTED_BACKLOG_THRESHOLD_MS } from "@/lib/exceptions/counts";
 
 /**
  * Queries that back the operational dashboards. Kept as a thin layer over
@@ -107,10 +109,36 @@ export async function agingTickets(
 }
 
 export async function duplicateQueueCount(db: PrismaClient = defaultPrisma) {
-  return db.duplicateConflict.count({ where: { resolvedAt: null } });
+  // QA audit BUG-1 — delegate to the shared queue count so this tile
+  // (and the digest) can never disagree with the /duplicates page.
+  // Counting only DuplicateConflict rows here missed unlinked
+  // synthetics entirely.
+  const counts = await duplicateQueueCounts(db);
+  return counts.total;
 }
 
 export async function invoiceQueueCount(db: PrismaClient = defaultPrisma) {
   const states: TicketState[] = ["INVOICE_REQUIRED"];
   return db.ticket.count({ where: { state: { in: states } } });
+}
+
+/**
+ * QA audit BUG-5 — the triage bottleneck as its own number: tickets
+ * that arrived via import and have sat in IMPORTED for 30+ days with
+ * no triage started. Distinct from the generic aging metric, which
+ * blends every open state together and hid this backlog (242 of 270
+ * open tickets were stuck at IMPORTED while "aging" read as routine).
+ */
+export async function importedBacklogCount(
+  db: PrismaClient = defaultPrisma,
+  now: Date = new Date(),
+) {
+  return db.ticket.count({
+    where: {
+      state: "IMPORTED",
+      stateEnteredAt: {
+        lt: new Date(now.getTime() - IMPORTED_BACKLOG_THRESHOLD_MS),
+      },
+    },
+  });
 }

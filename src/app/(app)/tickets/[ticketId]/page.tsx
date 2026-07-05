@@ -19,7 +19,7 @@ import { ForceChangeForm } from "@/components/force-change-form";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
-import { allowedNextStates } from "@/lib/workflow";
+import { allowedNextStates, isReversionTransition } from "@/lib/workflow";
 import { nextActionFor } from "@/lib/workflow/next-action";
 import { readStatusConfig } from "@/lib/workflow/status-config";
 import {
@@ -772,32 +772,55 @@ export default async function TicketDetailPage({
               </p>
             ) : (
               <ul className="space-y-2">
-                {nextStates.map((to) => (
-                  <li key={to}>
-                    <form
-                      action={transitionTicketAction}
-                      className="flex flex-col gap-2 rounded border border-surface-border bg-surface p-2"
-                    >
-                      <input type="hidden" name="ticketId" value={ticket.id} />
-                      <input type="hidden" name="to" value={to} />
-                      <div className="flex items-center justify-between gap-2">
-                        <StatePill state={to} />
-                        <button
-                          type="submit"
-                          className="rounded bg-accent px-2 py-1 text-xs font-semibold hover:bg-accent-strong"
-                        >
-                          Apply
-                        </button>
-                      </div>
-                      <input
-                        type="text"
-                        name="reason"
-                        placeholder="Reason (optional)"
-                        className="rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
-                      />
-                    </form>
-                  </li>
-                ))}
+                {nextStates.map((to) => {
+                  // QA audit BUG-4 — backward moves carry the same
+                  // reason requirement Force Change has; the engine
+                  // enforces it server-side too.
+                  const backward = isReversionTransition(ticket.state, to);
+                  return (
+                    <li key={to}>
+                      <form
+                        action={transitionTicketAction}
+                        className="flex flex-col gap-2 rounded border border-surface-border bg-surface p-2"
+                      >
+                        <input
+                          type="hidden"
+                          name="ticketId"
+                          value={ticket.id}
+                        />
+                        <input type="hidden" name="to" value={to} />
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <StatePill state={to} />
+                            {backward && (
+                              <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200">
+                                backward move
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="submit"
+                            className="rounded bg-accent px-2 py-1 text-xs font-semibold hover:bg-accent-strong"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          name="reason"
+                          required={backward}
+                          minLength={backward ? 3 : undefined}
+                          placeholder={
+                            backward
+                              ? "Reason (required — this moves the ticket backward)"
+                              : "Reason (optional)"
+                          }
+                          className="rounded border border-surface-border bg-surface-muted px-2 py-1 text-xs focus:border-accent focus:outline-none"
+                        />
+                      </form>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Card>

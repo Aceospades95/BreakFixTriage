@@ -67,10 +67,36 @@ export function isQuoteExpired(
   return quote.holdUntil.getTime() <= now.getTime();
 }
 
+/**
+ * QA audit (July 2026), BUG-3 — an APPROVED quote whose ticket has
+ * already moved PAST the quote gate has been CONSUMED: the approval
+ * was acted on (repair started, delivery scheduled, …) and the hold
+ * window no longer means anything. The sweep must leave it alone —
+ * flipping it to NO_RESPONSE makes the quote record contradict the
+ * ticket's own timeline ("Quote approved → In repair") and destroys
+ * the billing-authorization evidence.
+ *
+ * The Bug-4b behaviour is preserved: an APPROVED quote whose ticket
+ * is still sitting in QUOTE_APPROVED (nobody ever started the work)
+ * is genuinely stalled and still expires.
+ */
+export function isApprovalConsumed(
+  quoteStatus: QuoteStatus,
+  ticketState: TicketState,
+): boolean {
+  return (
+    quoteStatus === QuoteStatus.APPROVED &&
+    ticketState !== TicketState.QUOTE_APPROVED
+  );
+}
+
 export interface SweepReport {
   scanned: number;
   expired: number;
   ticketsMoved: number;
+  /** APPROVED quotes skipped because the ticket already consumed the
+   *  approval (moved past the quote gate) — see isApprovalConsumed. */
+  skippedConsumed: number;
   errors: { quoteId: string; message: string }[];
 }
 
@@ -112,10 +138,18 @@ export async function sweepExpiredQuotes(
     scanned: candidates.length,
     expired: 0,
     ticketsMoved: 0,
+    skippedConsumed: 0,
     errors: [],
   };
 
   for (const quote of candidates) {
+    // BUG-3 guard — never expire an approval the ticket already
+    // acted on. The quote record must keep saying APPROVED so it
+    // agrees with the ticket's timeline and the billing trail.
+    if (isApprovalConsumed(quote.status, quote.ticket.state)) {
+      report.skippedConsumed += 1;
+      continue;
+    }
     const priorStatus = quote.status;
     const movedBefore = report.ticketsMoved;
     try {

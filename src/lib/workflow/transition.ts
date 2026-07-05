@@ -7,6 +7,7 @@ import { dispatchEmailEvent } from "@/lib/email/send";
 import { buildTicketEmailVariables } from "@/lib/email/variables";
 import { createInAppNotification } from "@/lib/notifications/in-app";
 import { humanizeState } from "@/lib/humanise";
+import { isReversionTransition } from "./states";
 import {
   getEffectiveNotifyOnEnter,
   getEffectiveTransitions,
@@ -89,6 +90,24 @@ type Guard = (
 ) => Promise<void>;
 
 const guards: Record<string, Guard> = {
+  // QA audit (July 2026), BUG-4 — backward moves need the same
+  // justification Force Change demands. A one-click regression from
+  // "Delivery scheduled" back to "Repair completed" with no recorded
+  // reason left the audit trail blind for exactly the moves most
+  // worth explaining. Cascades (failed-stop re-queues), the kanban
+  // client, and the sweeps all already send reasons.
+  reversionRequiresReason: async (_tx, ticket, to, opts) => {
+    if (!isReversionTransition(ticket.state, to)) return;
+    if (opts.reason && opts.reason.trim().length >= 3) return;
+    throw new GuardFailedError(
+      ticket.id,
+      ticket.state,
+      to,
+      "reversionRequiresReason",
+      "moving a ticket backward needs a short reason — it's recorded on the timeline",
+    );
+  },
+
   requireJobForScheduled: async (tx, ticket, to, opts) => {
     if (to !== "PICKUP_SCHEDULED" && to !== "DELIVERY_SCHEDULED") return;
     const jobId = opts.payload?.jobId;

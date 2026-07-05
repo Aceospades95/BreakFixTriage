@@ -112,8 +112,17 @@ describe.skipIf(!process.env.DATABASE_URL)("exception counts", () => {
 
   it("expired and expiring-soon tokens land in separate buckets (BUG-2)", async () => {
     const school = await fixtureSchool();
-    const admin = await prisma.user.findFirstOrThrow({
-      where: { role: "ADMIN" },
+    // Self-sufficient: CI's integration database only runs
+    // seed-defaults (no users), so create the actor instead of
+    // assuming a seeded admin exists.
+    const admin = await prisma.user.upsert({
+      where: { email: "exc-admin@integration.test" },
+      create: {
+        email: "exc-admin@integration.test",
+        name: "EXC Admin",
+        role: "ADMIN",
+      },
+      update: {},
     });
     const day = 24 * 60 * 60 * 1000;
     const before = await getExceptionCounts(prisma);

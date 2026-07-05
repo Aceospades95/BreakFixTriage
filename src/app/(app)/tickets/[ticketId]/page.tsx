@@ -459,7 +459,7 @@ export default async function TicketDetailPage({
               <Dt>Assignee</Dt>
               <Dd>
                 {canWrite ? (
-                  <form action={updateTicketAction} className="inline-flex items-center gap-2">
+                  <form action={updateTicketAction} className="inline-flex max-w-full flex-wrap items-center gap-2">
                     <input type="hidden" name="ticketId" value={ticket.id} />
                     <input
                       type="hidden"
@@ -469,7 +469,10 @@ export default async function TicketDetailPage({
                     <select
                       name="assignedUserId"
                       defaultValue={ticket.assignedUserId ?? ""}
-                      className="rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
+                      // max-w: a <select> refuses to shrink below its
+                      // longest option, which was the one element
+                      // pushing the whole page wide at 375px.
+                      className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
                     >
                       <option value="">— unassigned —</option>
                       {assignableUsers.map((u) => (

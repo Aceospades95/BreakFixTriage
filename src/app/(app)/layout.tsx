@@ -60,8 +60,12 @@ export default async function AppLayout({
         </div>
       </div>
 
-      {/* Right: utility buttons (always aligned to right edge) */}
-      <div className="ml-auto flex items-center gap-2">
+      {/* Right: utility buttons (always aligned to right edge).
+          min-w-0 + overflow-x-auto: at phone widths the strip holds
+          ~540px of controls — without a scroll container everything
+          past the viewport edge (bell, help, profile, sign-out) was
+          simply unreachable (Round-3 QA audit, 375px pass). */}
+      <div className="ml-auto flex min-w-0 items-center gap-2 overflow-x-auto">
         <Link
           href="/scan"
           className="flex h-8 items-center gap-1.5 rounded border border-border px-2.5 text-xs font-medium text-slate-300 transition hover:border-primary hover:text-white"

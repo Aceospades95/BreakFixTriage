@@ -157,6 +157,31 @@ async function main() {
   } catch (err) {
     console.error("[bootstrap] seed-defaults failed:", err);
   }
+
+  // Round-6 QA audit — self-healing data repair on every container
+  // start. The BUG-3 clobbered-approval repair was a manual script
+  // that two consecutive deploy rounds forgot to run, so the known
+  // corruption survived two "fix confirmed" cycles. The matcher is
+  // idempotent (a repaired row no longer matches) and every repair
+  // is audited, so running it on every boot is safe and removes the
+  // human step entirely.
+  try {
+    const { findClobberedApprovals, repairClobberedApprovals } =
+      await import("../src/lib/quotes/repair");
+    const rows = await findClobberedApprovals(prisma);
+    if (rows.length > 0) {
+      const n = await repairClobberedApprovals(rows, prisma);
+      console.log(
+        `[bootstrap] quote-repair: restored ${n} clobbered approval(s): ${rows
+          .map((r) => r.incidentNumber)
+          .join(", ")}`,
+      );
+    } else {
+      console.log("[bootstrap] quote-repair: nothing to repair");
+    }
+  } catch (err) {
+    console.error("[bootstrap] quote-repair failed:", err);
+  }
 }
 
 main()

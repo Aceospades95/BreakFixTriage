@@ -53,6 +53,7 @@ export function AdminSidebar({
           <Link
             key={link.href}
             href={link.href}
+            prefetch={false}
             className={cn(
               "rounded px-3 py-1.5 transition-colors",
               active

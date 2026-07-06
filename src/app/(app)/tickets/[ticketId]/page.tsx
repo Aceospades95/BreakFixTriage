@@ -17,6 +17,7 @@ import {
 } from "@/lib/warranty";
 import { getRawSetting } from "@/lib/settings/settings";
 import { ForceChangeForm } from "@/components/force-change-form";
+import { ActionForm } from "@/components/action-form";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
@@ -427,7 +428,7 @@ export default async function TicketDetailPage({
               <Dt>Priority</Dt>
               <Dd>
                 {canWrite ? (
-                  <form action={updateTicketAction} className="inline-flex items-center gap-2">
+                  <ActionForm action={updateTicketAction} className="inline-flex items-center gap-2">
                     <input type="hidden" name="ticketId" value={ticket.id} />
                     <input
                       type="hidden"
@@ -451,7 +452,7 @@ export default async function TicketDetailPage({
                     >
                       save
                     </button>
-                  </form>
+                  </ActionForm>
                 ) : (
                   humanise(ticket.priority)
                 )}
@@ -459,7 +460,7 @@ export default async function TicketDetailPage({
               <Dt>Assignee</Dt>
               <Dd>
                 {canWrite ? (
-                  <form action={updateTicketAction} className="inline-flex max-w-full flex-wrap items-center gap-2">
+                  <ActionForm action={updateTicketAction} className="inline-flex max-w-full flex-wrap items-center gap-2">
                     <input type="hidden" name="ticketId" value={ticket.id} />
                     <input
                       type="hidden"
@@ -487,7 +488,7 @@ export default async function TicketDetailPage({
                     >
                       save
                     </button>
-                  </form>
+                  </ActionForm>
                 ) : (
                   ticket.assignee?.name ?? (
                     <span className="text-slate-500">—</span>
@@ -545,7 +546,7 @@ export default async function TicketDetailPage({
               <Dt>Invoice required</Dt>
               <Dd>
                 {canWrite ? (
-                  <form action={updateTicketAction} className="inline-flex items-center gap-2">
+                  <ActionForm action={updateTicketAction} className="inline-flex items-center gap-2">
                     <input type="hidden" name="ticketId" value={ticket.id} />
                     <input
                       type="hidden"
@@ -566,7 +567,7 @@ export default async function TicketDetailPage({
                     >
                       save
                     </button>
-                  </form>
+                  </ActionForm>
                 ) : (
                   ticket.invoiceRequired ? "Yes" : "No"
                 )}
@@ -574,7 +575,7 @@ export default async function TicketDetailPage({
             </dl>
 
             {canWrite ? (
-              <form
+              <ActionForm
                 action={updateTicketAction}
                 className="mt-4 space-y-2 border-t border-surface-border pt-3"
               >
@@ -609,7 +610,7 @@ export default async function TicketDetailPage({
                 >
                   Save description
                 </button>
-              </form>
+              </ActionForm>
             ) : (
               ticket.longDescription && (
                 <>

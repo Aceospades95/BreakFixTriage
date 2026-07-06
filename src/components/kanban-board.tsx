@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { TicketState } from "@prisma/client";
 import { SlaBadge } from "@/components/sla-badge";
 import { useAppEvents } from "@/components/use-app-events";
+import { emitToast } from "@/components/action-form";
 import { cn } from "@/lib/cn";
 
 const HIDE_EMPTY_KEY = "kanban-hide-empty";
@@ -161,7 +162,18 @@ export function KanbanBoard({
         next.delete(id);
         return next;
       });
-      setError(err instanceof Error ? err.message : "Transition failed");
+      let message = err instanceof Error ? err.message : "Transition failed";
+      // Round-5 QA audit — a refused drag looked like "nothing
+      // happened". Spell out the why and the where for the two
+      // common refusals, and surface it as a real toast on top of
+      // the inline alert.
+      if (message.startsWith("Not allowed:")) {
+        message = `${message}. The workflow doesn't have that edge — open the ticket to see its legal moves.`;
+      } else if (message.includes("reversionRequiresReason") || message.toLowerCase().includes("backward")) {
+        message = `${message}. Backward moves need a reason — use the ticket page's transition card.`;
+      }
+      setError(message);
+      emitToast("error", message);
     }
   }
 

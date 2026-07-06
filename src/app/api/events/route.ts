@@ -6,8 +6,8 @@ import { subscribe } from "@/lib/events/bus";
  *
  * Clients subscribe once with `new EventSource("/api/events")` and
  * receive a JSON event whenever the in-process bus fires. The
- * kanban and dashboards pages use this to replace polling with
- * push updates — no interval, instant board refresh.
+ * kanban, dashboards, and ticket detail pages use this to replace
+ * polling with push updates — no interval, instant refresh.
  *
  * Auth: we deliberately don't read any per-user data here. The
  * event payload is a bare entity id, which means a subscriber
@@ -18,6 +18,14 @@ import { subscribe } from "@/lib/events/bus";
  *
  * Heartbeat: we push a comment (`:`) every 15 seconds so
  * reverse proxies don't idle-kill the socket.
+ *
+ * Round-5 QA audit — cleanup runs from `cancel()` the moment the
+ * client goes away. Previously cancel() was empty and teardown
+ * only happened when the NEXT heartbeat threw against the closed
+ * controller: up to 15s of zombie subscriber + live interval per
+ * closed tab. Under an audit session with many tabs (each tab
+ * holds one SSE connection) those zombies pile onto whatever
+ * connection budget the reverse proxy in front has.
  */
 export async function GET() {
   const session = await getSession();
@@ -26,6 +34,8 @@ export async function GET() {
   }
 
   const encoder = new TextEncoder();
+  let cleanup: (() => void) | null = null;
+
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       // Initial retry hint — if the browser loses the connection
@@ -46,14 +56,14 @@ export async function GET() {
         try {
           controller.enqueue(encoder.encode(": keepalive\n\n"));
         } catch {
-          clearInterval(heartbeat);
-          unsubscribe();
+          cleanup?.();
         }
       }, 15000);
 
-      // Wire up cleanup through a sentinel that Next will call
-      // when the client disconnects.
-      const cleanup = () => {
+      let done = false;
+      cleanup = () => {
+        if (done) return;
+        done = true;
         clearInterval(heartbeat);
         unsubscribe();
         try {
@@ -62,11 +72,11 @@ export async function GET() {
           /* already closed */
         }
       };
-      // @ts-expect-error — attach for optional AbortSignal hookup
-      controller._cleanup = cleanup;
     },
     cancel() {
-      // Reader has gone away (tab closed, navigation, etc.)
+      // Reader has gone away (tab closed, navigation, proxy cut) —
+      // tear down NOW, not on the next heartbeat tick.
+      cleanup?.();
     },
   });
 

@@ -132,9 +132,14 @@ const createFromTemplateSchema = z.object({
 /**
  * Create a ticket from a template. Generates an internal-only
  * incident number (prefix `LOCAL`) since these tickets don't
- * originate from ServiceNow. The state machine still governs the
- * lifecycle — the ticket starts in IMPORTED and moves forward
- * through normal transitions.
+ * originate from ServiceNow.
+ *
+ * Round-5 QA audit — manually created tickets are born in TRIAGE,
+ * not IMPORTED: IMPORTED means "arrived via import, nobody has
+ * looked yet", drives the imported-backlog exception, and shows a
+ * "fresh from import" banner — all wrong for a ticket an operator
+ * just typed in on purpose. The state machine still governs the
+ * lifecycle from TRIAGE forward.
  */
 export async function createTicketFromTemplateAction(formData: FormData) {
   const session = await requireRole(PERMISSIONS.TICKETS_WRITE);
@@ -193,14 +198,14 @@ export async function createTicketFromTemplateAction(formData: FormData) {
           parsed.data.overrideShortDescription ?? template.shortDescription,
         longDescription: template.longDescription,
         priority: template.priority,
-        state: "IMPORTED",
+        state: "TRIAGE",
       },
     });
     await prisma.ticketEvent.create({
       data: {
         ticketId: ticket.id,
         fromState: null,
-        toState: "IMPORTED",
+        toState: "TRIAGE",
         actorUserId: session.userId,
         reason: `Created from template "${template.name}"`,
         payload: { templateId: template.id },

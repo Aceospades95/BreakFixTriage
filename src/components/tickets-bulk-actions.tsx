@@ -156,13 +156,13 @@ export function TicketsBulkActions({
         <span className="text-[10px] tracking-wide text-slate-300">
           Bulk actions{count > 0 ? ` (${count} selected)` : ""}
         </span>
-        <label className="flex items-center gap-1">
+        <label className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
           Transition to:
           <select
             name="to"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            className="rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
+            className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
           >
             <option value="" disabled>
               pick state…
@@ -211,12 +211,12 @@ export function TicketsBulkActions({
             Apply
           </button>
         </label>
-        <label className="flex items-center gap-1">
+        <label className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
           Assign to:
           <select
             name="assigneeUserId"
             defaultValue=""
-            className="rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
+            className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
           >
             <option value="">— unassign —</option>
             {assignableUsers.map((u) => (

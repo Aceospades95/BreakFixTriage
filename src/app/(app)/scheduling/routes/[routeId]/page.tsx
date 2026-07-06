@@ -27,12 +27,14 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import { humanise } from "@/lib/format";
+import { DRIVER_ROLES } from "@/lib/scheduling/driver-roles";
 import {
   cancelRouteAction,
   reorderRouteAction,
   reportStopDelayAction,
   updateRouteVehicleAction,
   updateStopStatusAction,
+  reassignRouteDriverAction,
 } from "@/server/actions/scheduling";
 import { StopDelayReason } from "@prisma/client";
 import {
@@ -174,6 +176,7 @@ export default async function RouteDetailPage({
   const session = await requireRole(PERMISSIONS.SCHEDULING_READ);
   const canReorder = can(session.role, PERMISSIONS.ROUTES_BUILD);
   const canUpdateStop = can(session.role, PERMISSIONS.STOPS_UPDATE);
+  const canReassignDriver = can(session.role, PERMISSIONS.SCHEDULING_WRITE);
 
   const route = await loadRoute(params.routeId);
   if (!route) notFound();
@@ -183,6 +186,15 @@ export default async function RouteDetailPage({
         select: { id: true, manufacturer: true, modelName: true },
         orderBy: [{ manufacturer: "asc" }, { modelName: "asc" }],
         take: 200,
+      })
+    : [];
+
+  // Jorge's June-18 notes — swap the runner when a driver is absent.
+  const driverOptions = canReassignDriver
+    ? await prisma.user.findMany({
+        where: { active: true, role: { in: DRIVER_ROLES } },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, role: true },
       })
     : [];
 
@@ -313,7 +325,44 @@ export default async function RouteDetailPage({
           current={route.vehicleRef ?? null}
           editable={canReorder && routeOpen}
         />
-        <Meta label="Technician" value={route.assignee.name} />
+        {canReassignDriver && routeOpen ? (
+          // Jorge's June-18 notes — one-select driver swap for absent
+          // drivers. Both the old and new driver get notified; the
+          // change is audited.
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-400">
+              Technician
+            </div>
+            <form
+              action={reassignRouteDriverAction}
+              className="mt-0.5 flex min-w-0 max-w-full flex-wrap items-center gap-1.5"
+              data-testid="reassign-driver-form"
+            >
+              <input type="hidden" name="routeId" value={route.id} />
+              <select
+                name="assigneeUserId"
+                defaultValue={route.assignee.id}
+                aria-label="Route driver"
+                className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-0.5 text-xs focus:border-accent focus:outline-none"
+              >
+                {driverOptions.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({humanise(u.role)})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="text-[10px] text-accent hover:underline"
+                title="Hand this route to a different driver — both drivers are notified"
+              >
+                reassign
+              </button>
+            </form>
+          </div>
+        ) : (
+          <Meta label="Technician" value={route.assignee.name} />
+        )}
         <Meta
           label="Optimizer"
           value={

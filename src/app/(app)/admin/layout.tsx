@@ -39,7 +39,12 @@ export default async function AdminLayout({
       <aside className="lg:sticky lg:top-6 lg:self-start">
         <AdminSidebar canManageUsers={canManageUsers} />
       </aside>
-      <section>{children}</section>
+      {/* min-w-0: grid items default to min-width auto, so one long
+          unbreakable string (a template key, an error line) widens
+          the whole track past a phone viewport and drags the sidebar
+          with it. Round-3 QA audit — 187px of horizontal overflow on
+          /admin/exceptions at 375px came from exactly this. */}
+      <section className="min-w-0">{children}</section>
     </div>
   );
 }

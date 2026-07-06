@@ -47,6 +47,9 @@ export default async function TicketsPage({
   const session = await requireRole(PERMISSIONS.TICKETS_READ);
   const canWrite = can(session.role, PERMISSIONS.TICKETS_WRITE);
   const canTransition = can(session.role, PERMISSIONS.TICKETS_TRANSITION);
+  // /admin/templates is gated on DISTRICTS_MANAGE — the empty-state
+  // link only renders for users who can actually get there.
+  const canManageTemplates = can(session.role, PERMISSIONS.DISTRICTS_MANAGE);
 
   const stateParam = searchParams?.state;
   const validStates = Object.values(TicketState) as string[];
@@ -285,6 +288,37 @@ export default async function TicketsPage({
           </div>
         )}
 
+      {/* Round-3 QA audit — when no active template exists the
+          quick-create form used to vanish silently, leaving the app
+          with NO manual intake affordance at all (an admin on the
+          live deployment couldn't find any create path). Writers now
+          always see either the form or the way to restore it. */}
+      {canWrite && templates.length === 0 && (
+        <div
+          data-testid="quick-create-empty"
+          className="mb-4 flex flex-wrap items-center gap-3 rounded border border-amber-500/40 bg-amber-500/5 px-3 py-2.5 text-sm"
+        >
+          <div className="min-w-0 flex-1 text-slate-200">
+            <span className="font-semibold">
+              Manual ticket creation is unavailable
+            </span>{" "}
+            — new tickets are quick-created from a template, and no
+            active template exists right now.{" "}
+            {canManageTemplates
+              ? "Add or re-activate one and the create form appears here."
+              : "Ask an admin to add or re-activate a template in Admin → Templates."}
+          </div>
+          {canManageTemplates && (
+            <Link
+              href="/admin/templates"
+              className="shrink-0 rounded border border-amber-500/60 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/20"
+            >
+              Manage templates →
+            </Link>
+          )}
+        </div>
+      )}
+
       {canWrite && templates.length > 0 && (
         <form
           action={createTicketFromTemplateAction}
@@ -298,7 +332,7 @@ export default async function TicketsPage({
             name="templateId"
             aria-label="Ticket template"
             required
-            className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
           >
             <option value="">— template —</option>
             {templates.map((t) => (
@@ -311,7 +345,7 @@ export default async function TicketsPage({
             name="schoolId"
             aria-label="School"
             required
-            className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
           >
             <option value="">— school —</option>
             {schoolsForPicker.map((s) => (
@@ -350,7 +384,7 @@ export default async function TicketsPage({
         )}
         {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1">
+          <label className="flex min-w-0 max-w-full flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">
               Search
             </span>
@@ -362,14 +396,14 @@ export default async function TicketsPage({
               className="w-56 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             />
           </label>
-          <label className="flex flex-col gap-1">
+          <label className="flex min-w-0 max-w-full flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">
               State
             </span>
             <select
               name="state"
               defaultValue={openOnly ? "open" : (stateFilter ?? "")}
-              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             >
               <option value="">All states</option>
               <option value="open">All open (not closed)</option>
@@ -380,7 +414,7 @@ export default async function TicketsPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1">
+          <label className="flex min-w-0 max-w-full flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">
               SLA
             </span>
@@ -388,20 +422,20 @@ export default async function TicketsPage({
               name="slaHealth"
               defaultValue={slaBreachedOnly ? "breached" : ""}
               title="Breached = days in the current state have reached that state's SLA threshold"
-              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             >
               <option value="">Any</option>
               <option value="breached">Breached only</option>
             </select>
           </label>
-          <label className="flex flex-col gap-1">
+          <label className="flex min-w-0 max-w-full flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">
               School
             </span>
             <select
               name="school"
               defaultValue={schoolFilter ?? ""}
-              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             >
               <option value="">All schools</option>
               {schoolsForPicker.map((s) => (
@@ -411,14 +445,14 @@ export default async function TicketsPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1">
+          <label className="flex min-w-0 max-w-full flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">
               Manufacturer
             </span>
             <select
               name="manufacturer"
               defaultValue={manufacturerFilter ?? ""}
-              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             >
               <option value="">All manufacturers</option>
               {manufacturers.map((m) => (
@@ -428,14 +462,14 @@ export default async function TicketsPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1">
+          <label className="flex min-w-0 max-w-full flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">
               Assignee
             </span>
             <select
               name="assignee"
               defaultValue={assigneeFilter ?? ""}
-              className="rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
             >
               <option value="">All assignees</option>
               <option value="unassigned">Unassigned</option>
@@ -468,9 +502,9 @@ export default async function TicketsPage({
               Clear all filters
             </Link>
           )}
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex flex-wrap items-center gap-3">
             {/* Round-22 (demo) — per-page picker: 10 / 25 / 50 / 100. */}
-            <span className="flex items-center gap-1 text-xs text-slate-400">
+            <span className="flex items-center gap-1 whitespace-nowrap text-xs text-slate-400">
               Show
               {PAGE_SIZE_OPTIONS.map((n) => {
                 const sp = new URLSearchParams(activeFilters);
@@ -533,18 +567,23 @@ export default async function TicketsPage({
           )}
           allowedTransitions={ALLOWED_TRANSITIONS}
         >
-          <TicketTable
-            tickets={tickets}
-            withCheckbox
-            sortKey={sortKey}
-            sortDir={sortDir}
-            baseQuery={sortBaseQuery}
-          />
+          {/* overflow-x-auto: the table's min width exceeds a phone
+              viewport; it scrolls inside this container instead of
+              widening the page (Round-3 QA audit, 375px pass). */}
+          <div className="overflow-x-auto rounded-lg border border-surface-border">
+            <TicketTable
+              tickets={tickets}
+              withCheckbox
+              sortKey={sortKey}
+              sortDir={sortDir}
+              baseQuery={sortBaseQuery}
+            />
+          </div>
         </TicketsBulkActions>
       )}
 
       {!canTransition && (
-        <div className="overflow-hidden rounded-lg border border-surface-border">
+        <div className="overflow-x-auto rounded-lg border border-surface-border">
           <TicketTable
             tickets={tickets}
             sortKey={sortKey}

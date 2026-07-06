@@ -12,15 +12,10 @@ import {
 } from "@/lib/scheduling/ready-groups";
 import { createJobAction } from "@/server/actions/scheduling";
 
+import { DRIVER_ROLES } from "@/lib/scheduling/driver-roles";
+
 export const dynamic = "force-dynamic";
 
-const DRIVER_ROLES: Role[] = [
-  Role.DRIVER,
-  Role.TECHNICIAN,
-  Role.OPS_MANAGER,
-  Role.DISPATCHER,
-  Role.ADMIN,
-];
 
 /**
  * Route builder.

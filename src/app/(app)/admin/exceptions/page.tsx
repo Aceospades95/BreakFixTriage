@@ -210,7 +210,12 @@ export default async function ExceptionsPage({
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* grid-cols-1 (= minmax(0,1fr)) matters: with no explicit
+          template the implicit track is min-content-sized, so one
+          nowrap error string inflated the track to 562px on a
+          375px phone and dragged the whole page wide — min-w-0 on
+          descendants can't fix intrinsic track sizing. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section
           title="Failed email dispatches"
           count={failedEmailCount}
@@ -591,7 +596,16 @@ function Section({
       {clear ? (
         <p className="text-xs text-slate-500">All clear — nothing to action here.</p>
       ) : (
-        <ul className="space-y-1.5">{children}</ul>
+        // break-words: rows carry template keys, error strings, and
+        // subjects with no natural break points — on a phone they
+        // must wrap inside the card, not stretch the page. The
+        // truncate spans additionally need min-w-0/flex-1: truncate
+        // is nowrap, and a flex item's default min-width:auto stops
+        // it from ever shrinking, which was the exact element
+        // dragging /admin/exceptions 187px wide at 375px.
+        <ul className="min-w-0 space-y-1.5 break-words [&_.truncate]:min-w-0 [&_.truncate]:flex-1 [&_code]:break-all">
+          {children}
+        </ul>
       )}
     </section>
   );

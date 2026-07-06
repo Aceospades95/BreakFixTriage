@@ -284,11 +284,39 @@ export async function updateTicketAction(formData: FormData) {
           "This ticket changed while you had it open — your edit was NOT saved. The page now shows the latest values; re-apply your change if it still applies.";
       }
 
+      // Round-6 QA audit — the write itself is GUARDED, not just
+      // pre-checked: two near-simultaneous submits can both read the
+      // same row and both pass the stamp comparison above, so the
+      // race is only closed by matching updatedAt in the UPDATE's
+      // where-clause. The photo-finish loser matches zero rows and
+      // takes the same audited stale path as a pre-check miss.
+      let raceLost = false;
       if (!stale && Object.keys(data).length > 0) {
-        await prisma.ticket.update({
-          where: { id: parsed.data.ticketId },
+        const applied = await prisma.ticket.updateMany({
+          where: {
+            id: parsed.data.ticketId,
+            updatedAt: existing.updatedAt,
+          },
           data,
         });
+        raceLost = applied.count === 0;
+        if (raceLost) {
+          await writeAudit({
+            actorUserId: session.userId,
+            entityType: "Ticket",
+            entityId: parsed.data.ticketId,
+            action: "update:stale-rejected",
+            before: { updatedAt: existing.updatedAt.toISOString() },
+            after: { attempted: JSON.stringify(after) },
+            reason:
+              "Write race — another session committed between this form's read and write",
+          });
+          errorMessage =
+            "This ticket changed while you had it open — your edit was NOT saved. The page now shows the latest values; re-apply your change if it still applies.";
+        }
+      }
+
+      if (!stale && !raceLost && Object.keys(data).length > 0) {
         await writeAudit({
           actorUserId: session.userId,
           entityType: "Ticket",

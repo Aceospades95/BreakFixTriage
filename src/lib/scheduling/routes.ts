@@ -17,6 +17,8 @@ import {
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
 import { transitionTicket } from "@/lib/workflow";
+import { createInAppNotification } from "@/lib/notifications/in-app";
+import { DRIVER_ROLES } from "@/lib/scheduling/driver-roles";
 
 export interface ReorderRouteInput {
   routeId: string;
@@ -219,4 +221,107 @@ export async function cancelRoute(
       tx,
     );
   });
+}
+
+/**
+ * Jorge's June-18 notes — "change drivers in the calendar in case one
+ * is absent": move a route to a different runner. Audited, and both
+ * the incoming and outgoing drivers get an in-app notification so an
+ * absent driver's replacement finds out without a phone chain.
+ *
+ * Pure service so the action wrapper stays thin and integration
+ * tests can exercise it directly.
+ */
+export async function reassignRouteDriver(
+  input: {
+    routeId: string;
+    newAssigneeUserId: string;
+    actorUserId: string;
+  },
+  db: PrismaClient = defaultPrisma,
+): Promise<{
+  routeDate: Date;
+  oldDriver: { id: string; name: string };
+  newDriver: { id: string; name: string };
+  changed: boolean;
+}> {
+  const route = await db.route.findUnique({
+    where: { id: input.routeId },
+    select: {
+      id: true,
+      date: true,
+      assigneeUserId: true,
+      assignee: { select: { id: true, name: true } },
+      _count: { select: { stops: true } },
+    },
+  });
+  if (!route) throw new Error("Route not found");
+
+  const newDriver = await db.user.findUnique({
+    where: { id: input.newAssigneeUserId },
+    select: { id: true, name: true, active: true, role: true },
+  });
+  if (!newDriver || !newDriver.active) {
+    throw new Error("Pick an active user to run this route");
+  }
+  if (!DRIVER_ROLES.includes(newDriver.role)) {
+    throw new Error(`${newDriver.name} can't be assigned routes (${newDriver.role})`);
+  }
+
+  const oldDriver = route.assignee;
+  if (oldDriver.id === newDriver.id) {
+    return {
+      routeDate: route.date,
+      oldDriver,
+      newDriver: { id: newDriver.id, name: newDriver.name },
+      changed: false,
+    };
+  }
+
+  const dateLabel = route.date.toISOString().slice(0, 10);
+  await db.$transaction(async (tx) => {
+    await tx.route.update({
+      where: { id: route.id },
+      data: { assigneeUserId: newDriver.id },
+    });
+    await writeAudit(
+      {
+        actorUserId: input.actorUserId,
+        entityType: "Route",
+        entityId: route.id,
+        action: "route.driver.reassigned",
+        before: { assigneeUserId: oldDriver.id, assignee: oldDriver.name },
+        after: { assigneeUserId: newDriver.id, assignee: newDriver.name },
+        reason: `Driver ${oldDriver.name} → ${newDriver.name}`,
+      },
+      tx,
+    );
+    await createInAppNotification(
+      {
+        recipientUserId: newDriver.id,
+        kind: "GENERIC",
+        title: `Route ${dateLabel} is now yours`,
+        body: `Reassigned from ${oldDriver.name} — ${route._count.stops} stop${route._count.stops === 1 ? "" : "s"}.`,
+        linkHref: `/scheduling/routes/${route.id}`,
+      },
+      tx,
+    );
+    await createInAppNotification(
+      {
+        recipientUserId: oldDriver.id,
+        kind: "GENERIC",
+        title: `Route ${dateLabel} reassigned to ${newDriver.name}`,
+        body: "You're off this route.",
+        linkHref: `/scheduling/routes/${route.id}`,
+      },
+      tx,
+    );
+  });
+
+  return {
+    routeDate: route.date,
+    oldDriver,
+    newDriver: { id: newDriver.id, name: newDriver.name },
+    changed: true,
+  };
 }

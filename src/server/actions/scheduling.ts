@@ -16,7 +16,11 @@ import { dispatchEmailEvent } from "@/lib/email";
 import { buildTicketEmailVariables } from "@/lib/email/variables";
 import { writeAudit } from "@/lib/audit/audit";
 import { buildRoute, createJob } from "@/lib/scheduling/jobs";
-import { cancelRoute, reorderRoute } from "@/lib/scheduling/routes";
+import {
+  cancelRoute,
+  reassignRouteDriver,
+  reorderRoute,
+} from "@/lib/scheduling/routes";
 import {
   StopUpdateRefusedError,
   updateStopStatus,
@@ -941,5 +945,55 @@ export async function reportStopDelayAction(formData: FormData) {
       "ok",
       `Delay recorded — ${humanise(parsed.data.reason)}, about ${parsed.data.minutes} minutes.${dispatched > 0 ? " The school contact has been emailed." : " No SPOC email rule is enabled, so nothing was sent."}${downstreamNote}`,
     ),
+  );
+}
+
+const reassignDriverSchema = z.object({
+  routeId: z.string().min(1),
+  assigneeUserId: z.string().min(1, "Pick a driver"),
+});
+
+/**
+ * Jorge's June-18 notes — swap the runner on an existing route when
+ * the scheduled driver is out. Wraps the audited service in
+ * src/lib/scheduling/routes.ts; both drivers get notified.
+ */
+export async function reassignRouteDriverAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.SCHEDULING_WRITE);
+
+  const parsed = reassignDriverSchema.safeParse({
+    routeId: formData.get("routeId"),
+    assigneeUserId: formData.get("assigneeUserId"),
+  });
+  if (!parsed.success) {
+    redirect(
+      `/scheduling?error=${encodeURIComponent(parsed.error.issues[0]!.message)}`,
+    );
+  }
+
+  let summary: string;
+  try {
+    const result = await reassignRouteDriver({
+      routeId: parsed.data.routeId,
+      newAssigneeUserId: parsed.data.assigneeUserId,
+      actorUserId: session.userId,
+    });
+    summary = result.changed
+      ? `Route handed to ${result.newDriver.name} (was ${result.oldDriver.name}) — they've been notified`
+      : `${result.newDriver.name} already runs this route`;
+  } catch (err) {
+    redirect(
+      `/scheduling/routes/${parsed.data.routeId}?error=${encodeURIComponent(
+        err instanceof Error ? err.message : "Could not reassign the route",
+      )}`,
+    );
+  }
+
+  revalidatePath(`/scheduling/routes/${parsed.data.routeId}`);
+  revalidatePath("/scheduling");
+  revalidatePath("/scheduling/calendar");
+  revalidatePath("/me/schedule");
+  redirect(
+    `/scheduling/routes/${parsed.data.routeId}?ok=${encodeURIComponent(summary)}`,
   );
 }

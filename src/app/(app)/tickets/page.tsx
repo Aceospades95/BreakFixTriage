@@ -13,6 +13,7 @@ import { ALLOWED_TRANSITIONS } from "@/lib/workflow";
 import { getSlaThresholds } from "@/lib/settings/settings";
 import { slaBreachedWhere } from "@/lib/reports/sla-filter";
 import { TicketsBulkActions } from "@/components/tickets-bulk-actions";
+import { ActionForm } from "@/components/action-form";
 import {
   bulkAssignAction,
   bulkTransitionAction,
@@ -320,7 +321,7 @@ export default async function TicketsPage({
       )}
 
       {canWrite && templates.length > 0 && (
-        <form
+        <ActionForm
           action={createTicketFromTemplateAction}
           data-testid="quick-create-form"
           className="mb-4 flex flex-wrap items-end gap-3 rounded border border-surface-border bg-surface-muted/60 p-3 text-sm"
@@ -366,7 +367,7 @@ export default async function TicketsPage({
           >
             Create ticket
           </button>
-        </form>
+        </ActionForm>
       )}
 
       <form

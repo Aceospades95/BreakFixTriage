@@ -6,7 +6,10 @@ import { SlaBadge } from "@/components/sla-badge";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
-import { ticketWhereForSession } from "@/lib/data/forSession";
+import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
+import { ticketWhereForBorough } from "@/lib/geo/boroughs";
+import { boroughOptions, normalizeBorough } from "@/lib/geo/borough-options";
+import { BoroughFilter } from "@/components/borough-filter";
 import { formatRole } from "@/lib/format";
 import {
   daysInState,
@@ -34,7 +37,7 @@ const ALL_BENCH_LIMIT = 500;
 export default async function BenchPage({
   searchParams,
 }: {
-  searchParams?: { scope?: string };
+  searchParams?: { scope?: string; borough?: string };
 }) {
   const session = await requireRole(PERMISSIONS.TICKETS_READ);
   const canSeeAll =
@@ -43,6 +46,20 @@ export default async function BenchPage({
     session.role === "ADMIN";
   // Default to "all" for managers, "me" for everyone else
   const scope = canSeeAll && searchParams?.scope !== "me" ? "all" : "me";
+
+  // Five-borough expansion — the manager view caps at 500 rows, so
+  // without a borough cut a Brooklyn supervisor's own work can fall
+  // off the end of a citywide list entirely.
+  const boroughs = await boroughOptions(prisma, session);
+  const borough = normalizeBorough(searchParams?.borough, boroughs);
+  const boroughWhere = ticketWhereForBorough(borough);
+  const benchFilter = (
+    <BoroughFilter
+      boroughs={boroughs}
+      selected={borough}
+      carry={{ scope: searchParams?.scope }}
+    />
+  );
 
   const activeStates: TicketState[] = [
     "TRIAGE",
@@ -67,13 +84,16 @@ export default async function BenchPage({
     // Round-16 (B17) — tenant scope per ADR 0014 on every bench
     // query; ADMIN scope is `{}` so admin benches are unchanged.
     const tenantScope = ticketWhereForSession(session);
+    // Composed, never spread: tenantScope and boroughWhere both own
+    // the `school` key, so an object literal would keep only the last
+    // and drop the tenant scope.
+    const base = andTicketWhere(tenantScope, boroughWhere);
     const [tickets, unassignedQueue] = await Promise.all([
       prisma.ticket.findMany({
-        where: {
-          ...tenantScope,
+        where: andTicketWhere(base, {
           assignedUserId: session.userId,
           state: { in: activeStates },
-        },
+        }),
         orderBy: { stateEnteredAt: "asc" },
         include: {
           school: { select: { name: true } },
@@ -83,7 +103,10 @@ export default async function BenchPage({
       }),
       canPickUp
         ? prisma.ticket.findMany({
-            where: { ...tenantScope, state: { in: activeStates }, assignedUserId: null },
+            where: andTicketWhere(base, {
+              state: { in: activeStates },
+              assignedUserId: null,
+            }),
             orderBy: { stateEnteredAt: "asc" },
             take: 100,
           })
@@ -99,18 +122,19 @@ export default async function BenchPage({
       <>
         <PageHeader
           title="My bench"
-          subtitle={`${tickets.length} active ticket${tickets.length === 1 ? "" : "s"}${breachedCount > 0 ? ` · ${breachedCount} past SLA` : ""}`}
+          subtitle={`${tickets.length} active ticket${tickets.length === 1 ? "" : "s"}${breachedCount > 0 ? ` · ${breachedCount} past SLA` : ""}${borough ? ` · ${borough}` : ""}`}
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-end gap-2">
+              {benchFilter}
               <Link
-                href="/bench/history"
+                href={historyHref(borough)}
                 className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
               >
                 History
               </Link>
               {canSeeAll && (
                 <Link
-                  href="/bench?scope=all"
+                  href={benchHref("all", borough)}
                   className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
                 >
                   All benches →
@@ -142,14 +166,13 @@ export default async function BenchPage({
 
   // All benches (manager view).
   // Round-16 (B17) — tenant scope per ADR 0014.
-  const allScope = ticketWhereForSession(session);
+  const allScope = andTicketWhere(ticketWhereForSession(session), boroughWhere);
   const [ticketsByUserRaw, allBenchTotal, unassigned, unlinked] = await Promise.all([
     prisma.ticket.findMany({
-      where: {
-        ...allScope,
+      where: andTicketWhere(allScope, {
         state: { in: activeStates },
         assignedUserId: { not: null },
-      },
+      }),
       orderBy: { stateEnteredAt: "asc" },
       include: {
         school: { select: { name: true } },
@@ -163,14 +186,16 @@ export default async function BenchPage({
       take: ALL_BENCH_LIMIT,
     }),
     prisma.ticket.count({
-      where: {
-        ...allScope,
+      where: andTicketWhere(allScope, {
         state: { in: activeStates },
         assignedUserId: { not: null },
-      },
+      }),
     }),
     prisma.ticket.findMany({
-      where: { ...allScope, state: { in: activeStates }, assignedUserId: null },
+      where: andTicketWhere(allScope, {
+        state: { in: activeStates },
+        assignedUserId: null,
+      }),
       orderBy: { stateEnteredAt: "asc" },
       include: {
         school: { select: { name: true } },
@@ -179,7 +204,9 @@ export default async function BenchPage({
       take: 100,
     }),
     prisma.ticket.findMany({
-      where: { ...allScope, state: TicketState.PENDING_PICKUP_UNLINKED },
+      where: andTicketWhere(allScope, {
+        state: TicketState.PENDING_PICKUP_UNLINKED,
+      }),
       orderBy: { reportedAt: "desc" },
       include: {
         school: { select: { name: true } },
@@ -224,17 +251,18 @@ export default async function BenchPage({
     <>
       <PageHeader
         title="All benches"
-        subtitle={`${totalAssignedOpen.toLocaleString()} assigned${benchTruncated ? ` (showing the ${ticketsByUserRaw.length} longest-waiting)` : ""} · ${unassigned.length} unassigned · ${unlinked.length} unlinked · ${sortedUsers.length} active assignee${sortedUsers.length === 1 ? "" : "s"}`}
+        subtitle={`${totalAssignedOpen.toLocaleString()} assigned${benchTruncated ? ` (showing the ${ticketsByUserRaw.length} longest-waiting)` : ""} · ${unassigned.length} unassigned · ${unlinked.length} unlinked · ${sortedUsers.length} active assignee${sortedUsers.length === 1 ? "" : "s"}${borough ? ` · ${borough}` : ""}`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            {benchFilter}
             <Link
-              href="/bench/history"
+              href={historyHref(borough)}
               className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
             >
               History
             </Link>
             <Link
-              href="/bench?scope=me"
+              href={benchHref("me", borough)}
               className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
             >
               ← My bench
@@ -348,6 +376,17 @@ export default async function BenchPage({
       </div>
     </>
   );
+}
+
+/** Keep the chosen borough when switching bench view or going to history. */
+function benchHref(scope: "me" | "all", borough?: string): string {
+  const sp = new URLSearchParams({ scope, ...(borough ? { borough } : {}) });
+  return `/bench?${sp.toString()}`;
+}
+function historyHref(borough?: string): string {
+  return borough
+    ? `/bench/history?borough=${encodeURIComponent(borough)}`
+    : "/bench/history";
 }
 
 function EmptyBench() {

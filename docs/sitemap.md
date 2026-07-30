@@ -40,7 +40,7 @@ Every signed-in user reaches them.
 
 | Path | Lowest role | Permission |
 |------|-------------|------------|
-| `/tickets` | READ_ONLY | TICKETS_READ |
+| `/tickets` | READ_ONLY | TICKETS_READ — filters: `state`, `q`, `borough`, `district`, `school`, `manufacturer`, `assignee`, `slaHealth`, `ageDays=gte:N`, `stateAgeDays=gte:N`, `closedSince=<ISO>` (see ADR 0018) |
 | `/tickets/kanban` | READ_ONLY | TICKETS_READ |
 | `/tickets/[ticketId]` | READ_ONLY | TICKETS_READ |
 | `/tickets/[ticketId]/print` | READ_ONLY | TICKETS_READ |
@@ -76,9 +76,14 @@ Every signed-in user reaches them.
 
 ## Dashboards
 
+Every page below accepts `?borough=` (ADR 0018). The value is
+normalised against the boroughs the actor can actually see, so a stale
+bookmark falls back to "all boroughs" rather than rendering zeroes.
+
 | Path | Lowest role | Permission |
 |------|-------------|------------|
 | `/dashboards` | READ_ONLY | REPORTS_READ |
+| `/dashboards/boroughs` | READ_ONLY | REPORTS_READ — five-borough comparison report (open / aging / breached / backlog / closed / turnaround per borough) |
 | `/dashboards/devices` | READ_ONLY | REPORTS_READ |
 | `/dashboards/finance` | READ_ONLY | REPORTS_READ |
 | `/dashboards/productivity` | READ_ONLY | REPORTS_READ |

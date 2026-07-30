@@ -13,7 +13,9 @@ import {
 } from "@/lib/scheduling/ready-groups";
 import { createJobAction } from "@/server/actions/scheduling";
 import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
-import { sortBoroughs, ticketWhereForBorough } from "@/lib/geo/boroughs";
+import { ticketWhereForBorough } from "@/lib/geo/boroughs";
+import { boroughOptions, normalizeBorough } from "@/lib/geo/borough-options";
+import { BoroughFilter } from "@/components/borough-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -37,18 +39,14 @@ export default async function SchedulingPage({
   // Five-borough expansion — a dispatcher works one borough at a
   // time. Without this the ready-to-schedule lists mix all five and
   // silently truncate, so the stops you need may not even be shown.
-  const boroughFilter = searchParams?.borough || undefined;
+  const boroughs = await boroughOptions(prisma, session);
+  // Normalised against the real options: a stale bookmark or a
+  // hand-edited URL falls back to "all boroughs" rather than showing
+  // an empty board that reads as "nothing to schedule".
+  const boroughFilter = normalizeBorough(searchParams?.borough, boroughs);
   const readyWhere = andTicketWhere(
     ticketWhereForSession(session),
     ticketWhereForBorough(boroughFilter),
-  );
-  const boroughRows = await prisma.district.findMany({
-    where: { active: true, region: { not: null } },
-    distinct: ["region"],
-    select: { region: true },
-  });
-  const boroughs = sortBoroughs(
-    boroughRows.map((r) => r.region?.trim()).filter((r): r is string => Boolean(r)),
   );
 
   // Round-22 §4 — flag routes still open after their date has passed.
@@ -97,39 +95,12 @@ export default async function SchedulingPage({
         title="Scheduling"
         subtitle="Build routes from pending jobs and track what's on the road."
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             {/* Five-borough expansion — a dispatcher plans one
                 borough at a time; this narrows every ready-to-
-                schedule column below. */}
-            {boroughs.length > 0 && (
-              <form method="get" className="flex items-center gap-1">
-                <label
-                  htmlFor="scheduling-borough"
-                  className="text-[10px] uppercase tracking-wide text-slate-400"
-                >
-                  Borough
-                </label>
-                <select
-                  id="scheduling-borough"
-                  name="borough"
-                  defaultValue={boroughFilter ?? ""}
-                  className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
-                >
-                  <option value="">All boroughs</option>
-                  {boroughs.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="submit"
-                  className="rounded border border-surface-border px-2 py-1 text-xs transition hover:border-accent"
-                >
-                  Go
-                </button>
-              </form>
-            )}
+                schedule column below. Same shared picker as the
+                dashboards and bench so they behave identically. */}
+            <BoroughFilter boroughs={boroughs} selected={boroughFilter} />
             {canBuild && (
               <Link
                 href="/scheduling/routes/new"

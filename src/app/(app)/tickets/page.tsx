@@ -13,9 +13,12 @@ import { ALLOWED_TRANSITIONS } from "@/lib/workflow";
 import { getSlaThresholds } from "@/lib/settings/settings";
 import { slaBreachedWhere } from "@/lib/reports/sla-filter";
 import {
-  schoolWhereForBorough,
-  sortBoroughs,
-} from "@/lib/geo/boroughs";
+  ageDaysWhere,
+  closedSinceWhere,
+  stateAgeDaysWhere,
+} from "@/lib/reports/age-filter";
+import { schoolWhereForBorough } from "@/lib/geo/boroughs";
+import { boroughOptions, districtScopeFor } from "@/lib/geo/borough-options";
 import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
 import { TicketsBulkActions } from "@/components/tickets-bulk-actions";
 import { ActionForm } from "@/components/action-form";
@@ -51,6 +54,12 @@ export default async function TicketsPage({
     manufacturer?: string;
     assignee?: string;
     slaHealth?: string;
+    // Age filters the dashboards drill through with. Before these
+    // existed the params were silently ignored, so a KPI card and the
+    // list it linked to showed wildly different counts.
+    ageDays?: string;
+    stateAgeDays?: string;
+    closedSince?: string;
     error?: string;
     ok?: string;
   };
@@ -161,6 +170,13 @@ export default async function TicketsPage({
     ? slaBreachedWhere(await getSlaThresholds())
     : null;
 
+  // Age filters, shared with the metrics that link here so the list
+  // and the number that sent you to it agree.
+  const listNow = new Date();
+  const ageClause = ageDaysWhere(searchParams?.ageDays, listNow);
+  const stateAgeClause = stateAgeDaysWhere(searchParams?.stateAgeDays, listNow);
+  const closedSinceClause = closedSinceWhere(searchParams?.closedSince);
+
   // Five-borough expansion — composed with andTicketWhere, not
   // spread: the tenant scope, the borough/district filter and the
   // school-name filter all own the `school` key, and a plain spread
@@ -171,6 +187,11 @@ export default async function TicketsPage({
     // district-scoped user all ~40k tickets in all five boroughs.
     ticketWhereForSession(session),
     schoolClause ? { school: schoolClause } : null,
+    // Composed, not spread: ageClause and closedSinceClause both own
+    // `state`, as does the state filter itself.
+    ageClause,
+    stateAgeClause,
+    closedSinceClause,
     {
     ...(stateFilter ? { state: stateFilter } : {}),
     ...(openOnly ? { state: { not: TicketState.CLOSED } } : {}),
@@ -212,7 +233,7 @@ export default async function TicketsPage({
     templates,
     schoolSuggestionRows,
     manufacturers,
-    boroughRows,
+    boroughs,
     districtRows,
   ] = await Promise.all([
     prisma.ticket.findMany({
@@ -272,15 +293,15 @@ export default async function TicketsPage({
       orderBy: { manufacturer: "asc" },
     }),
     // Borough list comes from the data (District.region), never a
-    // hardcoded NYC list — this app should survive leaving NYC.
-    prisma.district.findMany({
-      where: { active: true, region: { not: null } },
-      distinct: ["region"],
-      select: { region: true },
-    }),
+    // hardcoded NYC list — this app should survive leaving NYC. The
+    // shared helper also narrows it to the districts this actor can
+    // see, so a Bronx user isn't offered a Manhattan that renders
+    // empty.
+    boroughOptions(prisma, session),
     prisma.district.findMany({
       where: {
         active: true,
+        ...districtScopeFor(session),
         ...(boroughFilter
           ? { region: { equals: boroughFilter, mode: "insensitive" } }
           : {}),
@@ -295,11 +316,6 @@ export default async function TicketsPage({
   const schoolSuggestions = schoolSuggestionRows.slice(0, SCHOOL_SUGGESTION_LIMIT);
   const schoolSuggestionsTruncated =
     schoolSuggestionRows.length > SCHOOL_SUGGESTION_LIMIT;
-  const boroughs = sortBoroughs(
-    boroughRows
-      .map((r) => r.region?.trim())
-      .filter((r): r is string => Boolean(r)),
-  );
   const activeFilters: Record<string, string> = {
     ...(stateFilter ? { state: stateFilter } : {}),
     ...(openOnly ? { state: "open" } : {}),
@@ -310,6 +326,12 @@ export default async function TicketsPage({
     ...(schoolFilter ? { school: schoolFilter } : {}),
     ...(manufacturerFilter ? { manufacturer: manufacturerFilter } : {}),
     ...(assigneeFilter ? { assignee: assigneeFilter } : {}),
+    // The age filters must ride along too — they arrive from a
+    // dashboard drill-through, and dropping them on the first
+    // pagination click would quietly widen the list back out.
+    ...(ageClause ? { ageDays: searchParams!.ageDays! } : {}),
+    ...(stateAgeClause ? { stateAgeDays: searchParams!.stateAgeDays! } : {}),
+    ...(closedSinceClause ? { closedSince: searchParams!.closedSince! } : {}),
     // Non-default sort travels with every derived link (per-page
     // picker, pagination, export) — otherwise changing the page size
     // or page silently snaps the table back to reported-date order.

@@ -75,6 +75,8 @@ const ROUTES: Array<{ path: string; lowestRole: string }> = [
 
   // Dashboards
   { path: "/dashboards", lowestRole: "READ_ONLY" },
+  // Five-borough expansion — per-borough comparison report.
+  { path: "/dashboards/boroughs", lowestRole: "READ_ONLY" },
   { path: "/dashboards/devices", lowestRole: "READ_ONLY" },
   { path: "/dashboards/finance", lowestRole: "READ_ONLY" },
   { path: "/dashboards/productivity", lowestRole: "READ_ONLY" },

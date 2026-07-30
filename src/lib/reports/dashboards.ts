@@ -56,9 +56,15 @@ export async function closedTicketsByMonth(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1),
   );
   const closed = await db.ticket.findMany({
+    // `state: "CLOSED"` matters: transitionTicket sets closedAt on
+    // entry to CLOSED but never clears it on the way back out, and
+    // CLOSED -> REOPENED is a legal transition. Filtering on closedAt
+    // alone counts reopened work as closed, which both overstates
+    // this chart and makes it disagree with the per-borough report
+    // (src/lib/reports/boroughs.ts) that applies the same predicate.
     where: scoped(scope, {
+      state: "CLOSED",
       closedAt: { gte: from, lte: now },
-      NOT: { closedAt: null },
     }),
     select: { closedAt: true },
   });
@@ -151,12 +157,15 @@ export async function agingTicketsCount(
   });
 }
 
-export async function duplicateQueueCount(db: PrismaClient = defaultPrisma) {
+export async function duplicateQueueCount(
+  db: PrismaClient = defaultPrisma,
+  scope: Prisma.TicketWhereInput = {},
+) {
   // QA audit BUG-1 — delegate to the shared queue count so this tile
   // (and the digest) can never disagree with the /duplicates page.
   // Counting only DuplicateConflict rows here missed unlinked
   // synthetics entirely.
-  const counts = await duplicateQueueCounts(db);
+  const counts = await duplicateQueueCounts(db, scope);
   return counts.total;
 }
 

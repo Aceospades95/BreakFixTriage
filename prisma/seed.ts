@@ -21,12 +21,12 @@ async function main() {
   // Districts
   const bronx = await prisma.district.upsert({
     where: { code: "BRONX" },
-    create: { code: "BRONX", name: "Bronx", region: "NYC" },
+    create: { code: "BRONX", name: "Bronx", region: "Bronx" },
     update: {},
   });
   const queens = await prisma.district.upsert({
     where: { code: "QUEENS" },
-    create: { code: "QUEENS", name: "Queens", region: "NYC" },
+    create: { code: "QUEENS", name: "Queens", region: "Queens" },
     update: {},
   });
 

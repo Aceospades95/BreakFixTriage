@@ -426,6 +426,17 @@ model Ticket {
   @@index([assignedUserId])
   @@index([stateEnteredAt])
   @@index([mergedIntoTicketId])
+  /// Five-borough expansion — closure-window reporting. Every
+  /// "closed in the last N days" metric (the dashboard chart, the
+  /// per-borough report, the CSV export) filters on closedAt, which
+  /// had no index at all and so scanned the whole table.
+  @@index([closedAt])
+  /// slaBreachedWhere() emits one {state, stateEnteredAt} branch per
+  /// state — 23 of them. With only single-column indexes each branch
+  /// is non-selective and the planner falls back to a seq scan; this
+  /// composite makes every branch a tight (equality, range) scan.
+  /// Also serves the imported/no-triage backlog query.
+  @@index([state, stateEnteredAt])
 }
 
 model TicketEvent {

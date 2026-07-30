@@ -4,7 +4,10 @@ import { LocalTime } from "@/components/local-time";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
-import { ticketWhereForSession } from "@/lib/data/forSession";
+import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
+import { ticketWhereForBorough } from "@/lib/geo/boroughs";
+import { boroughOptions, normalizeBorough } from "@/lib/geo/borough-options";
+import { BoroughFilter } from "@/components/borough-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +28,15 @@ const WINDOW_OPTIONS = [30, 90] as const;
 export default async function BenchHistoryPage({
   searchParams,
 }: {
-  searchParams?: { days?: string; who?: string };
+  searchParams?: { days?: string; who?: string; borough?: string };
 }) {
   const session = await requireRole(PERMISSIONS.TICKETS_READ);
-  const scope = ticketWhereForSession(session);
+  const boroughs = await boroughOptions(prisma, session);
+  const borough = normalizeBorough(searchParams?.borough, boroughs);
+  const scope = andTicketWhere(
+    ticketWhereForSession(session),
+    ticketWhereForBorough(borough),
+  );
 
   const days = searchParams?.days === "90" ? 90 : 30;
   // Narrow to a plain string — a repeated ?who= arrives as an array
@@ -108,17 +116,34 @@ export default async function BenchHistoryPage({
     timeZone: "UTC",
   });
 
+  // Every internal link keeps the other two filters — losing the
+  // borough when you flip 30d→90d is the kind of quiet reset that
+  // makes a filter feel broken.
+  const href = (over: { days?: number; who?: string | null }) => {
+    const sp = new URLSearchParams();
+    sp.set("days", String(over.days ?? days));
+    const who = over.who === undefined ? whoFilter : over.who;
+    if (who) sp.set("who", who);
+    if (borough) sp.set("borough", borough);
+    return `/bench/history?${sp.toString()}`;
+  };
+
   return (
     <>
       <PageHeader
         title="Bench history"
-        subtitle={`${closureTotal.toLocaleString()} closure${closureTotal === 1 ? "" : "s"} in the last ${days} days${closureTotal > closures.length ? ` (showing the latest ${closures.length})` : ""}`}
+        subtitle={`${closureTotal.toLocaleString()} closure${closureTotal === 1 ? "" : "s"} in the last ${days} days${closureTotal > closures.length ? ` (showing the latest ${closures.length})` : ""}${borough ? ` · ${borough}` : ""}`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <BoroughFilter
+              boroughs={boroughs}
+              selected={borough}
+              carry={{ days, who: whoFilter }}
+            />
             {WINDOW_OPTIONS.map((d) => (
               <Link
                 key={d}
-                href={`/bench/history?days=${d}${whoFilter ? `&who=${whoFilter}` : ""}`}
+                href={href({ days: d })}
                 className={`rounded border px-3 py-1.5 text-sm transition ${
                   days === d
                     ? "border-accent text-accent"
@@ -129,7 +154,11 @@ export default async function BenchHistoryPage({
               </Link>
             ))}
             <Link
-              href="/bench"
+              href={
+                borough
+                  ? `/bench?borough=${encodeURIComponent(borough)}`
+                  : "/bench"
+              }
               className="rounded border border-surface-border px-3 py-1.5 text-sm transition hover:border-accent"
             >
               ← Bench
@@ -152,7 +181,7 @@ export default async function BenchHistoryPage({
             {leaderboard.map((row, i) => (
               <Link
                 key={row.userId}
-                href={`/bench/history?days=${days}&who=${row.userId}`}
+                href={href({ who: row.userId })}
                 data-testid="leaderboard-row"
                 className={`rounded-lg border p-3 transition hover:border-accent ${
                   i === 0
@@ -182,7 +211,7 @@ export default async function BenchHistoryPage({
           <p className="mt-2 text-xs text-slate-400">
             Log filtered to one person.{" "}
             <Link
-              href={`/bench/history?days=${days}`}
+              href={href({ who: null })}
               className="text-accent hover:underline"
             >
               Show everyone

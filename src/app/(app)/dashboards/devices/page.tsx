@@ -4,19 +4,26 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { deviceHotspots } from "@/lib/reports/productivity";
 import { prisma } from "@/lib/db/prisma";
-import { ticketWhereForSession } from "@/lib/data/forSession";
+import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
+import { ticketWhereForBorough } from "@/lib/geo/boroughs";
+import { boroughOptions, normalizeBorough } from "@/lib/geo/borough-options";
 
 export const dynamic = "force-dynamic";
 
 export default async function DeviceHotspotsPage({
   searchParams,
 }: {
-  searchParams?: { days?: string; threshold?: string };
+  searchParams?: { days?: string; threshold?: string; borough?: string };
 }) {
   const session = await requireRole(PERMISSIONS.REPORTS_READ);
   // Five-borough expansion — REPORTS_READ is in the read-only set,
   // so this page is reachable by district-scoped roles.
-  const scope = ticketWhereForSession(session);
+  const boroughs = await boroughOptions(prisma, session);
+  const borough = normalizeBorough(searchParams?.borough, boroughs);
+  const scope = andTicketWhere(
+    ticketWhereForSession(session),
+    ticketWhereForBorough(borough),
+  );
 
   const days = Math.max(
     7,
@@ -27,7 +34,7 @@ export default async function DeviceHotspotsPage({
     Math.min(20, parseInt(searchParams?.threshold ?? "3", 10) || 3),
   );
 
-  const hotspots = await deviceHotspots(
+  const { rows: hotspots, total: hotspotTotal } = await deviceHotspots(
     days,
     threshold,
     prisma,
@@ -39,13 +46,35 @@ export default async function DeviceHotspotsPage({
     <>
       <PageHeader
         title="Device hotspots"
-        subtitle={`Devices that have been in the shop ${threshold}+ times in the last ${days} days. Prime candidates for retire-or-repair decisions.`}
+        subtitle={`${hotspotTotal.toLocaleString()} device${hotspotTotal === 1 ? "" : "s"} have been in the shop ${threshold}+ times in the last ${days} days${borough ? ` in ${borough}` : ""}${hotspotTotal > hotspots.length ? ` — showing the ${hotspots.length} worst` : ""}. Prime candidates for retire-or-repair decisions.`}
       />
 
+      {/* One form, not two: a GET form replaces the whole query
+          string, so a separate borough form would silently reset the
+          window and threshold (and vice versa). */}
       <form
         method="get"
         className="mb-5 flex flex-wrap items-end gap-3 rounded border border-surface-border bg-surface-muted/40 p-3 text-xs"
       >
+        {boroughs.length > 0 && (
+          <label className="flex flex-col gap-1">
+            <span className="uppercase tracking-wide text-slate-400">
+              Borough
+            </span>
+            <select
+              name="borough"
+              defaultValue={borough ?? ""}
+              className="rounded border border-surface-border bg-surface px-2 py-1 focus:border-accent focus:outline-none"
+            >
+              <option value="">All boroughs</option>
+              {boroughs.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1">
           <span className="uppercase tracking-wide text-slate-400">
             Window (days)

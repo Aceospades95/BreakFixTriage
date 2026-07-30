@@ -1,5 +1,6 @@
-import { TicketState, type PrismaClient } from "@prisma/client";
+import { TicketState, type Prisma, type PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
+import { andTicketWhere } from "@/lib/data/forSession";
 
 /**
  * QA audit (July 2026), BUG-1 — the single source of truth for "how
@@ -25,11 +26,33 @@ export interface DuplicateQueueCounts {
 
 export async function duplicateQueueCounts(
   db: PrismaClient = defaultPrisma,
+  /**
+   * Ticket scope (tenant, and optionally borough). The /duplicates
+   * page is scoped per ADR 0014 but this counter was not, so a
+   * district user's dashboard tile read the citywide number and then
+   * the page it linked to showed a much smaller list. A conflict is
+   * in scope when EITHER side is — the same rule the page uses, and
+   * the two must not drift apart.
+   *
+   * Defaults to `{}` so admin surfaces (exceptions, topbar badge) are
+   * unchanged.
+   */
+  scope: Prisma.TicketWhereInput = {},
 ): Promise<DuplicateQueueCounts> {
+  const scoped = Object.keys(scope).length > 0;
   const [unresolvedConflicts, unlinkedSynthetics] = await Promise.all([
-    db.duplicateConflict.count({ where: { resolvedAt: null } }),
+    db.duplicateConflict.count({
+      where: {
+        resolvedAt: null,
+        ...(scoped
+          ? { OR: [{ leftTicket: scope }, { rightTicket: scope }] }
+          : {}),
+      },
+    }),
     db.ticket.count({
-      where: { state: TicketState.PENDING_PICKUP_UNLINKED },
+      where: andTicketWhere(scope, {
+        state: TicketState.PENDING_PICKUP_UNLINKED,
+      }),
     }),
   ]);
   return {

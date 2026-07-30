@@ -165,16 +165,32 @@ async function main() {
   // null, which would make those filters look empty. Idempotent:
   // only fills districts where region IS NULL, never overwrites an
   // operator's value.
+  //
+  // "NYC" is repaired alongside null. It is not a borough — it is the
+  // placeholder the original two-district seed shipped, and it
+  // collapses every district carrying it into one meaningless row on
+  // the per-borough report. A five-borough deployment can never
+  // legitimately mean "NYC" by a borough name, so re-deriving it from
+  // the DBNs is a repair, not an overwrite. Any other operator-typed
+  // value is left strictly alone.
+  const BOROUGH_PLACEHOLDER = "NYC";
   try {
     const { boroughFromDbn } = await import("../src/lib/geo/boroughs");
     const blank = await prisma.district.findMany({
-      where: { region: null },
+      where: {
+        OR: [
+          { region: null },
+          { region: { equals: BOROUGH_PLACEHOLDER, mode: "insensitive" } },
+        ],
+      },
       select: {
         id: true,
+        region: true,
         schools: { select: { code: true }, take: 25 },
       },
     });
     let filled = 0;
+    let cleared = 0;
     for (const d of blank) {
       // Use the most common borough among the district's schools so a
       // single mistyped DBN cannot mislabel a whole district.
@@ -184,15 +200,33 @@ async function main() {
         if (b) tally.set(b, (tally.get(b) ?? 0) + 1);
       }
       const best = [...tally.entries()].sort((a, b) => b[1] - a[1])[0];
-      if (!best) continue;
+      if (!best) {
+        // No DBN to infer from. Leave a genuinely blank region blank,
+        // but clear the "NYC" placeholder: it is not a borough, and
+        // left in place it renders as its own row on the per-borough
+        // report, looking like a real sixth borough with real work in
+        // it. Null lands the district in the explicit "Unassigned"
+        // bucket instead, which is the honest answer and tells an
+        // admin there is something to go and set.
+        if (d.region) {
+          await prisma.district.update({
+            where: { id: d.id },
+            data: { region: null },
+          });
+          cleared += 1;
+        }
+        continue;
+      }
       await prisma.district.update({
         where: { id: d.id },
         data: { region: best[0] },
       });
       filled += 1;
     }
-    if (filled > 0) {
-      console.log(`[bootstrap] borough backfill: set region on ${filled} district(s)`);
+    if (filled > 0 || cleared > 0) {
+      console.log(
+        `[bootstrap] borough backfill: set region on ${filled} district(s), cleared ${cleared} placeholder(s)`,
+      );
     }
   } catch (err) {
     console.error("[bootstrap] borough backfill failed:", err);
@@ -229,6 +263,39 @@ async function main() {
   } catch (err) {
     console.warn(
       "[bootstrap] search indexes unavailable (ticket search will use a sequential scan):",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // Five-borough expansion — reporting indexes.
+  //
+  // These are declared in schema.prisma, so `db push` creates them on
+  // every container start. They are repeated here only as a safety
+  // net for a database that predates the schema change, which is why
+  // the SQL must stay character-identical in shape to what Prisma
+  // emits: same names, same columns, no partial predicate and no
+  // INCLUDE. Two definitions of "the same" index racing on one name
+  // is the same class of drift as two definitions of one metric.
+  //
+  //   Ticket_closedAt_idx — every "closed in the last N days" metric
+  //     filters on closedAt, which had no index and so read the whole
+  //     table.
+  //   Ticket_state_stateEnteredAt_idx — slaBreachedWhere() emits 23
+  //     {state, stateEnteredAt} OR-branches. With only single-column
+  //     indexes each branch is non-selective and Postgres seq-scans.
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "Ticket_closedAt_idx"
+         ON "Ticket" ("closedAt");`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "Ticket_state_stateEnteredAt_idx"
+         ON "Ticket" ("state", "stateEnteredAt");`,
+    );
+    console.log("[bootstrap] reporting indexes ready");
+  } catch (err) {
+    console.warn(
+      "[bootstrap] reporting indexes unavailable (dashboards will use sequential scans):",
       err instanceof Error ? err.message : err,
     );
   }

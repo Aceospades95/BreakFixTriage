@@ -33,9 +33,14 @@ describe("Round-13 §3A — quotes filter pill counts", () => {
 });
 
 describe("Round-13 §3B — KPI cards deep-link to filtered tickets", () => {
-  it("Aging > 30d card links to /tickets?ageDays=gte:30", () => {
+  it("Aging > 30d card links to the aged, open tickets list", () => {
+    // Five-borough expansion — the href is now built by the page's
+    // qs() helper so the selected borough rides along into the list.
+    // The assertion is the same one: the card is a link to
+    // /tickets filtered to open tickets older than 30 days.
     const src = read("src/app/(app)/dashboards/page.tsx");
-    expect(src).toMatch(/href="\/tickets\?ageDays=gte:30/);
+    expect(src).toMatch(/qs\(\{ ageDays: "gte:30", state: "open" \}\)/);
+    expect(src).toMatch(/`\/tickets\?\$\{new URLSearchParams\(/);
   });
 
   it("SLA breached card links to /tickets?slaHealth=breached", () => {

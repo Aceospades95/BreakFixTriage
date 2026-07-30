@@ -14,15 +14,29 @@ import {
   openTicketsByState,
 } from "@/lib/reports/dashboards";
 import { prisma } from "@/lib/db/prisma";
-import { ticketWhereForSession } from "@/lib/data/forSession";
+import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
+import { ticketWhereForBorough } from "@/lib/geo/boroughs";
+import { boroughOptions, normalizeBorough } from "@/lib/geo/borough-options";
+import { BoroughFilter } from "@/components/borough-filter";
+import { IMPORTED_BACKLOG_DAYS } from "@/lib/reports/boroughs";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardsPage() {
+export default async function DashboardsPage({
+  searchParams,
+}: {
+  searchParams?: { borough?: string };
+}) {
   const session = await requireRole(PERMISSIONS.REPORTS_READ);
   // Five-borough expansion — REPORTS_READ is held by every role, so
   // an unscoped dashboard showed a Bronx tech citywide totals.
-  const scope = ticketWhereForSession(session);
+  const tenantScope = ticketWhereForSession(session);
+  const boroughs = await boroughOptions(prisma, session);
+  const borough = normalizeBorough(searchParams?.borough, boroughs);
+  // Composed, not spread: both fragments own the `school` key, and
+  // the last one wins in an object literal — which would drop the
+  // tenant scope entirely.
+  const scope = andTicketWhere(tenantScope, ticketWhereForBorough(borough));
 
   const [
     byState,
@@ -35,7 +49,7 @@ export default async function DashboardsPage() {
   ] = await Promise.all([
     openTicketsByState(prisma, scope),
     closedTicketsByMonth(prisma, 12, scope),
-    duplicateQueueCount(),
+    duplicateQueueCount(prisma, scope),
     invoiceQueueCount(prisma, scope),
     agingTickets(prisma, {}, scope),
     agingTicketsCount(prisma, {}, scope),
@@ -45,16 +59,30 @@ export default async function DashboardsPage() {
   const openTotal = byState.reduce((acc, r) => acc + r.count, 0);
   const maxByState = byState[0]?.count ?? 0;
 
+  // Carry the borough through every drill-through link, or the list
+  // you land on quietly shows the whole city.
+  const qs = (extra: Record<string, string>) =>
+    `/tickets?${new URLSearchParams(
+      borough ? { borough, ...extra } : extra,
+    ).toString()}`;
+
   return (
     <>
       <PageHeader
         title="Dashboards"
-        subtitle="Operational health snapshot"
+        subtitle={
+          borough
+            ? `Operational health snapshot — ${borough}`
+            : "Operational health snapshot"
+        }
         actions={
-          <AutoRefresh
-            storageKey="dashboards-auto-refresh"
-            intervalSeconds={60}
-          />
+          <div className="flex flex-wrap items-end gap-3">
+            <BoroughFilter boroughs={boroughs} selected={borough} />
+            <AutoRefresh
+              storageKey="dashboards-auto-refresh"
+              intervalSeconds={60}
+            />
+          </div>
         }
       />
 
@@ -62,17 +90,21 @@ export default async function DashboardsPage() {
           every sub-route — see findings bug A1. */}
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Kpi label="Open tickets" value={openTotal} href="/tickets" />
+        <Kpi label="Open tickets" value={openTotal} href={qs({ state: "open" })} />
         <Kpi
           label="Duplicate queue"
           value={dupes}
-          href="/duplicates"
+          href={
+            borough
+              ? `/duplicates?borough=${encodeURIComponent(borough)}`
+              : "/duplicates"
+          }
           tone={dupes > 0 ? "warn" : undefined}
         />
         <Kpi
           label="Invoice required"
           value={invoices}
-          href="/tickets?state=INVOICE_REQUIRED"
+          href={qs({ state: "INVOICE_REQUIRED" })}
         />
         {/* QA audit BUG-5 — the triage bottleneck as its own alert:
             imported tickets nobody has started triage on. Bulk
@@ -80,7 +112,10 @@ export default async function DashboardsPage() {
         <Kpi
           label="Imported, no triage > 30d"
           value={importedBacklog}
-          href="/tickets?state=IMPORTED"
+          href={qs({
+            state: "IMPORTED",
+            stateAgeDays: `gte:${IMPORTED_BACKLOG_DAYS}`,
+          })}
           tone={importedBacklog > 0 ? "warn" : undefined}
         />
         <Kpi
@@ -88,7 +123,7 @@ export default async function DashboardsPage() {
           value={agingTotal}
           // Round-13 §3B — link to the filtered list so the card
           // is a navigation affordance, not just a counter.
-          href="/tickets?ageDays=gte:30&state=open"
+          href={qs({ ageDays: "gte:30", state: "open" })}
           tone={agingTotal > 0 ? "warn" : undefined}
         />
       </section>

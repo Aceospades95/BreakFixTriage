@@ -171,7 +171,17 @@ async function main() {
         ]),
         priority: pick(["LOW", "NORMAL", "HIGH", "URGENT"] as const),
         state: closed ? TicketState.CLOSED : pick(OPEN_STATES),
-        closedAt: closed ? new Date(reportedAt.getTime() + 86400000 * 10) : null,
+        // Clamp to now. Unclamped, any ticket reported in the last 10
+        // days got a closedAt in the FUTURE — 434 of them in a 40k
+        // fixture. Reports bound their closure window at `now` (as
+        // they should: work cannot close tomorrow), so those rows
+        // vanished from every "closed in the last N days" figure and
+        // made the fixture look like the app was undercounting.
+        closedAt: closed
+          ? new Date(
+              Math.min(reportedAt.getTime() + 86400000 * 10, Date.now()),
+            )
+          : null,
       });
     }
     await prisma.ticket.createMany({ data: rows, skipDuplicates: true });

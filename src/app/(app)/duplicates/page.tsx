@@ -10,6 +10,9 @@ import { StatePill } from "@/components/state-pill";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
+import { ticketWhereForBorough } from "@/lib/geo/boroughs";
+import { boroughOptions, normalizeBorough } from "@/lib/geo/borough-options";
+import { BoroughFilter } from "@/components/borough-filter";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import {
   linkSyntheticToIncidentAction,
@@ -39,15 +42,20 @@ type ConflictTicket = {
 export default async function DuplicatesPage({
   searchParams,
 }: {
-  searchParams?: { error?: string; show?: string };
+  searchParams?: { error?: string; show?: string; borough?: string };
 }) {
   const session = await requireRole(PERMISSIONS.TICKETS_READ);
   const canResolve = can(session.role, PERMISSIONS.DUPLICATES_RESOLVE);
   const showResolved = searchParams?.show === "resolved";
+  const boroughs = await boroughOptions(prisma, session);
+  const borough = normalizeBorough(searchParams?.borough, boroughs);
   // Five-borough expansion — the duplicate queue was unscoped; a
   // district user must not review (or resolve) another borough's
   // conflicts. A conflict is in scope when EITHER side is.
-  const scope = ticketWhereForSession(session);
+  const scope = andTicketWhere(
+    ticketWhereForSession(session),
+    ticketWhereForBorough(borough),
+  );
   const conflictScope =
     Object.keys(scope).length === 0
       ? {}
@@ -104,14 +112,23 @@ export default async function DuplicatesPage({
             : "Conflicts flagged by the importer that need operator review"
         }
         actions={
-          <Link
-            href={
-              showResolved ? "/duplicates" : "/duplicates?show=resolved"
-            }
-            className="text-sm text-slate-400 hover:text-white"
-          >
-            {showResolved ? "← Unresolved" : "Show resolved →"}
-          </Link>
+          <div className="flex flex-wrap items-end gap-3">
+            <BoroughFilter
+              boroughs={boroughs}
+              selected={borough}
+              carry={{ show: showResolved ? "resolved" : undefined }}
+            />
+            <Link
+              href={`${showResolved ? "/duplicates" : "/duplicates?show=resolved"}${
+                borough
+                  ? `${showResolved ? "?" : "&"}borough=${encodeURIComponent(borough)}`
+                  : ""
+              }`}
+              className="text-sm text-slate-400 hover:text-white"
+            >
+              {showResolved ? "← Unresolved" : "Show resolved →"}
+            </Link>
+          </div>
         }
       />
 

@@ -94,10 +94,14 @@ async function main() {
   console.log(`[seed-test] ${PERSONAS.length} personas upserted`);
 
   // 1 district, 5 schools.
+  // region is forced on update, not just create: it shipped as the
+  // placeholder "NYC", which is not a borough, so every persona had
+  // an empty borough picker and the e2e suite never exercised the
+  // borough path at all. A test fixture should be deterministic here.
   const district = await prisma.district.upsert({
     where: { code: "BX-TEST" },
-    create: { code: "BX-TEST", name: "Test District", region: "NYC" },
-    update: {},
+    create: { code: "BX-TEST", name: "Test District", region: "Bronx" },
+    update: { region: "Bronx" },
   });
   // Round-16 (B17) — every persona belongs to the test district so
   // tenant-scoped queries (ticketWhereForSession and friends) match

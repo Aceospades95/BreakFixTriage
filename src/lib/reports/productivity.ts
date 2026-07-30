@@ -212,6 +212,12 @@ export interface DeviceHotspot {
 /** Most hotspot rows anyone reads; citywide there can be thousands. */
 export const DEVICE_HOTSPOT_LIMIT = 250;
 
+export interface DeviceHotspotResult {
+  rows: DeviceHotspot[];
+  /** Devices meeting the threshold before the display cap. */
+  total: number;
+}
+
 export async function deviceHotspots(
   windowDays = 180,
   threshold = 3,
@@ -223,7 +229,7 @@ export async function deviceHotspots(
    * whole city's device history.
    */
   scope: Prisma.TicketWhereInput = {},
-): Promise<DeviceHotspot[]> {
+): Promise<DeviceHotspotResult> {
   const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
   const base: Prisma.TicketWhereInput = {
@@ -237,14 +243,20 @@ export async function deviceHotspots(
     _max: { reportedAt: true },
   });
 
-  const hot = groups
+  const qualifying = groups
     .filter((g) => g.deviceId != null && g._count._all >= threshold)
-    .sort((a, b) => b._count._all - a._count._all)
-    // Cap AFTER sorting so the worst offenders are always the ones
-    // shown — an uncapped citywide list is thousands of rows.
-    .slice(0, DEVICE_HOTSPOT_LIMIT);
+    .sort((a, b) => b._count._all - a._count._all);
+  // The TRUE count, reported alongside the capped page. Returning
+  // only the capped rows made "Bronx 250 / Brooklyn 250" read as
+  // parity when both were simply clipped — the comparison the
+  // per-borough work exists to support is exactly the one that cap
+  // was quietly breaking.
+  const total = qualifying.length;
+  // Cap AFTER sorting so the worst offenders are always the ones
+  // shown — an uncapped citywide list is thousands of rows.
+  const hot = qualifying.slice(0, DEVICE_HOTSPOT_LIMIT);
 
-  if (hot.length === 0) return [];
+  if (hot.length === 0) return { rows: [], total };
 
   const devices = await db.device.findMany({
     where: { id: { in: hot.map((g) => g.deviceId!) } },
@@ -255,7 +267,7 @@ export async function deviceHotspots(
   });
   const byId = new Map(devices.map((d) => [d.id, d]));
 
-  return hot.map((g) => {
+  const rows = hot.map((g) => {
     const d = byId.get(g.deviceId!);
     return {
       deviceId: g.deviceId!,
@@ -267,4 +279,5 @@ export async function deviceHotspots(
       lastReportedAt: g._max.reportedAt ?? cutoff,
     };
   });
+  return { rows, total };
 }

@@ -12,6 +12,8 @@ import {
   type ReadyTicketGroup,
 } from "@/lib/scheduling/ready-groups";
 import { createJobAction } from "@/server/actions/scheduling";
+import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
+import { sortBoroughs, ticketWhereForBorough } from "@/lib/geo/boroughs";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +27,29 @@ export const dynamic = "force-dynamic";
 export default async function SchedulingPage({
   searchParams,
 }: {
-  searchParams?: { error?: string; ok?: string };
+  searchParams?: { error?: string; ok?: string; borough?: string };
 }) {
   const session = await requireRole(PERMISSIONS.SCHEDULING_READ);
   const canWrite = can(session.role, PERMISSIONS.SCHEDULING_WRITE);
   const canBuild = can(session.role, PERMISSIONS.ROUTES_BUILD);
   const isAdmin = session.role === "ADMIN";
+
+  // Five-borough expansion — a dispatcher works one borough at a
+  // time. Without this the ready-to-schedule lists mix all five and
+  // silently truncate, so the stops you need may not even be shown.
+  const boroughFilter = searchParams?.borough || undefined;
+  const readyWhere = andTicketWhere(
+    ticketWhereForSession(session),
+    ticketWhereForBorough(boroughFilter),
+  );
+  const boroughRows = await prisma.district.findMany({
+    where: { active: true, region: { not: null } },
+    distinct: ["region"],
+    select: { region: true },
+  });
+  const boroughs = sortBoroughs(
+    boroughRows.map((r) => r.region?.trim()).filter((r): r is string => Boolean(r)),
+  );
 
   // Round-22 §4 — flag routes still open after their date has passed.
   const todayStart = new Date();
@@ -63,9 +82,13 @@ export default async function SchedulingPage({
       },
     }),
     prisma.job.count({ where: { status: JobStatus.UNSCHEDULED } }),
-    groupReadyTicketsBySchool("AWAITING_PICKUP", JobType.PICKUP),
-    groupReadyTicketsBySchool("PENDING_DELIVERY", JobType.DELIVERY),
-    groupReadyTicketsBySchool("AWAITING_ONSITE", JobType.ONSITE_REPAIR),
+    groupReadyTicketsBySchool("AWAITING_PICKUP", JobType.PICKUP, readyWhere),
+    groupReadyTicketsBySchool("PENDING_DELIVERY", JobType.DELIVERY, readyWhere),
+    groupReadyTicketsBySchool(
+      "AWAITING_ONSITE",
+      JobType.ONSITE_REPAIR,
+      readyWhere,
+    ),
   ]);
 
   return (
@@ -74,7 +97,39 @@ export default async function SchedulingPage({
         title="Scheduling"
         subtitle="Build routes from pending jobs and track what's on the road."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Five-borough expansion — a dispatcher plans one
+                borough at a time; this narrows every ready-to-
+                schedule column below. */}
+            {boroughs.length > 0 && (
+              <form method="get" className="flex items-center gap-1">
+                <label
+                  htmlFor="scheduling-borough"
+                  className="text-[10px] uppercase tracking-wide text-slate-400"
+                >
+                  Borough
+                </label>
+                <select
+                  id="scheduling-borough"
+                  name="borough"
+                  defaultValue={boroughFilter ?? ""}
+                  className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                >
+                  <option value="">All boroughs</option>
+                  {boroughs.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  className="rounded border border-surface-border px-2 py-1 text-xs transition hover:border-accent"
+                >
+                  Go
+                </button>
+              </form>
+            )}
             {canBuild && (
               <Link
                 href="/scheduling/routes/new"
@@ -125,7 +180,7 @@ export default async function SchedulingPage({
         />
         <Kpi
           label="Pending pickups"
-          value={pickupGroups.reduce((a, g) => a + g.tickets.length, 0)}
+          value={pickupGroups.total}
           href="/tickets?state=AWAITING_PICKUP"
         />
       </section>
@@ -189,21 +244,27 @@ export default async function SchedulingPage({
             title="Pickups"
             jobType={JobType.PICKUP}
             ticketState="AWAITING_PICKUP"
-            groups={pickupGroups}
+            groups={pickupGroups.groups}
+            shown={pickupGroups.shown}
+            total={pickupGroups.total}
             canWrite={canWrite}
           />
           <JobCandidateColumn
             title="Deliveries"
             jobType={JobType.DELIVERY}
             ticketState="PENDING_DELIVERY"
-            groups={deliveryGroups}
+            groups={deliveryGroups.groups}
+            shown={deliveryGroups.shown}
+            total={deliveryGroups.total}
             canWrite={canWrite}
           />
           <JobCandidateColumn
             title="On-site"
             jobType={JobType.ONSITE_REPAIR}
             ticketState="AWAITING_ONSITE"
-            groups={onsiteGroups}
+            groups={onsiteGroups.groups}
+            shown={onsiteGroups.shown}
+            total={onsiteGroups.total}
             canWrite={canWrite}
           />
         </div>
@@ -250,23 +311,38 @@ function JobCandidateColumn({
   jobType,
   ticketState,
   groups,
+  shown,
+  total,
   canWrite,
 }: {
   title: string;
   jobType: JobType;
   ticketState: TicketState;
   groups: ReadyTicketGroup[];
+  /** Tickets actually rendered (capped). */
+  shown: number;
+  /** True number matching — the badge shows this, never the cap. */
+  total: number;
   canWrite: boolean;
 }) {
-  const total = groups.reduce((a, g) => a + g.tickets.length, 0);
   return (
     <div className="rounded-lg border border-surface-border bg-surface-muted/60 p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold">{title}</h3>
         <span className="rounded bg-surface-border px-2 py-0.5 font-medium tracking-tight text-xs">
-          {total}
+          {total.toLocaleString()}
         </span>
       </div>
+      {total > shown && (
+        // Five-borough expansion — say so when the list is a slice:
+        // silently showing the oldest 200 of 3,000 reads as "that is
+        // all there is" and hides work. amber-200 (not 300/90)
+        // because globals.css remaps 100/200 to a dark tone in light
+        // mode, keeping this WCAG-AA in both themes.
+        <p className="mb-2 text-[10px] text-amber-200">
+          Showing the {shown} oldest — filter by borough to see the rest.
+        </p>
+      )}
       {groups.length === 0 ? (
         <p className="text-xs text-slate-400">
           Nothing in <StatePill state={ticketState} /> right now.

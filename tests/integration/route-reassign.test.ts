@@ -30,8 +30,14 @@ async function fixtureDriver(n: number, opts: { active?: boolean; role?: "DRIVER
 
 describe.skipIf(!process.env.DATABASE_URL)("reassignRouteDriver", () => {
   afterAll(async () => {
+    // InAppNotification stores a bare recipientUserId (no User
+    // relation), so resolve the fixture users first.
+    const fixtureUsers = await prisma.user.findMany({
+      where: { email: { startsWith: "rra-driver-" } },
+      select: { id: true },
+    });
     await prisma.inAppNotification.deleteMany({
-      where: { recipientUser: { email: { startsWith: "rra-driver-" } } },
+      where: { recipientUserId: { in: fixtureUsers.map((u) => u.id) } },
     });
     await prisma.route.deleteMany({
       where: { assignee: { email: { startsWith: "rra-driver-" } } },

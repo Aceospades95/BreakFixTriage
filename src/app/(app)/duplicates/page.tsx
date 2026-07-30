@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatePill } from "@/components/state-pill";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
+import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
 import {
   linkSyntheticToIncidentAction,
@@ -43,10 +44,21 @@ export default async function DuplicatesPage({
   const session = await requireRole(PERMISSIONS.TICKETS_READ);
   const canResolve = can(session.role, PERMISSIONS.DUPLICATES_RESOLVE);
   const showResolved = searchParams?.show === "resolved";
+  // Five-borough expansion — the duplicate queue was unscoped; a
+  // district user must not review (or resolve) another borough's
+  // conflicts. A conflict is in scope when EITHER side is.
+  const scope = ticketWhereForSession(session);
+  const conflictScope =
+    Object.keys(scope).length === 0
+      ? {}
+      : { OR: [{ leftTicket: scope }, { rightTicket: scope }] };
 
   const [conflicts, unlinkedSynthetics] = await Promise.all([
     prisma.duplicateConflict.findMany({
-      where: showResolved ? { resolvedAt: { not: null } } : { resolvedAt: null },
+      where: {
+        ...conflictScope,
+        ...(showResolved ? { resolvedAt: { not: null } } : { resolvedAt: null }),
+      },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
@@ -65,7 +77,9 @@ export default async function DuplicatesPage({
           device: { serialNumber: string; assetTag: string | null } | null;
         }>)
       : prisma.ticket.findMany({
-          where: { state: TicketStateEnum.PENDING_PICKUP_UNLINKED },
+          where: andTicketWhere(scope, {
+            state: TicketStateEnum.PENDING_PICKUP_UNLINKED,
+          }),
           orderBy: { reportedAt: "desc" },
           take: 50,
           select: {

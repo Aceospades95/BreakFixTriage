@@ -6,27 +6,41 @@ import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import {
   agingTickets,
+  agingTicketsCount,
   closedTicketsByMonth,
   duplicateQueueCount,
   importedBacklogCount,
   invoiceQueueCount,
   openTicketsByState,
 } from "@/lib/reports/dashboards";
+import { prisma } from "@/lib/db/prisma";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardsPage() {
-  await requireRole(PERMISSIONS.REPORTS_READ);
+  const session = await requireRole(PERMISSIONS.REPORTS_READ);
+  // Five-borough expansion — REPORTS_READ is held by every role, so
+  // an unscoped dashboard showed a Bronx tech citywide totals.
+  const scope = ticketWhereForSession(session);
 
-  const [byState, closedByMonth, dupes, invoices, aging, importedBacklog] =
-    await Promise.all([
-      openTicketsByState(),
-      closedTicketsByMonth(),
-      duplicateQueueCount(),
-      invoiceQueueCount(),
-      agingTickets(),
-      importedBacklogCount(),
-    ]);
+  const [
+    byState,
+    closedByMonth,
+    dupes,
+    invoices,
+    aging,
+    agingTotal,
+    importedBacklog,
+  ] = await Promise.all([
+    openTicketsByState(prisma, scope),
+    closedTicketsByMonth(prisma, 12, scope),
+    duplicateQueueCount(),
+    invoiceQueueCount(prisma, scope),
+    agingTickets(prisma, {}, scope),
+    agingTicketsCount(prisma, {}, scope),
+    importedBacklogCount(prisma, new Date(), scope),
+  ]);
 
   const openTotal = byState.reduce((acc, r) => acc + r.count, 0);
   const maxByState = byState[0]?.count ?? 0;
@@ -71,11 +85,11 @@ export default async function DashboardsPage() {
         />
         <Kpi
           label="Aging > 30d"
-          value={aging.length}
+          value={agingTotal}
           // Round-13 §3B — link to the filtered list so the card
           // is a navigation affordance, not just a counter.
           href="/tickets?ageDays=gte:30&state=open"
-          tone={aging.length > 0 ? "warn" : undefined}
+          tone={agingTotal > 0 ? "warn" : undefined}
         />
       </section>
 
@@ -132,6 +146,12 @@ export default async function DashboardsPage() {
       <section className="mt-10">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
           Aging tickets (&gt; 30 days, open)
+          {agingTotal > aging.length && (
+            <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
+              — showing the {aging.length} oldest of{" "}
+              {agingTotal.toLocaleString()}
+            </span>
+          )}
         </h2>
         <div className="overflow-x-auto rounded-lg border border-surface-border">
           <table className="min-w-full divide-y divide-surface-border text-sm">

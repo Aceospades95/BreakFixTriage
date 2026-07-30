@@ -5,6 +5,7 @@ import { KanbanBoard, type KanbanColumnDef } from "@/components/kanban-board";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
+import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { readStatusConfig } from "@/lib/workflow/status-config";
 
@@ -72,7 +73,10 @@ const KANBAN_EXCLUDED: readonly TicketState[] = [
 ];
 
 export default async function KanbanPage() {
-  await requireRole(PERMISSIONS.TICKETS_READ);
+  const session = await requireRole(PERMISSIONS.TICKETS_READ);
+  // Five-borough expansion — the board was unscoped, so a
+  // district-scoped user saw every borough's cards.
+  const scope = ticketWhereForSession(session);
 
   const config = await readStatusConfig();
 
@@ -107,7 +111,7 @@ export default async function KanbanPage() {
 
   const [inFlightTickets, closedTickets] = await Promise.all([
     prisma.ticket.findMany({
-      where: { state: { in: inFlightStates } },
+      where: andTicketWhere(scope, { state: { in: inFlightStates } }),
       orderBy: { stateEnteredAt: "asc" },
       include: {
         school: { select: { name: true, code: true } },
@@ -118,7 +122,7 @@ export default async function KanbanPage() {
     }),
     wantClosed
       ? prisma.ticket.findMany({
-          where: { state: "CLOSED" },
+          where: andTicketWhere(scope, { state: "CLOSED" }),
           orderBy: { closedAt: "desc" },
           include: {
             school: { select: { name: true, code: true } },

@@ -3,6 +3,7 @@ import { JobStatus, JobType, Role } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { formatRole } from "@/lib/format";
 import { RouteBuilderForm } from "@/components/route-builder-form";
@@ -31,7 +32,10 @@ export default async function NewRoutePage({
 }: {
   searchParams?: { error?: string; ok?: string };
 }) {
-  await requireRole(PERMISSIONS.ROUTES_BUILD);
+  const session = await requireRole(PERMISSIONS.ROUTES_BUILD);
+  // Five-borough expansion — the builder offers the same ready
+  // groups as /scheduling, so it needs the same tenant scope.
+  const readyWhere = ticketWhereForSession(session);
 
   const [
     unscheduledJobs,
@@ -55,9 +59,13 @@ export default async function NewRoutePage({
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true },
     }),
-    groupReadyTicketsBySchool("AWAITING_PICKUP", JobType.PICKUP),
-    groupReadyTicketsBySchool("PENDING_DELIVERY", JobType.DELIVERY),
-    groupReadyTicketsBySchool("AWAITING_ONSITE", JobType.ONSITE_REPAIR),
+    groupReadyTicketsBySchool("AWAITING_PICKUP", JobType.PICKUP, readyWhere),
+    groupReadyTicketsBySchool("PENDING_DELIVERY", JobType.DELIVERY, readyWhere),
+    groupReadyTicketsBySchool(
+      "AWAITING_ONSITE",
+      JobType.ONSITE_REPAIR,
+      readyWhere,
+    ),
   ]);
 
   const readySections: Array<{
@@ -65,12 +73,16 @@ export default async function NewRoutePage({
     jobType: JobType;
     groups: ReadyTicketGroup[];
   }> = [
-    { title: "Pickups", jobType: JobType.PICKUP, groups: pickupGroups },
-    { title: "Deliveries", jobType: JobType.DELIVERY, groups: deliveryGroups },
+    { title: "Pickups", jobType: JobType.PICKUP, groups: pickupGroups.groups },
+    {
+      title: "Deliveries",
+      jobType: JobType.DELIVERY,
+      groups: deliveryGroups.groups,
+    },
     {
       title: "On-site visits",
       jobType: JobType.ONSITE_REPAIR,
-      groups: onsiteGroups,
+      groups: onsiteGroups.groups,
     },
   ].filter((s) => s.groups.length > 0);
   const readyCount = readySections.reduce(

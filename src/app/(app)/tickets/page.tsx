@@ -12,6 +12,11 @@ import { humanise } from "@/lib/format";
 import { ALLOWED_TRANSITIONS } from "@/lib/workflow";
 import { getSlaThresholds } from "@/lib/settings/settings";
 import { slaBreachedWhere } from "@/lib/reports/sla-filter";
+import {
+  schoolWhereForBorough,
+  sortBoroughs,
+} from "@/lib/geo/boroughs";
+import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
 import { TicketsBulkActions } from "@/components/tickets-bulk-actions";
 import { ActionForm } from "@/components/action-form";
 import {
@@ -26,6 +31,9 @@ export const dynamic = "force-dynamic";
 // render per page. 50 stays the default.
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 const DEFAULT_PAGE_SIZE = 50;
+// Datalist suggestions only — the school filter matches server-side
+// on text, so this cap never hides a school from being filtered.
+const SCHOOL_SUGGESTION_LIMIT = 300;
 
 export default async function TicketsPage({
   searchParams,
@@ -38,6 +46,8 @@ export default async function TicketsPage({
     sort?: string;
     dir?: string;
     school?: string;
+    borough?: string;
+    district?: string;
     manufacturer?: string;
     assignee?: string;
     slaHealth?: string;
@@ -111,6 +121,39 @@ export default async function TicketsPage({
   const schoolFilter = searchParams?.school || undefined;
   const manufacturerFilter = searchParams?.manufacturer || undefined;
   const assigneeFilter = searchParams?.assignee || undefined;
+  // Five-borough expansion — borough and district are the first cut
+  // anyone makes across ~1,500 schools; without them the school
+  // picker is a haystack.
+  const boroughFilter = searchParams?.borough || undefined;
+  const districtFilter = searchParams?.district || undefined;
+  // `school` accepts either a cuid (the old dropdown value, so
+  // existing bookmarks and saved links keep working) or a free-text
+  // DBN / name fragment. Text matching is what scales: a select can
+  // only ever offer a truncated slice of 1,500 schools.
+  const schoolIsId = schoolFilter ? /^c[a-z0-9]{20,}$/i.test(schoolFilter) : false;
+
+  // One combined School filter: borough (District.region) AND
+  // district AND a name/DBN fragment can all be active at once.
+  const schoolConditions: Prisma.SchoolWhereInput[] = [];
+  const boroughSchoolWhere = schoolWhereForBorough(boroughFilter);
+  if (Object.keys(boroughSchoolWhere).length > 0) {
+    schoolConditions.push(boroughSchoolWhere);
+  }
+  if (districtFilter) schoolConditions.push({ districtId: districtFilter });
+  if (schoolFilter && !schoolIsId) {
+    schoolConditions.push({
+      OR: [
+        { name: { contains: schoolFilter, mode: "insensitive" } },
+        { code: { contains: schoolFilter, mode: "insensitive" } },
+      ],
+    });
+  }
+  const schoolClause: Prisma.SchoolWhereInput | null =
+    schoolConditions.length === 0
+      ? null
+      : schoolConditions.length === 1
+        ? schoolConditions[0]!
+        : { AND: schoolConditions };
 
   // Shared with /api/exports/tickets so "what you see" and "what you
   // download" agree on the breached definition.
@@ -118,11 +161,21 @@ export default async function TicketsPage({
     ? slaBreachedWhere(await getSlaThresholds())
     : null;
 
-  const where: Prisma.TicketWhereInput = {
+  // Five-borough expansion — composed with andTicketWhere, not
+  // spread: the tenant scope, the borough/district filter and the
+  // school-name filter all own the `school` key, and a plain spread
+  // would keep only the last (silently dropping the tenant scope).
+  const where: Prisma.TicketWhereInput = andTicketWhere(
+    // ADR 0014 tenant scope. This list was previously UNSCOPED —
+    // invisible in a one-borough pilot, but citywide it showed every
+    // district-scoped user all ~40k tickets in all five boroughs.
+    ticketWhereForSession(session),
+    schoolClause ? { school: schoolClause } : null,
+    {
     ...(stateFilter ? { state: stateFilter } : {}),
     ...(openOnly ? { state: { not: TicketState.CLOSED } } : {}),
     ...(slaBreachedClause ? { AND: [slaBreachedClause] } : {}),
-    ...(schoolFilter ? { schoolId: schoolFilter } : {}),
+    ...(schoolFilter && schoolIsId ? { schoolId: schoolFilter } : {}),
     ...(assigneeFilter
       ? assigneeFilter === "unassigned"
         ? { assignedUserId: null }
@@ -149,10 +202,19 @@ export default async function TicketsPage({
           ],
         }
       : {}),
-  };
+    },
+  );
 
-  const [tickets, total, assignableUsers, templates, schoolsForPicker, manufacturers] =
-    await Promise.all([
+  const [
+    tickets,
+    total,
+    assignableUsers,
+    templates,
+    schoolSuggestionRows,
+    manufacturers,
+    boroughRows,
+    districtRows,
+  ] = await Promise.all([
     prisma.ticket.findMany({
       where,
       take: perPage,
@@ -188,26 +250,63 @@ export default async function TicketsPage({
           orderBy: { name: "asc" },
         })
       : Promise.resolve([]),
+    // School suggestions for the datalist, narrowed by whatever
+    // borough/district is already chosen. This is a CONVENIENCE list
+    // only — the filter itself matches server-side on name/DBN text,
+    // so a school missing from the suggestions is still reachable.
+    // (Before the five-borough work this was a hard `take: 500`
+    // <select>, which made 900+ of ~1,500 schools unfilterable.)
     prisma.school.findMany({
-      where: { active: true },
-      orderBy: { name: "asc" },
+      where: {
+        active: true,
+        ...schoolWhereForBorough(boroughFilter),
+        ...(districtFilter ? { districtId: districtFilter } : {}),
+      },
+      orderBy: [{ code: "asc" }, { name: "asc" }],
       select: { id: true, name: true, code: true },
-      take: 500,
+      take: SCHOOL_SUGGESTION_LIMIT + 1,
     }),
     prisma.deviceModel.findMany({
       distinct: ["manufacturer"],
       select: { manufacturer: true },
       orderBy: { manufacturer: "asc" },
     }),
+    // Borough list comes from the data (District.region), never a
+    // hardcoded NYC list — this app should survive leaving NYC.
+    prisma.district.findMany({
+      where: { active: true, region: { not: null } },
+      distinct: ["region"],
+      select: { region: true },
+    }),
+    prisma.district.findMany({
+      where: {
+        active: true,
+        ...(boroughFilter
+          ? { region: { equals: boroughFilter, mode: "insensitive" } }
+          : {}),
+      },
+      orderBy: [{ region: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, code: true, region: true },
+    }),
   ]);
 
   const pageCount = Math.max(1, Math.ceil(total / perPage));
   const allStates = Object.values(TicketState);
+  const schoolSuggestions = schoolSuggestionRows.slice(0, SCHOOL_SUGGESTION_LIMIT);
+  const schoolSuggestionsTruncated =
+    schoolSuggestionRows.length > SCHOOL_SUGGESTION_LIMIT;
+  const boroughs = sortBoroughs(
+    boroughRows
+      .map((r) => r.region?.trim())
+      .filter((r): r is string => Boolean(r)),
+  );
   const activeFilters: Record<string, string> = {
     ...(stateFilter ? { state: stateFilter } : {}),
     ...(openOnly ? { state: "open" } : {}),
     ...(slaBreachedOnly ? { slaHealth: "breached" } : {}),
     ...(query ? { q: query } : {}),
+    ...(boroughFilter ? { borough: boroughFilter } : {}),
+    ...(districtFilter ? { district: districtFilter } : {}),
     ...(schoolFilter ? { school: schoolFilter } : {}),
     ...(manufacturerFilter ? { manufacturer: manufacturerFilter } : {}),
     ...(assigneeFilter ? { assignee: assigneeFilter } : {}),
@@ -342,19 +441,19 @@ export default async function TicketsPage({
               </option>
             ))}
           </select>
-          <select
+          {/* Same reason as the filter above: a <select> can only
+              offer a slice of ~1,500 schools, which would make
+              tickets uncreatable for the rest. The action resolves a
+              DBN or exact name server-side. */}
+          <input
+            type="text"
             name="schoolId"
             aria-label="School"
+            list="school-suggestions"
             required
-            className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
-          >
-            <option value="">— school —</option>
-            {schoolsForPicker.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} {s.code && `(${s.code})`}
-              </option>
-            ))}
-          </select>
+            placeholder="School DBN or name"
+            className="w-48 min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+          />
           <input
             type="text"
             name="deviceSerial"
@@ -429,22 +528,76 @@ export default async function TicketsPage({
               <option value="breached">Breached only</option>
             </select>
           </label>
+          {boroughs.length > 0 && (
+            <label className="flex min-w-0 max-w-full flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                Borough
+              </span>
+              <select
+                name="borough"
+                defaultValue={boroughFilter ?? ""}
+                className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+              >
+                <option value="">All boroughs</option>
+                {boroughs.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="flex min-w-0 max-w-full flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              District
+            </span>
+            <select
+              name="district"
+              defaultValue={districtFilter ?? ""}
+              className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="">
+                {boroughFilter ? `All of ${boroughFilter}` : "All districts"}
+              </option>
+              {districtRows.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="flex min-w-0 max-w-full flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">
               School
             </span>
-            <select
+            {/* Text + datalist, not a <select>: at ~1,500 schools a
+                dropdown can only ever show a truncated slice, and the
+                old `take: 500` one made most schools unfilterable.
+                Typing a DBN or name fragment always works; the
+                suggestions narrow as borough/district are chosen. */}
+            <input
+              type="search"
               name="school"
+              list="school-suggestions"
               defaultValue={schoolFilter ?? ""}
-              className="min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
-            >
-              <option value="">All schools</option>
-              {schoolsForPicker.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} {s.code && `(${s.code})`}
+              placeholder="DBN or name"
+              title="Type a DBN (e.g. 11X123) or part of a school name"
+              className="w-44 min-w-0 max-w-full rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+            />
+            <datalist id="school-suggestions">
+              {schoolSuggestions.map((s) => (
+                <option key={s.id} value={s.code ?? s.name}>
+                  {s.name}
+                  {s.code ? ` (${s.code})` : ""}
                 </option>
               ))}
-            </select>
+            </datalist>
+            {schoolSuggestionsTruncated && (
+              <span className="text-[10px] text-slate-500">
+                Showing {SCHOOL_SUGGESTION_LIMIT} suggestions — pick a
+                borough to narrow, or just type the DBN.
+              </span>
+            )}
           </label>
           <label className="flex min-w-0 max-w-full flex-col gap-1">
             <span className="text-[10px] uppercase tracking-wide text-slate-400">
@@ -493,6 +646,8 @@ export default async function TicketsPage({
             stateFilter ||
             openOnly ||
             slaBreachedOnly ||
+            boroughFilter ||
+            districtFilter ||
             schoolFilter ||
             manufacturerFilter ||
             assigneeFilter) && (

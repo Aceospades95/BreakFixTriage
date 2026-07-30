@@ -45,7 +45,21 @@ export default async function AdminDevicesPage({
       { assetTag: { contains: q, mode: "insensitive" } },
     ];
   }
-  if (schoolFilter) where.ownerSchoolId = schoolFilter;
+  // Five-borough expansion — accept a school id (legacy links) OR a
+  // DBN / name fragment. A <select> of ~1,500 schools is unusable,
+  // and capping it would hide most of them.
+  if (schoolFilter) {
+    if (/^c[a-z0-9]{20,}$/i.test(schoolFilter)) {
+      where.ownerSchoolId = schoolFilter;
+    } else {
+      where.school = {
+        OR: [
+          { name: { contains: schoolFilter, mode: "insensitive" } },
+          { code: { contains: schoolFilter, mode: "insensitive" } },
+        ],
+      };
+    }
+  }
   if (modelFilter) where.modelId = modelFilter;
 
   const [devices, total, schools, models] = await Promise.all([
@@ -61,9 +75,12 @@ export default async function AdminDevicesPage({
       skip: (page - 1) * PAGE_SIZE,
     }),
     prisma.device.count({ where }),
+    // Datalist suggestions only — the filter matches on text, so
+    // this cap can never make a school unreachable.
     prisma.school.findMany({
-      orderBy: { name: "asc" },
+      orderBy: [{ code: "asc" }, { name: "asc" }],
       select: { id: true, name: true, code: true },
+      take: 300,
     }),
     prisma.deviceModel.findMany({
       orderBy: [{ manufacturer: "asc" }, { modelName: "asc" }],
@@ -123,18 +140,21 @@ export default async function AdminDevicesPage({
         </label>
         <label className="flex flex-col gap-1 text-xs text-slate-400">
           School
-          <select
+          <input
+            type="search"
             name="school"
+            list="device-school-suggestions"
             defaultValue={schoolFilter}
+            placeholder="DBN or name"
             className="w-56 rounded border border-surface-border bg-surface px-2 py-1.5 text-sm focus:border-accent focus:outline-none"
-          >
-            <option value="">Every school</option>
+          />
+          <datalist id="device-school-suggestions">
             {schools.map((s) => (
-              <option key={s.id} value={s.id}>
+              <option key={s.id} value={s.code ?? s.name}>
                 {s.name}
               </option>
             ))}
-          </select>
+          </datalist>
         </label>
         <label className="flex flex-col gap-1 text-xs text-slate-400">
           Model

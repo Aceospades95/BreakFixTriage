@@ -35,13 +35,16 @@ test("§2B: ticket creation enqueues a SPOC notification", async ({
   // recipient resolution always has someone to address.
   const school = await prisma.school.findUniqueOrThrow({
     where: { code: "TEST-101" },
-    select: { id: true },
+    select: { id: true, code: true },
   });
 
   const form = page.getByTestId("quick-create-form");
   await expect(form).toBeVisible();
   await form.locator('select[name="templateId"]').selectOption(template.id);
-  await form.locator('select[name="schoolId"]').selectOption(school.id);
+  // Five-borough expansion — the school picker is a text input with
+  // datalist suggestions now (a <select> cannot list ~1,500 schools),
+  // so type the DBN and let the action resolve it.
+  await form.locator('input[name="schoolId"]').fill(school.code!);
   await form.getByRole("button", { name: /create ticket/i }).click();
 
   // The redirect lands on /tickets/<LOCAL#> — quick-create mints

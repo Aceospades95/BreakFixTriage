@@ -70,6 +70,29 @@ export async function findTicketForSession(
 }
 
 /**
+ * Combine several ticket where-clauses safely.
+ *
+ * Five-borough expansion — several of these fragments own the same
+ * `school` key (the tenant scope filters on School.districtId, and
+ * so do the borough/district/school-name filters). Spreading them
+ * into one object literal silently keeps only the last, which in the
+ * worst case DROPS THE TENANT SCOPE. Always compose with this.
+ *
+ * Empty fragments are skipped so callers can pass them
+ * unconditionally.
+ */
+export function andTicketWhere(
+  ...parts: Array<Prisma.TicketWhereInput | null | undefined>
+): Prisma.TicketWhereInput {
+  const real = parts.filter(
+    (p): p is Prisma.TicketWhereInput => !!p && Object.keys(p).length > 0,
+  );
+  if (real.length === 0) return {};
+  if (real.length === 1) return real[0]!;
+  return { AND: real };
+}
+
+/**
  * Where-clause for school queries scoped to the actor's districts.
  */
 export function schoolWhereForSession(

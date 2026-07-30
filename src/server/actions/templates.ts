@@ -170,10 +170,47 @@ export async function createTicketFromTemplateAction(formData: FormData) {
       throw new Error("Template not found or inactive");
     }
 
-    const school = await prisma.school.findUnique({
-      where: { id: parsed.data.schoolId },
-    });
-    if (!school) throw new Error("School not found");
+    // Five-borough expansion — the picker sends a DBN or a school
+    // name now, not just a cuid, because a dropdown cannot list
+    // ~1,500 schools. Resolve in that order: id, exact DBN, exact
+    // name, then a unique partial name match. An ambiguous partial
+    // is an error rather than a silent wrong-school ticket.
+    const raw = parsed.data.schoolId.trim();
+    let school = /^c[a-z0-9]{20,}$/i.test(raw)
+      ? await prisma.school.findUnique({ where: { id: raw } })
+      : null;
+    if (!school) {
+      school = await prisma.school.findFirst({
+        where: {
+          active: true,
+          OR: [
+            { code: { equals: raw, mode: "insensitive" } },
+            { name: { equals: raw, mode: "insensitive" } },
+          ],
+        },
+      });
+    }
+    if (!school) {
+      const partial = await prisma.school.findMany({
+        where: { active: true, name: { contains: raw, mode: "insensitive" } },
+        take: 2,
+        select: { id: true },
+      });
+      if (partial.length === 1) {
+        school = await prisma.school.findUnique({
+          where: { id: partial[0]!.id },
+        });
+      } else if (partial.length > 1) {
+        throw new Error(
+          `"${raw}" matches more than one school — use the DBN (e.g. 11X123)`,
+        );
+      }
+    }
+    if (!school) {
+      throw new Error(
+        `No school matches "${raw}" — check the DBN or name`,
+      );
+    }
 
     let deviceId: string | null = null;
     if (parsed.data.deviceSerial) {

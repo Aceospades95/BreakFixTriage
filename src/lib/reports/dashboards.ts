@@ -1,4 +1,4 @@
-import type { PrismaClient, TicketState } from "@prisma/client";
+import type { Prisma, PrismaClient, TicketState } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { isAgingOpenTicket } from "@/lib/reports/sla";
 import { monthBuckets } from "@/lib/charts/buckets";
@@ -8,13 +8,29 @@ import { IMPORTED_BACKLOG_THRESHOLD_MS } from "@/lib/exceptions/counts";
 /**
  * Queries that back the operational dashboards. Kept as a thin layer over
  * Prisma so they remain testable with a seeded DB.
+ *
+ * Five-borough expansion — every function takes a `scope`
+ * (ticketWhereForSession) and ANDs it in. The dashboards are
+ * REPORTS_READ, which every role holds, so before this a Bronx tech
+ * saw citywide totals. Scope defaults to {} so existing callers and
+ * tests keep working, and admins pass {} legitimately.
  */
 
-export async function openTicketsByState(db: PrismaClient = defaultPrisma) {
+function scoped(
+  scope: Prisma.TicketWhereInput,
+  rest: Prisma.TicketWhereInput,
+): Prisma.TicketWhereInput {
+  return Object.keys(scope).length === 0 ? rest : { AND: [scope, rest] };
+}
+
+export async function openTicketsByState(
+  db: PrismaClient = defaultPrisma,
+  scope: Prisma.TicketWhereInput = {},
+) {
   const rows = await db.ticket.groupBy({
     by: ["state"],
     _count: { _all: true },
-    where: { state: { not: "CLOSED" } },
+    where: scoped(scope, { state: { not: "CLOSED" } }),
   });
   return rows
     .map((r) => ({ state: r.state, count: r._count._all }))
@@ -24,6 +40,7 @@ export async function openTicketsByState(db: PrismaClient = defaultPrisma) {
 export async function closedTicketsByMonth(
   db: PrismaClient = defaultPrisma,
   months = 12,
+  scope: Prisma.TicketWhereInput = {},
 ) {
   // Round-4 §J27: bucket via the canonical monthBuckets helper.
   // The Round-3 implementation did `date_trunc('month', closedAt)`
@@ -39,7 +56,10 @@ export async function closedTicketsByMonth(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1),
   );
   const closed = await db.ticket.findMany({
-    where: { closedAt: { gte: from, lte: now }, NOT: { closedAt: null } },
+    where: scoped(scope, {
+      closedAt: { gte: from, lte: now },
+      NOT: { closedAt: null },
+    }),
     select: { closedAt: true },
   });
   const buckets = monthBuckets(
@@ -58,11 +78,12 @@ export async function closedTicketsByMonth(
 export async function ticketsBySchool(
   db: PrismaClient = defaultPrisma,
   { open = true }: { open?: boolean } = {},
+  scope: Prisma.TicketWhereInput = {},
 ) {
   return db.ticket.groupBy({
     by: ["schoolId"],
     _count: { _all: true },
-    where: open ? { state: { not: "CLOSED" } } : {},
+    where: scoped(scope, open ? { state: { not: "CLOSED" } } : {}),
   });
 }
 
@@ -85,6 +106,7 @@ export async function agingTickets(
     thresholdDays = 30,
     now = new Date(),
   }: { thresholdDays?: number; now?: Date } = {},
+  scope: Prisma.TicketWhereInput = {},
 ) {
   const MS_PER_DAY = 24 * 60 * 60 * 1000;
   // For "age_days > thresholdDays" we need
@@ -94,10 +116,10 @@ export async function agingTickets(
     now.getTime() - (thresholdDays + 1) * MS_PER_DAY,
   );
   const candidates = await db.ticket.findMany({
-    where: {
+    where: scoped(scope, {
       state: { not: "CLOSED" },
       reportedAt: { lte: cutoff },
-    },
+    }),
     orderBy: { reportedAt: "asc" },
     include: { school: true, device: true },
     take: 100,
@@ -106,6 +128,27 @@ export async function agingTickets(
   // case stays right even if the millisecond math drifts in some
   // future Prisma / Postgres tz quirk.
   return candidates.filter((t) => isAgingOpenTicket(t, now, thresholdDays));
+}
+
+/**
+ * The TRUE number of aging tickets. `agingTickets` caps its row list
+ * at 100 for rendering; at citywide volume there can be thousands, so
+ * the dashboard tile must not report the cap as the total (the same
+ * capped-list-as-total bug the audit rounds found on bench-history).
+ */
+export async function agingTicketsCount(
+  db: PrismaClient = defaultPrisma,
+  { thresholdDays = 30, now = new Date() }: { thresholdDays?: number; now?: Date } = {},
+  scope: Prisma.TicketWhereInput = {},
+) {
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const cutoff = new Date(now.getTime() - (thresholdDays + 1) * MS_PER_DAY);
+  return db.ticket.count({
+    where: scoped(scope, {
+      state: { not: "CLOSED" },
+      reportedAt: { lte: cutoff },
+    }),
+  });
 }
 
 export async function duplicateQueueCount(db: PrismaClient = defaultPrisma) {
@@ -117,9 +160,12 @@ export async function duplicateQueueCount(db: PrismaClient = defaultPrisma) {
   return counts.total;
 }
 
-export async function invoiceQueueCount(db: PrismaClient = defaultPrisma) {
+export async function invoiceQueueCount(
+  db: PrismaClient = defaultPrisma,
+  scope: Prisma.TicketWhereInput = {},
+) {
   const states: TicketState[] = ["INVOICE_REQUIRED"];
-  return db.ticket.count({ where: { state: { in: states } } });
+  return db.ticket.count({ where: scoped(scope, { state: { in: states } }) });
 }
 
 /**
@@ -132,13 +178,14 @@ export async function invoiceQueueCount(db: PrismaClient = defaultPrisma) {
 export async function importedBacklogCount(
   db: PrismaClient = defaultPrisma,
   now: Date = new Date(),
+  scope: Prisma.TicketWhereInput = {},
 ) {
   return db.ticket.count({
-    where: {
+    where: scoped(scope, {
       state: "IMPORTED",
       stateEnteredAt: {
         lt: new Date(now.getTime() - IMPORTED_BACKLOG_THRESHOLD_MS),
       },
-    },
+    }),
   });
 }

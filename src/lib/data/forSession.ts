@@ -114,6 +114,37 @@ export function deviceWhereForSession(
 }
 
 /**
+ * Where-clause for job queries — a job is work at a school, so scope
+ * on the school's district.
+ *
+ * Five-borough expansion: the route builder listed every UNSCHEDULED
+ * job in the system with no scope at all, so a district-scoped
+ * dispatcher could stage another borough's work onto their route.
+ */
+export function jobWhereForSession(
+  session: BreakFixSession,
+): Prisma.JobWhereInput {
+  if (isAdmin(session)) return {};
+  return { school: { districtId: { in: session.districtIds } } };
+}
+
+/**
+ * Combine several job where-clauses safely. Same hazard as
+ * andTicketWhere: the tenant scope and the borough filter both own
+ * the `school` key, so a spread would drop one of them.
+ */
+export function andJobWhere(
+  ...parts: Array<Prisma.JobWhereInput | null | undefined>
+): Prisma.JobWhereInput {
+  const real = parts.filter(
+    (p): p is Prisma.JobWhereInput => !!p && Object.keys(p).length > 0,
+  );
+  if (real.length === 0) return {};
+  if (real.length === 1) return real[0]!;
+  return { AND: real };
+}
+
+/**
  * Where-clause for contact queries — contacts live at a school.
  */
 export function contactWhereForSession(

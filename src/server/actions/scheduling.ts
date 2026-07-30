@@ -17,6 +17,13 @@ import { buildTicketEmailVariables } from "@/lib/email/variables";
 import { writeAudit } from "@/lib/audit/audit";
 import { buildRoute, createJob } from "@/lib/scheduling/jobs";
 import {
+  andJobWhere,
+  andTicketWhere,
+  jobWhereForSession,
+  schoolWhereForSession,
+  ticketWhereForSession,
+} from "@/lib/data/forSession";
+import {
   cancelRoute,
   reassignRouteDriver,
   reorderRoute,
@@ -76,6 +83,38 @@ export async function createJobAction(formData: FormData) {
         parsed.error.issues.map((i) => i.message).join("; "),
       )}`,
     );
+  }
+
+  // Tenant scoped per ADR 0014 — schoolId and ticketIds arrive from
+  // the form, so a dispatcher could otherwise stage work at any
+  // school in the city and attach any district's tickets to it.
+  const schoolScope = schoolWhereForSession(session);
+  if (Object.keys(schoolScope).length > 0) {
+    const school = await prisma.school.findFirst({
+      where: { AND: [schoolScope, { id: parsed.data.schoolId }] },
+      select: { id: true },
+    });
+    if (!school) {
+      redirect(
+        withFeedback(returnTo, "error", "That school is not available to you."),
+      );
+    }
+    if (parsed.data.ticketIds.length > 0) {
+      const visible = await prisma.ticket.count({
+        where: andTicketWhere(ticketWhereForSession(session), {
+          id: { in: parsed.data.ticketIds },
+        }),
+      });
+      if (visible !== parsed.data.ticketIds.length) {
+        redirect(
+          withFeedback(
+            returnTo,
+            "error",
+            "Some of those tickets are not available to you.",
+          ),
+        );
+      }
+    }
   }
 
   let errorMessage: string | null = null;
@@ -138,7 +177,7 @@ export interface RoutePreview {
 export async function previewRouteAction(
   formData: FormData,
 ): Promise<RoutePreview> {
-  await requireRole(PERMISSIONS.ROUTES_BUILD);
+  const session = await requireRole(PERMISSIONS.ROUTES_BUILD);
   const empty: RoutePreview = {
     ok: false,
     stops: [],
@@ -158,8 +197,13 @@ export async function previewRouteAction(
   const { getOptimizer } = await import("@/lib/routing/optimizer");
   const { getRoadRoute } = await import("@/lib/routing/road");
 
+  // Tenant scoped per ADR 0014. jobIds come straight off the form, so
+  // without this any ROUTES_BUILD holder could post another
+  // district's job ids and preview (then build) a route over work
+  // they cannot see. Out-of-scope ids simply do not resolve, so the
+  // response is "not found", not "forbidden".
   const jobs = await prisma.job.findMany({
-    where: { id: { in: jobIds } },
+    where: andJobWhere(jobWhereForSession(session), { id: { in: jobIds } }),
     select: {
       id: true,
       school: {
@@ -266,6 +310,25 @@ export async function buildRouteAction(formData: FormData) {
     redirect(
       `/scheduling/routes/new?error=${encodeURIComponent(
         parsed.error.issues.map((i) => i.message).join("; "),
+      )}`,
+    );
+  }
+
+  // Tenant scoped per ADR 0014 — the UI filter is not the control.
+  // Every posted job id must resolve inside the actor's districts, or
+  // the whole build is refused; silently dropping the out-of-scope
+  // ones would build a route quietly missing stops the operator
+  // believes they selected.
+  const visibleJobs = await prisma.job.findMany({
+    where: andJobWhere(jobWhereForSession(session), {
+      id: { in: parsed.data.jobIds },
+    }),
+    select: { id: true },
+  });
+  if (visibleJobs.length !== parsed.data.jobIds.length) {
+    redirect(
+      `/scheduling/routes/new?error=${encodeURIComponent(
+        "Some of those jobs are no longer available to you. Reload and try again.",
       )}`,
     );
   }

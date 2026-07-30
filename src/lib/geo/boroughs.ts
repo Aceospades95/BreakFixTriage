@@ -92,6 +92,15 @@ export function schoolWhereForBorough(
   return { district: { region: { equals: b, mode: "insensitive" } } };
 }
 
+/** Same idea for job-rooted queries (the route builder's stop list). */
+export function jobWhereForBorough(
+  borough: string | null | undefined,
+): Prisma.JobWhereInput {
+  const b = borough?.trim();
+  if (!b) return {};
+  return { school: { district: { region: { equals: b, mode: "insensitive" } } } };
+}
+
 /** Prisma filter for "routes with at least one stop in this borough". */
 export function routeWhereForBorough(
   borough: string | null | undefined,

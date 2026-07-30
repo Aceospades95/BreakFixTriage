@@ -17,7 +17,16 @@ import { requireSession } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/auth/rbac";
 import { formatRole, humanise } from "@/lib/format";
 import { daysInState, slaHealth } from "@/lib/reports/sla";
+import { slaBreachedWhere } from "@/lib/reports/sla-filter";
 import { getSlaThresholds } from "@/lib/settings/settings";
+import {
+  andJobWhere,
+  andTicketWhere,
+  jobWhereForSession,
+  routeWhereForSession,
+  ticketWhereForSession,
+} from "@/lib/data/forSession";
+import { duplicateQueueCount } from "@/lib/reports/dashboards";
 import { sweepQuotesAction } from "@/server/actions/quotes";
 
 export const dynamic = "force-dynamic";
@@ -61,10 +70,18 @@ export default async function HomePage() {
     "QUOTE_SENT",
   ];
 
+  // Five-borough expansion — every manager tile below was UNSCOPED.
+  // On a single-borough pilot that was invisible; citywide it showed
+  // a Bronx dispatcher the whole operation's numbers on the landing
+  // page, and the "SLA breached" tile additionally capped at the 50
+  // rows it happened to load. ADR 0014.
+  const scope = ticketWhereForSession(session);
+
   const [
     myOpenTickets,
     myUnreadNotifications,
-    overdueTicketsAll,
+    overdueBreachedList,
+    overdueBreachedTotal,
     pendingDuplicates,
     expiringQuotes,
     invoicesPending,
@@ -89,11 +106,14 @@ export default async function HomePage() {
     prisma.inAppNotification.count({
       where: { recipientUserId: session.userId, readAt: null },
     }),
+    // The 8 rows the panel renders — breached at the DATABASE, using
+    // the same shared predicate as /tickets?slaHealth=breached, not a
+    // JS filter over whatever 50 rows happened to load.
     isManager
       ? prisma.ticket.findMany({
-          where: { state: { notIn: ["CLOSED", "ON_HOLD"] as TicketState[] } },
+          where: andTicketWhere(scope, slaBreachedWhere(thresholds, now)),
           orderBy: { stateEnteredAt: "asc" },
-          take: 50,
+          take: 8,
           select: {
             id: true,
             incidentNumber: true,
@@ -106,26 +126,48 @@ export default async function HomePage() {
           },
         })
       : Promise.resolve([]),
+    // The TRUE count behind the KPI. Deriving it from a take:50 slice
+    // meant the tile could never read higher than 50 no matter how
+    // many tickets were breached, and the list it links to would then
+    // disagree with it by thousands.
     isManager
-      ? prisma.duplicateConflict.count({ where: { resolvedAt: null } })
+      ? prisma.ticket.count({
+          where: andTicketWhere(scope, slaBreachedWhere(thresholds, now)),
+        })
       : Promise.resolve(0),
+    // Shared counter, so this tile agrees with /duplicates and with
+    // the dashboard tile. It previously counted only conflicts and
+    // missed unlinked synthetics entirely.
+    isManager ? duplicateQueueCount(prisma, scope) : Promise.resolve(0),
     isManager
       ? prisma.quote.count({
           where: {
             status: { in: [QuoteStatus.SENT, QuoteStatus.APPROVED] },
             holdUntil: { lte: now },
+            ...(Object.keys(scope).length > 0 ? { ticket: scope } : {}),
           },
         })
       : Promise.resolve(0),
     isManager
-      ? prisma.ticket.count({ where: { state: "INVOICE_REQUIRED" } })
+      ? prisma.ticket.count({
+          where: andTicketWhere(scope, { state: "INVOICE_REQUIRED" }),
+        })
       : Promise.resolve(0),
     isManager
-      ? prisma.job.count({ where: { status: "UNSCHEDULED" } })
+      ? prisma.job.count({
+          where: andJobWhere(jobWhereForSession(session), {
+            status: "UNSCHEDULED",
+          }),
+        })
       : Promise.resolve(0),
     isManager
       ? prisma.route.findMany({
-          where: { date: { gte: todayStart, lt: tomorrowStart } },
+          where: {
+            AND: [
+              routeWhereForSession(session),
+              { date: { gte: todayStart, lt: tomorrowStart } },
+            ],
+          },
           include: {
             assignee: { select: { name: true } },
             stops: { select: { id: true, status: true } },
@@ -204,10 +246,10 @@ export default async function HomePage() {
     isManager
       ? prisma.ticket.groupBy({
           by: ["assignedUserId"],
-          where: {
+          where: andTicketWhere(scope, {
             state: { in: activeStates },
             assignedUserId: { not: null },
-          },
+          }),
           _count: { _all: true },
         })
       : Promise.resolve([]),
@@ -226,10 +268,6 @@ export default async function HomePage() {
       : [];
   const benchUserMap = new Map(benchUsers.map((u) => [u.id, u]));
 
-  const overdueBreached = overdueTicketsAll.filter((t) => {
-    const days = daysInState(t, now);
-    return slaHealth(t.state, days, thresholds) === "breached";
-  });
   const myBreached = myOpenTickets.filter((t) => {
     const days = daysInState(t, now);
     return slaHealth(t.state, days, thresholds) === "breached";
@@ -618,10 +656,10 @@ export default async function HomePage() {
                   in-page list below still renders for context. */}
               <Kpi
                 label="SLA breached"
-                value={overdueBreached.length}
+                value={overdueBreachedTotal}
                 href="/tickets?slaHealth=breached&state=open"
                 hint="Open tickets where days-in-current-state has crossed that state's SLA threshold."
-                emphasize={overdueBreached.length > 0}
+                emphasize={overdueBreachedTotal > 0}
               />
               <Kpi
                 label="Pending duplicates"
@@ -679,7 +717,7 @@ export default async function HomePage() {
               </div>
             )}
 
-            {overdueBreached.length > 0 && (
+            {overdueBreachedTotal > 0 && (
               <div
                 id="sla-breached"
                 className="mt-4 scroll-mt-20 rounded-lg border border-red-500/40 bg-red-500/5 p-4"
@@ -688,7 +726,7 @@ export default async function HomePage() {
                   Oldest SLA-breached tickets
                 </h3>
                 <ul className="space-y-1 text-sm">
-                  {overdueBreached.slice(0, 8).map((t) => (
+                  {overdueBreachedList.map((t) => (
                     <li
                       key={t.id}
                       className="flex flex-wrap items-center gap-3 rounded px-2 py-1 hover:bg-red-500/5"

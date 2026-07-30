@@ -36,21 +36,56 @@ export interface BuilderDriver {
   role: string;
 }
 
+/**
+ * Above this many candidate stops, pre-selecting everything stops
+ * being a convenience and becomes a trap: the primary button would
+ * build one route out of the whole city. Below it, the old
+ * everything-checked behaviour is genuinely what the operator wants.
+ */
+const PRECHECK_MAX = 25;
+
 export function RouteBuilderForm({
   isoDate,
   drivers,
   jobs,
   roleLabel,
+  totalAvailable,
+  scopeLabel = null,
 }: {
   isoDate: string;
   drivers: BuilderDriver[];
   jobs: BuilderJob[];
   /** Server-formatted role labels keyed by driver id (humanise is server-side). */
   roleLabel: Record<string, string>;
+  /** Unscheduled jobs matching the filters, before the display cap. */
+  totalAvailable?: number;
+  /** Borough the list is narrowed to, if any. */
+  scopeLabel?: string | null;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [preview, setPreview] = useState<RoutePreview | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const precheck = jobs.length <= PRECHECK_MAX;
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(precheck ? jobs.map((j) => j.id) : []),
+  );
+  const total = totalAvailable ?? jobs.length;
+  const truncated = total > jobs.length;
+
+  function setAll(on: boolean) {
+    setSelected(on ? new Set(jobs.map((j) => j.id)) : new Set());
+    setPreview(null);
+  }
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setPreview(null);
+  }
 
   function runPreview() {
     const form = formRef.current;
@@ -115,12 +150,49 @@ export function RouteBuilderForm({
       </div>
 
       <div className="rounded-lg border border-surface-border bg-surface-muted/60">
-        <div className="flex items-center justify-between border-b border-surface-border px-4 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border px-4 py-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
             Stops on this route
           </h2>
-          <span className="text-xs text-slate-400">{jobs.length} staged</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* The count has to say what is SELECTED, not what is on
+                screen — "412 staged" next to a button that builds a
+                route is how you get a 412-stop route. */}
+            <span className="text-xs text-slate-400" data-testid="staged-count">
+              {selected.size} of {jobs.length} selected
+              {truncated && (
+                <>
+                  {" "}
+                  · showing {jobs.length} of {total.toLocaleString()}
+                  {scopeLabel ? ` in ${scopeLabel}` : ""}
+                </>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => setAll(true)}
+              className="rounded border border-surface-border px-2 py-0.5 text-[11px] transition hover:border-accent"
+            >
+              Select all shown
+            </button>
+            <button
+              type="button"
+              onClick={() => setAll(false)}
+              className="rounded border border-surface-border px-2 py-0.5 text-[11px] transition hover:border-accent"
+            >
+              Select none
+            </button>
+          </div>
         </div>
+        {truncated && (
+          <p className="border-b border-surface-border bg-amber-500/5 px-4 py-2 text-xs text-amber-200">
+            {total.toLocaleString()} jobs are unscheduled
+            {scopeLabel ? ` in ${scopeLabel}` : " across every borough"}. Only
+            the {jobs.length} oldest are shown — narrow by borough or job type
+            to see the rest. A route is one driver&apos;s day, so build it from
+            one area at a time.
+          </p>
+        )}
         <ul className="divide-y divide-surface-border">
           {jobs.map((j) => (
             <li key={j.id} className="flex items-start gap-3 px-4 py-3">
@@ -128,10 +200,10 @@ export function RouteBuilderForm({
                 type="checkbox"
                 name="jobIds"
                 value={j.id}
-                defaultChecked
+                checked={selected.has(j.id)}
                 aria-label={`Include ${j.schoolName}`}
                 className="mt-1 h-4 w-4 accent-accent"
-                onChange={() => setPreview(null)}
+                onChange={() => toggle(j.id)}
               />
               <div className="flex-1">
                 <div className="flex items-center gap-2 text-sm font-medium">

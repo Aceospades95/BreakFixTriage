@@ -10,7 +10,10 @@ import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
  */
 export async function GET() {
   const session = await getSession();
-  if (!session || !(await canAsync(session.role, PERMISSIONS.DISTRICTS_MANAGE))) {
+  if (
+    !session ||
+    !(await canAsync(session.role, PERMISSIONS.DISTRICTS_MANAGE))
+  ) {
     return new NextResponse("unauthorized", { status: 401 });
   }
 

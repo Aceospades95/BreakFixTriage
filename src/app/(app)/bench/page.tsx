@@ -15,6 +15,8 @@ import {
   daysInState,
   slaHealth,
 } from "@/lib/reports/sla";
+import { slaBreachedWhere } from "@/lib/reports/sla-filter";
+import { getSlaThresholds } from "@/lib/settings/settings";
 import { pickUpTicketAction } from "@/server/actions/tickets";
 
 export const dynamic = "force-dynamic";
@@ -167,7 +169,14 @@ export default async function BenchPage({
   // All benches (manager view).
   // Round-16 (B17) — tenant scope per ADR 0014.
   const allScope = andTicketWhere(ticketWhereForSession(session), boroughWhere);
-  const [ticketsByUserRaw, allBenchTotal, unassigned, unlinked] = await Promise.all([
+  const [
+    ticketsByUserRaw,
+    allBenchTotal,
+    openByAssignee,
+    breachedByAssignee,
+    unassigned,
+    unlinked,
+  ] = await Promise.all([
     prisma.ticket.findMany({
       where: andTicketWhere(allScope, {
         state: { in: activeStates },
@@ -190,6 +199,30 @@ export default async function BenchPage({
         state: { in: activeStates },
         assignedUserId: { not: null },
       }),
+    }),
+    // True per-assignee totals. The card list above is capped at
+    // ALL_BENCH_LIMIT, so counting the rows that made it into the
+    // slice reported "14" for a tech actually holding 90 — the page
+    // subtitle was made honest earlier but the column badges, which
+    // are what a manager actually reads, were still lying.
+    prisma.ticket.groupBy({
+      by: ["assignedUserId"],
+      where: andTicketWhere(allScope, {
+        state: { in: activeStates },
+        assignedUserId: { not: null },
+      }),
+      _count: { _all: true },
+    }),
+    // Same for the past-SLA badge, using the shared breached
+    // predicate rather than a JS filter over the slice.
+    prisma.ticket.groupBy({
+      by: ["assignedUserId"],
+      where: andTicketWhere(
+        allScope,
+        { assignedUserId: { not: null } },
+        slaBreachedWhere(await getSlaThresholds()),
+      ),
+      _count: { _all: true },
     }),
     prisma.ticket.findMany({
       where: andTicketWhere(allScope, {
@@ -215,6 +248,18 @@ export default async function BenchPage({
       take: 100,
     }),
   ]);
+
+  // True totals keyed by assignee, independent of the display cap.
+  const openCountByUser = new Map(
+    openByAssignee
+      .filter((g) => g.assignedUserId)
+      .map((g) => [g.assignedUserId!, g._count._all]),
+  );
+  const breachedCountByUser = new Map(
+    breachedByAssignee
+      .filter((g) => g.assignedUserId)
+      .map((g) => [g.assignedUserId!, g._count._all]),
+  );
 
   const byUser = new Map<string, typeof ticketsByUserRaw>();
   for (const t of ticketsByUserRaw) {
@@ -278,10 +323,9 @@ export default async function BenchPage({
         >
           {sortedUsers.map((u) => {
             const tickets = byUser.get(u.id) ?? [];
-            const breached = tickets.filter((t) => {
-              const days = daysInState(t, new Date());
-              return slaHealth(t.state, days) === "breached";
-            }).length;
+            const openTotal = openCountByUser.get(u.id) ?? tickets.length;
+            const breached = breachedCountByUser.get(u.id) ?? 0;
+            const columnTruncated = openTotal > tickets.length;
             return (
               <section
                 key={u.id}
@@ -304,8 +348,18 @@ export default async function BenchPage({
                         {breached} ⚠
                       </span>
                     )}
-                    <span className="rounded bg-surface-border px-2 py-0.5 text-xs font-medium tabular-nums">
-                      {tickets.length}
+                    <span
+                      className="rounded bg-surface-border px-2 py-0.5 text-xs font-medium tabular-nums"
+                      title={
+                        columnTruncated
+                          ? `${openTotal} open — ${tickets.length} shown`
+                          : undefined
+                      }
+                    >
+                      {openTotal}
+                      {columnTruncated && (
+                        <span className="text-slate-400">*</span>
+                      )}
                     </span>
                   </div>
                 </div>

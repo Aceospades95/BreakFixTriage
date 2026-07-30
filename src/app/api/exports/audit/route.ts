@@ -3,7 +3,12 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
-import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
+import {
+  csvFilename,
+  rowsToCsv,
+  truncationHeaders,
+  withTruncationNotice,
+} from "@/lib/reports/csv-export";
 
 export async function GET(request: Request) {
   const session = await getSession();
@@ -32,6 +37,10 @@ export async function GET(request: Request) {
     include: { actor: { select: { name: true, email: true } } },
   });
 
+  // True match count behind the row cap, so the download can
+  // state what it left out instead of looking complete.
+  const totalMatching = await prisma.auditLog.count({ where });
+
   const csv = rowsToCsv(logs, [
     { header: "Timestamp", get: (l) => l.createdAt },
     { header: "Actor", get: (l) => l.actor?.name ?? "system" },
@@ -49,11 +58,14 @@ export async function GET(request: Request) {
     },
   ]);
 
-  return new NextResponse(csv, {
+  const body = withTruncationNotice(csv, logs.length, totalMatching);
+
+  return new NextResponse(body, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${csvFilename("audit")}"`,
+      ...truncationHeaders(logs.length, totalMatching),
     },
   });
 }

@@ -431,6 +431,9 @@ model Ticket {
   /// per-borough report, the CSV export) filters on closedAt, which
   /// had no index at all and so scanned the whole table.
   @@index([closedAt])
+  /// The default ticket-list sort and every aging cutoff filter on
+  /// reportedAt; it had no index, so both scanned the table.
+  @@index([reportedAt])
   /// slaBreachedWhere() emits one {state, stateEnteredAt} branch per
   /// state — 23 of them. With only single-column indexes each branch
   /// is non-selective and the planner falls back to a seq scan; this
@@ -952,6 +955,12 @@ model AuditLog {
   @@index([severity])
   @@index([requestId])
   @@index([severity, acknowledgedAt])
+  /// The exceptions rollup aggregates by `action` (snow-merge
+  /// failures, field outcomes) and /audit filters by actor. AuditLog
+  /// grows by millions of rows a year and is never pruned, so both
+  /// were unbounded scans over the whole history.
+  @@index([action])
+  @@index([actorUserId])
 }
 
 enum NotificationStatus {

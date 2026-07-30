@@ -4,7 +4,12 @@ import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 import { ticketWhereForSession } from "@/lib/data/forSession";
 import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
-import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
+import {
+  csvFilename,
+  rowsToCsv,
+  truncationHeaders,
+  withTruncationNotice,
+} from "@/lib/reports/csv-export";
 
 export async function GET(request: Request) {
   const session = await getSession();
@@ -31,6 +36,10 @@ export async function GET(request: Request) {
     take: 10000,
   });
 
+  // True match count behind the row cap, so the download can
+  // state what it left out instead of looking complete.
+  const totalMatching = await prisma.quote.count({ where });
+
   const csv = rowsToCsv(quotes, [
     { header: "Ticket", get: (q) => q.ticket.incidentNumber },
     { header: "School", get: (q) => q.ticket.school.name },
@@ -48,11 +57,14 @@ export async function GET(request: Request) {
     { header: "Invoiced At", get: (q) => q.purchaseOrder?.invoicedAt },
   ]);
 
-  return new NextResponse(csv, {
+  const body = withTruncationNotice(csv, quotes.length, totalMatching);
+
+  return new NextResponse(body, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${csvFilename("quotes")}"`,
+      ...truncationHeaders(quotes.length, totalMatching),
     },
   });
 }

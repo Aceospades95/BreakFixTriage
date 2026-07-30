@@ -259,6 +259,25 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS "Ticket_shortDescription_trgm_idx"
          ON "Ticket" USING gin ("shortDescription" gin_trgm_ops);`,
     );
+    // Device is the LARGER of the two tables global search hits — the
+    // header search fans out five unanchored ILIKE queries in
+    // parallel on every keystroke burst, and the device branch was
+    // the slowest of them. serialNumber/assetTag have btree uniques,
+    // which cannot serve '%q%'.
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "Device_serialNumber_trgm_idx"
+         ON "Device" USING gin ("serialNumber" gin_trgm_ops);`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "Device_assetTag_trgm_idx"
+         ON "Device" USING gin ("assetTag" gin_trgm_ops);`,
+    );
+    // School.name also backs the school-name filter on the ticket
+    // list and its CSV export, not just global search.
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "School_name_trgm_idx"
+         ON "School" USING gin ("name" gin_trgm_ops);`,
+    );
     console.log("[bootstrap] search indexes: pg_trgm ready");
   } catch (err) {
     console.warn(

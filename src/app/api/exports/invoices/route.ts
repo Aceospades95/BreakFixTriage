@@ -3,7 +3,12 @@ import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 import { ticketWhereForSession } from "@/lib/data/forSession";
 import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
-import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
+import {
+  csvFilename,
+  rowsToCsv,
+  truncationHeaders,
+  withTruncationNotice,
+} from "@/lib/reports/csv-export";
 
 export async function GET() {
   const session = await getSession();
@@ -13,7 +18,9 @@ export async function GET() {
 
   const tickets = await prisma.ticket.findMany({
     // Round-16 (B17) — tenant scope per ADR 0014.
-    where: { AND: [ticketWhereForSession(session), { state: "INVOICE_REQUIRED" }] },
+    where: {
+      AND: [ticketWhereForSession(session), { state: "INVOICE_REQUIRED" }],
+    },
     include: {
       school: { select: { name: true, code: true } },
       quotes: {
@@ -25,6 +32,14 @@ export async function GET() {
     },
     orderBy: { reportedAt: "asc" },
     take: 10000,
+  });
+
+  // True match count behind the row cap, so the download can
+  // state what it left out instead of looking complete.
+  const totalMatching = await prisma.ticket.count({
+    where: {
+      AND: [ticketWhereForSession(session), { state: "INVOICE_REQUIRED" }],
+    },
   });
 
   const rows = tickets.map((t) => ({
@@ -49,11 +64,14 @@ export async function GET() {
     { header: "Invoiced At", get: (r) => r.po?.invoicedAt },
   ]);
 
-  return new NextResponse(csv, {
+  const body = withTruncationNotice(csv, tickets.length, totalMatching);
+
+  return new NextResponse(body, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${csvFilename("invoices")}"`,
+      ...truncationHeaders(tickets.length, totalMatching),
     },
   });
 }

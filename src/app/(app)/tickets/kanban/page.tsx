@@ -109,7 +109,11 @@ export default async function KanbanPage() {
     .filter((s) => s !== "CLOSED");
   const wantClosed = columns.some((c) => c.state === "CLOSED");
 
-  const [inFlightTickets, closedTickets] = await Promise.all([
+  // True per-state totals. The board renders a capped slice, so
+  // without these every column badge reports the slice length —
+  // citywide that pins the badges at the cap and the board silently
+  // stops reflecting the backlog.
+  const [inFlightTickets, closedTickets, stateGroups] = await Promise.all([
     prisma.ticket.findMany({
       where: andTicketWhere(scope, { state: { in: inFlightStates } }),
       orderBy: { stateEnteredAt: "asc" },
@@ -132,8 +136,19 @@ export default async function KanbanPage() {
           take: 100,
         })
       : Promise.resolve([]),
+    prisma.ticket.groupBy({
+      by: ["state"],
+      where: andTicketWhere(scope, {
+        state: { in: columns.map((c) => c.state) },
+      }),
+      _count: { _all: true },
+    }),
   ]);
   const tickets = [...inFlightTickets, ...closedTickets];
+  const stateCounts: Record<string, number> = Object.fromEntries(
+    stateGroups.map((g) => [g.state, g._count._all]),
+  );
+  const boardTotal = stateGroups.reduce((a, g) => a + g._count._all, 0);
 
   const boardTickets = tickets.map((t) => ({
     id: t.id,
@@ -150,7 +165,7 @@ export default async function KanbanPage() {
     <>
       <PageHeader
         title="Kanban"
-        subtitle={`${tickets.length} active tickets across ${columns.length} columns · drag cards between columns to transition`}
+        subtitle={`${boardTotal.toLocaleString()} tickets across ${columns.length} columns${boardTotal > tickets.length ? ` · showing the ${tickets.length} most urgent` : ""} · drag cards between columns to transition`}
         actions={
           <div className="flex items-center gap-3">
             <AutoRefresh storageKey="kanban-auto-refresh" intervalSeconds={30} />
@@ -163,7 +178,11 @@ export default async function KanbanPage() {
           </div>
         }
       />
-      <KanbanBoard columns={columns} tickets={boardTickets} />
+      <KanbanBoard
+        columns={columns}
+        tickets={boardTickets}
+        stateCounts={stateCounts}
+      />
     </>
   );
 }

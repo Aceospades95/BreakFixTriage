@@ -39,9 +39,17 @@ export interface KanbanTicket {
 export function KanbanBoard({
   columns,
   tickets,
+  stateCounts = {},
 }: {
   columns: KanbanColumnDef[];
   tickets: KanbanTicket[];
+  /**
+   * True per-state totals from the database. The board renders a
+   * capped slice of cards, so a badge showing the slice length reads
+   * as the real backlog when it is only what fitted on the page —
+   * citywide that badge would sit at its cap and never move.
+   */
+  stateCounts?: Record<string, number>;
 }) {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<"grid" | "board">("grid");
@@ -305,9 +313,10 @@ export function KanbanBoard({
                       </div>
                       <div className="text-[10px] text-slate-500">{col.hint}</div>
                     </div>
-                    <span className="inline-block min-w-[3ch] whitespace-nowrap rounded bg-muted px-2 py-0.5 text-center text-xs tabular-nums">
-                      {colTickets.length}
-                    </span>
+                    <ColumnCount
+                      shown={colTickets.length}
+                      total={stateCounts[col.state]}
+                    />
                   </Link>
                   <button
                     type="button"
@@ -404,9 +413,10 @@ export function KanbanBoard({
                     <div className="text-[10px] text-slate-500">{col.hint}</div>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="inline-block min-w-[3ch] whitespace-nowrap rounded bg-muted px-2 py-0.5 text-center text-xs tabular-nums">
-                      {colTickets.length}
-                    </span>
+                    <ColumnCount
+                      shown={colTickets.length}
+                      total={stateCounts[col.state]}
+                    />
                     <Link
                       href={`/tickets?state=${col.state}`}
                       className="text-slate-500 hover:text-primary"
@@ -477,5 +487,28 @@ export function KanbanBoard({
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Column badge. Shows the true database total, and when the board is
+ * only rendering a slice of it, says so rather than presenting the
+ * cap as the backlog.
+ */
+function ColumnCount({ shown, total }: { shown: number; total?: number }) {
+  const real = total ?? shown;
+  const truncated = real > shown;
+  return (
+    <span
+      className="inline-block min-w-[3ch] whitespace-nowrap rounded bg-muted px-2 py-0.5 text-center text-xs tabular-nums"
+      title={
+        truncated
+          ? `${real.toLocaleString()} in this state — ${shown} shown on the board`
+          : undefined
+      }
+    >
+      {real.toLocaleString()}
+      {truncated && <span className="text-slate-500">*</span>}
+    </span>
   );
 }

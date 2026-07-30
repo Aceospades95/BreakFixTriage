@@ -94,6 +94,12 @@ export async function productivityReport(
       where: { userId: { in: ids }, endedAt: { gte: cutoff } },
       _sum: { minutes: true },
     }),
+    // The nested stopDevices used to be SELECTED, one row per device
+    // per stop, only to be counted in JS. Over a 365-day window
+    // (the page allows it) that is hundreds of thousands of rows
+    // hauled into Node to produce one integer per person. A filtered
+    // relation count does the same arithmetic in the database and
+    // returns a single number per stop.
     db.route.findMany({
       where: { assigneeUserId: { in: ids }, date: { gte: cutoff } },
       select: {
@@ -101,9 +107,15 @@ export async function productivityReport(
         stops: {
           select: {
             status: true,
-            stopDevices: {
-              where: { removedAt: null },
-              select: { lineState: true },
+            _count: {
+              select: {
+                stopDevices: {
+                  where: {
+                    removedAt: null,
+                    lineState: { in: ["VERIFIED", "EXTRA_ADDED"] },
+                  },
+                },
+              },
             },
           },
         },
@@ -158,11 +170,7 @@ export async function productivityReport(
     const stopsFailed = allStops.filter((s) => s.status === "FAILED").length;
     const stopsPartial = allStops.filter((s) => s.status === "PARTIAL").length;
     const devicesVerified = allStops.reduce(
-      (acc, s) =>
-        acc +
-        s.stopDevices.filter(
-          (d) => d.lineState === "VERIFIED" || d.lineState === "EXTRA_ADDED",
-        ).length,
+      (acc, s) => acc + s._count.stopDevices,
       0,
     );
 

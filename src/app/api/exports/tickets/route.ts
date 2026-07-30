@@ -5,7 +5,12 @@ import { getSession } from "@/lib/auth/session";
 import { andTicketWhere, ticketWhereForSession } from "@/lib/data/forSession";
 import { schoolWhereForBorough } from "@/lib/geo/boroughs";
 import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
-import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
+import {
+  csvFilename,
+  rowsToCsv,
+  truncationHeaders,
+  withTruncationNotice,
+} from "@/lib/reports/csv-export";
 import { getSlaThresholds } from "@/lib/settings/settings";
 import { slaBreachedWhere } from "@/lib/reports/sla-filter";
 
@@ -76,26 +81,26 @@ export async function GET(request: Request) {
     ticketWhereForSession(session),
     schoolClause ? { school: schoolClause } : null,
     {
-    ...(stateFilter ? { state: stateFilter } : {}),
-    ...(openOnly ? { state: { not: TicketState.CLOSED } } : {}),
-    ...(slaBreachedClause ? { AND: [slaBreachedClause] } : {}),
-    ...(schoolFilter && schoolIsId ? { schoolId: schoolFilter } : {}),
-    ...(assigneeFilter
-      ? assigneeFilter === "unassigned"
-        ? { assignedUserId: null }
-        : { assignedUserId: assigneeFilter }
-      : {}),
-    ...(manufacturerFilter
-      ? { device: { model: { manufacturer: manufacturerFilter } } }
-      : {}),
-    ...(query
-      ? {
-          OR: [
-            { incidentNumber: { contains: query, mode: "insensitive" } },
-            { shortDescription: { contains: query, mode: "insensitive" } },
-          ],
-        }
-      : {}),
+      ...(stateFilter ? { state: stateFilter } : {}),
+      ...(openOnly ? { state: { not: TicketState.CLOSED } } : {}),
+      ...(slaBreachedClause ? { AND: [slaBreachedClause] } : {}),
+      ...(schoolFilter && schoolIsId ? { schoolId: schoolFilter } : {}),
+      ...(assigneeFilter
+        ? assigneeFilter === "unassigned"
+          ? { assignedUserId: null }
+          : { assignedUserId: assigneeFilter }
+        : {}),
+      ...(manufacturerFilter
+        ? { device: { model: { manufacturer: manufacturerFilter } } }
+        : {}),
+      ...(query
+        ? {
+            OR: [
+              { incidentNumber: { contains: query, mode: "insensitive" } },
+              { shortDescription: { contains: query, mode: "insensitive" } },
+            ],
+          }
+        : {}),
     },
   );
 
@@ -109,6 +114,10 @@ export async function GET(request: Request) {
     },
     take: 10000,
   });
+
+  // True match count behind the row cap, so the download can
+  // state what it left out instead of looking complete.
+  const totalMatching = await prisma.ticket.count({ where });
 
   const csv = rowsToCsv(tickets, [
     { header: "Incident Number", get: (t) => t.incidentNumber },
@@ -125,11 +134,14 @@ export async function GET(request: Request) {
     { header: "Invoice Required", get: (t) => t.invoiceRequired },
   ]);
 
-  return new NextResponse(csv, {
+  const body = withTruncationNotice(csv, tickets.length, totalMatching);
+
+  return new NextResponse(body, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${csvFilename("tickets")}"`,
+      ...truncationHeaders(tickets.length, totalMatching),
     },
   });
 }

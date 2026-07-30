@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
-import { csvFilename, rowsToCsv } from "@/lib/reports/csv-export";
+import {
+  csvFilename,
+  rowsToCsv,
+  truncationHeaders,
+  withTruncationNotice,
+} from "@/lib/reports/csv-export";
 
 /**
  * Round-11 §1D — admin Email log kebab "Export last 30 days CSV"
@@ -31,6 +36,12 @@ export async function GET(request: Request) {
     take: 50000,
   });
 
+  // True match count behind the 50000-row cap, so the download
+  // can state what it left out instead of looking complete.
+  const totalMatching = await prisma.emailLog.count({
+    where: { createdAt: { gte: from, lte: to } },
+  });
+
   const csv = rowsToCsv(logs, [
     { header: "Created At", get: (l) => l.createdAt },
     { header: "Sent At", get: (l) => l.sentAt },
@@ -44,11 +55,14 @@ export async function GET(request: Request) {
     { header: "Error", get: (l) => l.error ?? "" },
   ]);
 
-  return new NextResponse(csv, {
+  const body = withTruncationNotice(csv, logs.length, totalMatching);
+
+  return new NextResponse(body, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${csvFilename("email-log")}"`,
+      ...truncationHeaders(logs.length, totalMatching),
     },
   });
 }

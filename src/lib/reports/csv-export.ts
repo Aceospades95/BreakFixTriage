@@ -67,3 +67,45 @@ export function csvFilename(base: string, now: Date = new Date()): string {
   const dd = String(now.getUTCDate()).padStart(2, "0");
   return `${base}-${yyyy}-${mm}-${dd}.csv`;
 }
+
+/**
+ * Shared truncation signal for the CSV exports.
+ *
+ * Every export caps its query (10k or 50k rows). Nothing told the
+ * person who downloaded it: a year-end ticket export returned the
+ * first 10,000 of 40,000+ rows and looked complete, so a reconciliation
+ * built on it would be quietly and confidently wrong.
+ *
+ * Two signals, because the two audiences differ. The header is for
+ * anything scripting the endpoint; the trailing row is for the human
+ * who opens the file in Excel and scrolls to the bottom.
+ */
+export const CSV_TRUNCATION_HEADER = "X-Export-Truncated";
+
+export function truncationHeaders(
+  shown: number,
+  total: number,
+): Record<string, string> {
+  if (total <= shown) return { "X-Export-Row-Count": String(shown) };
+  return {
+    [CSV_TRUNCATION_HEADER]: "true",
+    "X-Export-Row-Count": String(shown),
+    "X-Export-Total-Count": String(total),
+  };
+}
+
+/**
+ * Append a visible final row when rows were dropped. Returns the CSV
+ * unchanged when nothing was truncated, so callers can apply it
+ * unconditionally.
+ */
+export function withTruncationNotice(
+  csv: string,
+  shown: number,
+  total: number,
+  hint = "Narrow the filters (borough, date range, state) and export again to get the rest.",
+): string {
+  if (total <= shown) return csv;
+  const note = `TRUNCATED: showing ${shown.toLocaleString()} of ${total.toLocaleString()} matching rows. ${hint}`;
+  return `${csv}\n${csvEscape(note)}\n`;
+}

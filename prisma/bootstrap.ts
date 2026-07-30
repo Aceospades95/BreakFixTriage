@@ -158,6 +158,41 @@ async function main() {
     console.error("[bootstrap] seed-defaults failed:", err);
   }
 
+  // Five-borough expansion — trigram indexes for ticket search.
+  //
+  // The ticket list searches incidentNumber / shortDescription with
+  // an unanchored, case-insensitive `contains`, which Postgres can
+  // only answer with a sequential scan: measured at 75ms across
+  // 40k tickets and growing linearly with every year of citywide
+  // history. A GIN trigram index turns that into an index scan.
+  //
+  // Why here and not a migration: the container starts with
+  // `prisma db push`, which syncs the schema and ignores the
+  // migrations folder, so raw SQL in a migration would never run in
+  // production. Bootstrap already owns this kind of idempotent
+  // start-up work. Everything is IF NOT EXISTS and wrapped so a
+  // database role without CREATE EXTENSION rights degrades to the
+  // old sequential scan instead of blocking the deploy.
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE EXTENSION IF NOT EXISTS pg_trgm;`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "Ticket_incidentNumber_trgm_idx"
+         ON "Ticket" USING gin ("incidentNumber" gin_trgm_ops);`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "Ticket_shortDescription_trgm_idx"
+         ON "Ticket" USING gin ("shortDescription" gin_trgm_ops);`,
+    );
+    console.log("[bootstrap] search indexes: pg_trgm ready");
+  } catch (err) {
+    console.warn(
+      "[bootstrap] search indexes unavailable (ticket search will use a sequential scan):",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   // Round-6 QA audit — self-healing data repair on every container
   // start. The BUG-3 clobbered-approval repair was a manual script
   // that two consecutive deploy rounds forgot to run, so the known

@@ -388,6 +388,64 @@ export async function createDistrictAction(formData: FormData) {
   redirect("/admin/districts");
 }
 
+const updateDistrictSchema = z.object({
+  districtId: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+  region: z.string().trim().max(50).optional(),
+});
+
+/**
+ * Five-borough expansion — districts were create-only. That was
+ * survivable with one borough, but `region` IS the borough every
+ * filter and rollup in the app reads, and there was no way to
+ * correct it after creation (or to set it at all on the districts
+ * the school importer auto-creates). Name and region are editable;
+ * `code` stays immutable because imports and school rows key off it.
+ */
+export async function updateDistrictAction(formData: FormData) {
+  const session = await requireRole(PERMISSIONS.DISTRICTS_MANAGE);
+  const parsed = updateDistrictSchema.safeParse({
+    districtId: formData.get("districtId"),
+    name: formData.get("name"),
+    region: formData.get("region")?.toString() || undefined,
+  });
+  if (!parsed.success) {
+    flashError(
+      "/admin/districts",
+      parsed.error.issues.map((i) => i.message).join("; "),
+    );
+  }
+
+  const before = await prisma.district.findUnique({
+    where: { id: parsed.data.districtId },
+    select: { name: true, region: true },
+  });
+  if (!before) flashError("/admin/districts", "District not found");
+
+  await prisma.district.update({
+    where: { id: parsed.data.districtId },
+    data: { name: parsed.data.name, region: parsed.data.region ?? null },
+  });
+  await writeAudit({
+    actorUserId: session.userId,
+    entityType: "District",
+    entityId: parsed.data.districtId,
+    action: "update",
+    before,
+    after: { name: parsed.data.name, region: parsed.data.region ?? null },
+  });
+
+  revalidatePath("/admin/districts");
+  // Borough filters read region, so every list that offers one is
+  // now stale.
+  revalidatePath("/tickets");
+  revalidatePath("/scheduling");
+  revalidatePath("/admin/schools");
+  redirect(
+    `/admin/districts?ok=${encodeURIComponent(`Updated ${parsed.data.name}`)}`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Schools
 // ---------------------------------------------------------------------------

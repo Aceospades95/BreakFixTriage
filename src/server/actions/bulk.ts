@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { TicketState } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { writeAudit } from "@/lib/audit/audit";
@@ -95,10 +96,29 @@ export async function bulkTransitionAction(formData: FormData) {
     redirect(withFeedback(returnTo, "error", friendly));
   }
 
+  // Five-borough expansion — ADR 0014 on bulk writes. The ids come
+  // from the client, so without this a district-scoped user could
+  // post another borough's ids and move them. Out-of-scope ids are
+  // dropped and reported, not silently ignored.
+  const allowed = await prisma.ticket.findMany({
+    where: {
+      AND: [
+        ticketWhereForSession(session),
+        { id: { in: parsed.data.ticketIds } },
+      ],
+    },
+    select: { id: true },
+  });
+  const allowedIds = allowed.map((t) => t.id);
+  const outOfScope = parsed.data.ticketIds.length - allowedIds.length;
+
   let success = 0;
-  let skipped = 0;
+  let skipped = outOfScope;
   const errors: string[] = [];
-  for (const id of parsed.data.ticketIds) {
+  if (outOfScope > 0) {
+    errors.push(`${outOfScope} not in your districts`);
+  }
+  for (const id of allowedIds) {
     try {
       await transitionTicket(id, parsed.data.to, {
         actorUserId: session.userId,
@@ -177,8 +197,15 @@ export async function bulkAssignAction(formData: FormData) {
     );
   }
 
+  // Five-borough expansion — ADR 0014: only assign tickets the
+  // actor can actually see.
   const result = await prisma.ticket.updateMany({
-    where: { id: { in: parsed.data.ticketIds } },
+    where: {
+      AND: [
+        ticketWhereForSession(session),
+        { id: { in: parsed.data.ticketIds } },
+      ],
+    },
     data: { assignedUserId: parsed.data.assigneeUserId },
   });
 
@@ -189,7 +216,12 @@ export async function bulkAssignAction(formData: FormData) {
   // /admin/email-rules all keep working.
   if (parsed.data.assigneeUserId) {
     const tickets = await prisma.ticket.findMany({
-      where: { id: { in: parsed.data.ticketIds } },
+      where: {
+        AND: [
+          ticketWhereForSession(session),
+          { id: { in: parsed.data.ticketIds } },
+        ],
+      },
       select: {
         id: true,
         incidentNumber: true,

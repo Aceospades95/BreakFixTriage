@@ -31,7 +31,12 @@ test.afterAll(async () => {
 test("stale save is rejected, audited, and idle tabs live-refresh", async ({
   browser,
 }) => {
-  const school = await prisma.school.findFirstOrThrow();
+  // Must be a school inside the test personas' district — the
+  // ticket surfaces are tenant-scoped, so a school from anywhere in
+  // the (now citywide) dataset would 404 for the non-admin tab.
+  const school = await prisma.school.findFirstOrThrow({
+    where: { code: { startsWith: "TEST-" } },
+  });
   const ticket = await prisma.ticket.create({
     data: {
       incidentNumber: `INCCONC${STAMP}`,
@@ -110,7 +115,12 @@ test("stale save is rejected, audited, and idle tabs live-refresh", async ({
 test("an idle viewer picks up another session's save via SSE", async ({
   browser,
 }) => {
-  const school = await prisma.school.findFirstOrThrow();
+  // Must be a school inside the test personas' district — the
+  // ticket surfaces are tenant-scoped, so a school from anywhere in
+  // the (now citywide) dataset would 404 for the non-admin tab.
+  const school = await prisma.school.findFirstOrThrow({
+    where: { code: { startsWith: "TEST-" } },
+  });
   const ticket = await prisma.ticket.create({
     data: {
       incidentNumber: `INCCONC${STAMP}-SSE`,

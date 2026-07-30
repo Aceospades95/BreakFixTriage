@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { TicketState } from "@prisma/client";
 import { getSession } from "@/lib/auth/session";
+import { prisma } from "@/lib/db/prisma";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 import { canAsync, PERMISSIONS } from "@/lib/auth/rbac";
 import { publish } from "@/lib/events/bus";
 import {
@@ -52,6 +54,20 @@ export async function POST(
       { error: parsed.error.issues.map((i) => i.message).join("; ") },
       { status: 400 },
     );
+  }
+
+  // Five-borough expansion — ADR 0014 on the WRITE path. Without
+  // this, any authenticated user could transition any ticket in any
+  // borough by posting its id. 404 rather than 403 so the endpoint
+  // does not confirm the ticket exists.
+  const inScope = await prisma.ticket.findFirst({
+    where: {
+      AND: [ticketWhereForSession(session), { id: params.ticketId }],
+    },
+    select: { id: true },
+  });
+  if (!inScope) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
   try {

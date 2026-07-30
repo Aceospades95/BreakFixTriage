@@ -21,6 +21,7 @@ import { ActionForm } from "@/components/action-form";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 import { allowedNextStates, isReversionTransition } from "@/lib/workflow";
 import { nextActionFor } from "@/lib/workflow/next-action";
 import { readStatusConfig } from "@/lib/workflow/status-config";
@@ -84,8 +85,10 @@ export default async function TicketDetailPage({
   );
 
   if (isCuidParam) {
-    const byId = await prisma.ticket.findUnique({
-      where: { id: params.ticketId },
+    const byId = await prisma.ticket.findFirst({
+      // Five-borough expansion — scoped: an out-of-district id must
+      // 404, not redirect to a readable canonical URL.
+      where: { AND: [ticketWhereForSession(session), { id: params.ticketId }] },
       select: { incidentNumber: true },
     });
     if (!byId) notFound();
@@ -117,8 +120,12 @@ export default async function TicketDetailPage({
     : { id: params.ticketId };
 
   const [ticket, assignableUsers, siblingTickets] = await Promise.all([
-    prisma.ticket.findUnique({
-      where: ticketWhere,
+    prisma.ticket.findFirst({
+      // Five-borough expansion — ADR 0014 scope on read-by-id. The
+      // detail page was reachable for ANY ticket by URL, which in a
+      // one-borough pilot was invisible and citywide is a
+      // cross-district data leak.
+      where: { AND: [ticketWhereForSession(session), ticketWhere] },
       include: {
         school: {
           include: {

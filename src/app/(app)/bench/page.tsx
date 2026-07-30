@@ -16,6 +16,9 @@ import { pickUpTicketAction } from "@/server/actions/tickets";
 
 export const dynamic = "force-dynamic";
 
+// Five-borough expansion — cap for the "All benches" manager view.
+const ALL_BENCH_LIMIT = 500;
+
 /**
  * Tech bench view.
  *
@@ -140,7 +143,7 @@ export default async function BenchPage({
   // All benches (manager view).
   // Round-16 (B17) — tenant scope per ADR 0014.
   const allScope = ticketWhereForSession(session);
-  const [ticketsByUserRaw, unassigned, unlinked] = await Promise.all([
+  const [ticketsByUserRaw, allBenchTotal, unassigned, unlinked] = await Promise.all([
     prisma.ticket.findMany({
       where: {
         ...allScope,
@@ -151,6 +154,19 @@ export default async function BenchPage({
       include: {
         school: { select: { name: true } },
         device: { select: { serialNumber: true } },
+      },
+      // Five-borough expansion — this was UNBOUNDED: the default
+      // manager view loaded every open assigned ticket in the tenant
+      // and rendered a column per assignee. Citywide that is
+      // thousands of rows and 200 columns. Oldest-first, so the cap
+      // keeps the work that has waited longest.
+      take: ALL_BENCH_LIMIT,
+    }),
+    prisma.ticket.count({
+      where: {
+        ...allScope,
+        state: { in: activeStates },
+        assignedUserId: { not: null },
       },
     }),
     prisma.ticket.findMany({
@@ -199,13 +215,16 @@ export default async function BenchPage({
 
   // +1 for Unassigned, +1 for Unlinked (Round-4 §N1)
   const totalBuckets = sortedUsers.length + 2;
-  const totalAssignedOpen = ticketsByUserRaw.length;
+  // The TRUE assigned-open count, not the capped page of rows —
+  // reporting the cap as the total is how a citywide backlog hides.
+  const totalAssignedOpen = allBenchTotal;
+  const benchTruncated = ticketsByUserRaw.length < allBenchTotal;
 
   return (
     <>
       <PageHeader
         title="All benches"
-        subtitle={`${totalAssignedOpen} assigned · ${unassigned.length} unassigned · ${unlinked.length} unlinked · ${sortedUsers.length} active assignee${sortedUsers.length === 1 ? "" : "s"}`}
+        subtitle={`${totalAssignedOpen.toLocaleString()} assigned${benchTruncated ? ` (showing the ${ticketsByUserRaw.length} longest-waiting)` : ""} · ${unassigned.length} unassigned · ${unlinked.length} unlinked · ${sortedUsers.length} active assignee${sortedUsers.length === 1 ? "" : "s"}`}
         actions={
           <div className="flex items-center gap-2">
             <Link

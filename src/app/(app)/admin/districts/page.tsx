@@ -1,8 +1,13 @@
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db/prisma";
+import { ActionForm } from "@/components/action-form";
+import { sortBoroughs } from "@/lib/geo/boroughs";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
-import { createDistrictAction } from "@/server/actions/admin";
+import {
+  createDistrictAction,
+  updateDistrictAction,
+} from "@/server/actions/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +24,15 @@ export default async function AdminDistrictsPage({
     },
     orderBy: { name: "asc" },
   });
+  // Existing borough values become datalist suggestions so operators
+  // type "Bronx" consistently instead of inventing variants.
+  const knownRegions = sortBoroughs([
+    ...new Set(
+      districts
+        .map((d) => d.region?.trim())
+        .filter((r): r is string => Boolean(r)),
+    ),
+  ]);
 
   return (
     <>
@@ -79,13 +93,51 @@ export default async function AdminDistrictsPage({
               <th className="px-3 py-2 font-medium">Active</th>
             </tr>
           </thead>
+          <datalist id="borough-suggestions">
+            {knownRegions.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
           <tbody className="divide-y divide-surface-border">
             {districts.map((d) => (
               <tr key={d.id}>
-                <td className="px-3 py-2">{d.name}</td>
-                <td className="px-3 py-2 font-medium tracking-tight text-xs">{d.code}</td>
-                <td className="px-3 py-2 text-xs text-slate-400">
-                  {d.region ?? "—"}
+                {/* Five-borough expansion — name and borough are
+                    editable inline. Region is the borough every
+                    filter reads, and it was previously write-once at
+                    creation (and never set at all for districts the
+                    school importer creates). */}
+                <td className="px-3 py-2" colSpan={2}>
+                  <ActionForm
+                    action={updateDistrictAction}
+                    className="flex flex-wrap items-center gap-2"
+                  >
+                    <input type="hidden" name="districtId" value={d.id} />
+                    <input
+                      type="text"
+                      name="name"
+                      defaultValue={d.name}
+                      aria-label={`Name for ${d.code}`}
+                      className="w-48 min-w-0 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                    />
+                    <span className="font-medium tracking-tight text-xs text-slate-400">
+                      {d.code}
+                    </span>
+                    <input
+                      type="text"
+                      name="region"
+                      defaultValue={d.region ?? ""}
+                      list="borough-suggestions"
+                      placeholder="Borough"
+                      aria-label={`Borough for ${d.code}`}
+                      className="w-32 min-w-0 rounded border border-surface-border bg-surface px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      className="text-[10px] text-accent hover:underline"
+                    >
+                      save
+                    </button>
+                  </ActionForm>
                 </td>
                 <td className="px-3 py-2">{d.schools.length}</td>
                 <td className="px-3 py-2">{d.users.length}</td>

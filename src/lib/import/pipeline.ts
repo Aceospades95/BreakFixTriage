@@ -9,6 +9,7 @@ import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { writeAudit } from "@/lib/audit/audit";
 import { detectDuplicates } from "@/lib/duplicates/detect";
 import { reconcileSnowImport } from "@/lib/snow-merge";
+import { boroughFromDbn } from "@/lib/geo/boroughs";
 import { parseFile } from "./parse";
 import { mapRawRow, mapRawSchoolRow, mapRawDeviceRow, mapRawUserRow, mapRawPartRow, mapRawDeviceModelRow } from "./mapper";
 import { NormalizedImportRow, NormalizedSchoolRow, NormalizedDeviceRow, NormalizedUserRow, NormalizedPartRow, NormalizedDeviceModelRow } from "./schema";
@@ -514,10 +515,27 @@ export async function runSchoolImport(
       const n = row.normalized;
       // Find or create district
       let district = await db.district.findFirst({ where: { name: { equals: n.districtName, mode: "insensitive" } } });
+      // Five-borough expansion — District.region is the borough, and
+      // every borough filter in the app reads it. Infer it from the
+      // school's DBN ("11X123" -> Bronx) so importing schools also
+      // populates the boroughs instead of leaving the filters empty.
+      const inferredRegion = boroughFromDbn(n.code);
       if (!district) {
         // Generate a code from the district name (lowercase, no spaces)
         const districtCode = n.districtName.replace(/\s+/g, "-").toLowerCase().slice(0, 20);
-        district = await db.district.create({ data: { name: n.districtName, code: districtCode } });
+        district = await db.district.create({
+          data: {
+            name: n.districtName,
+            code: districtCode,
+            region: inferredRegion,
+          },
+        });
+      } else if (!district.region && inferredRegion) {
+        // Backfill a district that predates the borough work.
+        district = await db.district.update({
+          where: { id: district.id },
+          data: { region: inferredRegion },
+        });
       }
       // Upsert school by code
       const existing = await db.school.findFirst({ where: { code: { equals: n.code, mode: "insensitive" } } });

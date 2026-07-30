@@ -158,6 +158,46 @@ async function main() {
     console.error("[bootstrap] seed-defaults failed:", err);
   }
 
+  // Five-borough expansion — backfill District.region (the borough)
+  // from the schools' NYC DBN codes. Every borough filter in the app
+  // reads region, and districts created before this work — or by the
+  // school importer, which had no borough column to read — have it
+  // null, which would make those filters look empty. Idempotent:
+  // only fills districts where region IS NULL, never overwrites an
+  // operator's value.
+  try {
+    const { boroughFromDbn } = await import("../src/lib/geo/boroughs");
+    const blank = await prisma.district.findMany({
+      where: { region: null },
+      select: {
+        id: true,
+        schools: { select: { code: true }, take: 25 },
+      },
+    });
+    let filled = 0;
+    for (const d of blank) {
+      // Use the most common borough among the district's schools so a
+      // single mistyped DBN cannot mislabel a whole district.
+      const tally = new Map<string, number>();
+      for (const s of d.schools) {
+        const b = boroughFromDbn(s.code);
+        if (b) tally.set(b, (tally.get(b) ?? 0) + 1);
+      }
+      const best = [...tally.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (!best) continue;
+      await prisma.district.update({
+        where: { id: d.id },
+        data: { region: best[0] },
+      });
+      filled += 1;
+    }
+    if (filled > 0) {
+      console.log(`[bootstrap] borough backfill: set region on ${filled} district(s)`);
+    }
+  } catch (err) {
+    console.error("[bootstrap] borough backfill failed:", err);
+  }
+
   // Five-borough expansion — trigram indexes for ticket search.
   //
   // The ticket list searches incidentNumber / shortDescription with

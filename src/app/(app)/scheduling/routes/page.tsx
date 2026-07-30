@@ -6,7 +6,12 @@ import { RouteStatusPill } from "@/components/route-status-pill";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS, can } from "@/lib/auth/rbac";
+import { routeWhereForSession } from "@/lib/data/forSession";
+import { routeWhereForBorough } from "@/lib/geo/boroughs";
+import { boroughOptions, normalizeBorough } from "@/lib/geo/borough-options";
+import { BoroughFilter } from "@/components/borough-filter";
 import { humanise } from "@/lib/format";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +36,7 @@ const STATUS_FILTERS: Array<{ key: string; statuses: RouteStatus[] }> = [
 export default async function RoutesIndexPage({
   searchParams,
 }: {
-  searchParams?: { filter?: string; page?: string };
+  searchParams?: { filter?: string; page?: string; borough?: string };
 }) {
   const session = await requireRole(PERMISSIONS.SCHEDULING_READ);
   const canBuild = can(session.role, PERMISSIONS.ROUTES_BUILD);
@@ -40,8 +45,26 @@ export default async function RoutesIndexPage({
     STATUS_FILTERS.find((f) => f.key === searchParams?.filter) ??
     STATUS_FILTERS[0]!;
   const page = Math.max(1, parseInt(searchParams?.page ?? "1", 10) || 1);
-  const where =
-    filter.statuses.length > 0 ? { status: { in: filter.statuses } } : {};
+
+  // Five-borough expansion — this list was UNSCOPED. routeWhereForSession
+  // has existed since ADR 0014 but was never called from here, so a
+  // district-scoped user saw every route in the city along with the
+  // name of the driver running it. Composed with AND because the
+  // session scope is itself an OR (own routes, or routes with a stop
+  // in my districts) and a spread would flatten it.
+  const boroughs = await boroughOptions(prisma, session);
+  const borough = normalizeBorough(searchParams?.borough, boroughs);
+  const parts: Prisma.RouteWhereInput[] = [routeWhereForSession(session)]
+    .concat(routeWhereForBorough(borough))
+    .filter((p) => Object.keys(p).length > 0);
+  if (filter.statuses.length > 0) parts.push({ status: { in: filter.statuses } });
+  const where: Prisma.RouteWhereInput =
+    parts.length === 0 ? {} : parts.length === 1 ? parts[0]! : { AND: parts };
+  // The status pills must be counted through the SAME scope, or the
+  // pill totals and the table they filter disagree.
+  const pillScope: Prisma.RouteWhereInput[] = [routeWhereForSession(session)]
+    .concat(routeWhereForBorough(borough))
+    .filter((p) => Object.keys(p).length > 0);
 
   const [routes, total, countsRaw] = await Promise.all([
     prisma.route.findMany({
@@ -55,8 +78,23 @@ export default async function RoutesIndexPage({
       },
     }),
     prisma.route.count({ where }),
-    prisma.route.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.route.groupBy({
+      by: ["status"],
+      where: pillScope.length === 0 ? {} : { AND: pillScope },
+      _count: { _all: true },
+    }),
   ]);
+
+  // Every pill and pager link keeps the other params — dropping the
+  // borough on the first pagination click is the kind of quiet reset
+  // that makes a filter feel broken.
+  const routesHref = (over: { filter?: string; page?: number }) => {
+    const sp = new URLSearchParams();
+    sp.set("filter", over.filter ?? filter.key);
+    if (over.page && over.page > 1) sp.set("page", String(over.page));
+    if (borough) sp.set("borough", borough);
+    return `/scheduling/routes?${sp.toString()}`;
+  };
 
   const countByStatus = new Map(
     countsRaw.map((c) => [c.status, c._count._all]),
@@ -74,7 +112,12 @@ export default async function RoutesIndexPage({
         title="Routes"
         subtitle="Every route, newest first. Open one for the stop list and print sheet."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <BoroughFilter
+              boroughs={boroughs}
+              selected={borough}
+              carry={{ filter: searchParams?.filter }}
+            />
             {canBuild && (
               <Link
                 href="/scheduling/routes/new"
@@ -99,7 +142,7 @@ export default async function RoutesIndexPage({
           return (
             <Link
               key={f.key}
-              href={`/scheduling/routes?filter=${f.key}`}
+              href={routesHref({ filter: f.key })}
               className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition ${
                 active
                   ? "border-accent bg-accent/15 text-accent"
@@ -175,7 +218,7 @@ export default async function RoutesIndexPage({
           <div className="flex gap-2">
             {page > 1 && (
               <Link
-                href={`/scheduling/routes?filter=${filter.key}&page=${page - 1}`}
+                href={routesHref({ page: page - 1 })}
                 className="rounded border border-surface-border px-3 py-1.5 transition hover:border-accent"
               >
                 ← Newer
@@ -183,7 +226,7 @@ export default async function RoutesIndexPage({
             )}
             {page < pageCount && (
               <Link
-                href={`/scheduling/routes?filter=${filter.key}&page=${page + 1}`}
+                href={routesHref({ page: page + 1 })}
                 className="rounded border border-surface-border px-3 py-1.5 transition hover:border-accent"
               >
                 Older →

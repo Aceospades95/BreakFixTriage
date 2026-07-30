@@ -521,8 +521,23 @@ export async function runSchoolImport(
       // populates the boroughs instead of leaving the filters empty.
       const inferredRegion = boroughFromDbn(n.code);
       if (!district) {
-        // Generate a code from the district name (lowercase, no spaces)
-        const districtCode = n.districtName.replace(/\s+/g, "-").toLowerCase().slice(0, 20);
+        // Generate a code from the district name (lowercase, no
+        // spaces). District.code is @unique and this truncates to 20
+        // chars, so names that share a prefix — "Community School
+        // District 1" and "...District 10" — collide and the row is
+        // rejected. Probe for a free suffix instead of failing the
+        // import, which matters when loading ~32 districts at once.
+        const base = n.districtName.replace(/\s+/g, "-").toLowerCase().slice(0, 20);
+        let districtCode = base;
+        for (let attempt = 2; attempt <= 50; attempt++) {
+          const clash = await db.district.findUnique({
+            where: { code: districtCode },
+            select: { id: true },
+          });
+          if (!clash) break;
+          const suffix = `-${attempt}`;
+          districtCode = `${base.slice(0, 20 - suffix.length)}${suffix}`;
+        }
         district = await db.district.create({
           data: {
             name: n.districtName,
@@ -537,25 +552,91 @@ export async function runSchoolImport(
           data: { region: inferredRegion },
         });
       }
+      // The row schema parses address/city/state/zip/phone and a
+      // contact, but none of it used to be written — so importing
+      // 1,600 schools produced 1,600 addressless records. No address
+      // means no lat/lng, which means the route map and the stop
+      // optimizer have nothing to work with, and no contact means
+      // SPOC email and the school portal have no recipient.
+      const hasAddress = Boolean(n.address && n.city && n.state);
+      const addressData = hasAddress
+        ? {
+            line1: n.address!,
+            city: n.city!,
+            state: n.state!,
+            postalCode: n.zip ?? "",
+          }
+        : null;
+
       // Upsert school by code
       const existing = await db.school.findFirst({ where: { code: { equals: n.code, mode: "insensitive" } } });
+      let schoolId: string;
       if (existing) {
+        let addressId = existing.addressId;
+        if (addressData) {
+          if (addressId) {
+            await db.address.update({ where: { id: addressId }, data: addressData });
+          } else {
+            const a = await db.address.create({ data: addressData });
+            addressId = a.id;
+          }
+        }
         await db.school.update({
           where: { id: existing.id },
-          data: { name: n.name, districtId: district.id },
+          data: {
+            name: n.name,
+            districtId: district.id,
+            ...(addressId ? { addressId } : {}),
+            // Flag for the geocoder when there is no lat/lng yet.
+            ...(addressData ? { needsAddress: true } : {}),
+          },
         });
+        schoolId = existing.id;
         updated++;
         await db.importRow.update({ where: { id: row.id }, data: { status: ImportRowStatus.UPDATED } });
       } else {
-        await db.school.create({
+        const address = addressData
+          ? await db.address.create({ data: addressData })
+          : null;
+        const school = await db.school.create({
           data: {
             name: n.name,
             code: n.code,
             districtId: district.id,
+            addressId: address?.id ?? null,
+            needsAddress: Boolean(address),
           },
         });
+        schoolId = school.id;
         created++;
         await db.importRow.update({ where: { id: row.id }, data: { status: ImportRowStatus.CREATED } });
+      }
+
+      // SPOC contact. Opted into ticket email because a school
+      // contact supplied in an import exists precisely to be
+      // notified; ops can turn it off per contact afterwards.
+      if (n.contactName && n.contactName.trim().length > 0) {
+        const existingContact = await db.contact.findFirst({
+          where: { schoolId, name: { equals: n.contactName, mode: "insensitive" } },
+          select: { id: true },
+        });
+        const contactData = {
+          name: n.contactName,
+          email: n.contactEmail && n.contactEmail.length > 0 ? n.contactEmail : null,
+          phone: n.phone ?? null,
+          isPrimary: true,
+          receivesTicketEmails: true,
+        };
+        const contact = existingContact
+          ? await db.contact.update({
+              where: { id: existingContact.id },
+              data: contactData,
+            })
+          : await db.contact.create({ data: { ...contactData, schoolId } });
+        await db.school.update({
+          where: { id: schoolId },
+          data: { mainContactId: contact.id },
+        });
       }
     } catch (err) {
       rejected++;

@@ -8,7 +8,7 @@
  * query surfaces devices with N+ tickets inside a rolling window.
  */
 
-import type { PrismaClient, TicketState } from "@prisma/client";
+import type { Prisma, PrismaClient, TicketState } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 
 // ---------------------------------------------------------------------------
@@ -43,6 +43,12 @@ export async function productivityReport(
   windowDays = 30,
   db: PrismaClient = defaultPrisma,
   now: Date = new Date(),
+  /**
+   * Five-borough expansion — tenant scope for the ticket-derived
+   * columns. REPORTS_READ is held by every role, so unscoped this
+   * reported citywide throughput to a district user.
+   */
+  scope: Prisma.TicketWhereInput = {},
 ): Promise<ProductivityRow[]> {
   const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
@@ -50,53 +56,84 @@ export async function productivityReport(
     where: { active: true, role: { notIn: ["READ_ONLY"] } },
     select: { id: true, name: true, role: true },
   });
+  const ids = users.map((u) => u.id);
+  if (ids.length === 0) return [];
 
-  const rows: ProductivityRow[] = [];
-  for (const u of users) {
-    const [closed, open, timeSum, routes] = await Promise.all([
-      db.ticket.findMany({
-        where: {
-          assignedUserId: u.id,
-          state: "CLOSED",
-          closedAt: { gte: cutoff },
-        },
-        select: { reportedAt: true, closedAt: true },
+  // Five-borough expansion — this used to run FOUR queries per user
+  // inside a loop: ~120 queries for the pilot's 30 people, but 800
+  // for 200 staff, on a page every manager opens. The same data is
+  // now fetched in four batched queries and grouped in memory; the
+  // per-user maths below is unchanged.
+  const scoped = (rest: Prisma.TicketWhereInput): Prisma.TicketWhereInput =>
+    Object.keys(scope).length === 0 ? rest : { AND: [scope, rest] };
+
+  const [closedRows, openRows, timeRows, routeRows] = await Promise.all([
+    db.ticket.findMany({
+      where: scoped({
+        assignedUserId: { in: ids },
+        state: "CLOSED",
+        closedAt: { gte: cutoff },
       }),
-      db.ticket.findMany({
-        where: {
-          assignedUserId: u.id,
-          state: { notIn: ["CLOSED", "ON_HOLD"] as TicketState[] },
-        },
-        select: {
-          id: true,
-          state: true,
-          stateEnteredAt: true,
-          reportedAt: true,
-        },
+      select: { assignedUserId: true, reportedAt: true, closedAt: true },
+    }),
+    db.ticket.findMany({
+      where: scoped({
+        assignedUserId: { in: ids },
+        state: { notIn: ["CLOSED", "ON_HOLD"] as TicketState[] },
       }),
-      db.timeEntry.aggregate({
-        where: {
-          userId: u.id,
-          endedAt: { gte: cutoff },
-        },
-        _sum: { minutes: true },
-      }),
-      // Round-22 §4 — field work, attributed via the route's assignee.
-      db.route.findMany({
-        where: { assigneeUserId: u.id, date: { gte: cutoff } },
-        select: {
-          stops: {
-            select: {
-              status: true,
-              stopDevices: {
-                where: { removedAt: null },
-                select: { lineState: true },
-              },
+      select: {
+        assignedUserId: true,
+        id: true,
+        state: true,
+        stateEnteredAt: true,
+        reportedAt: true,
+      },
+    }),
+    db.timeEntry.groupBy({
+      by: ["userId"],
+      where: { userId: { in: ids }, endedAt: { gte: cutoff } },
+      _sum: { minutes: true },
+    }),
+    db.route.findMany({
+      where: { assigneeUserId: { in: ids }, date: { gte: cutoff } },
+      select: {
+        assigneeUserId: true,
+        stops: {
+          select: {
+            status: true,
+            stopDevices: {
+              where: { removedAt: null },
+              select: { lineState: true },
             },
           },
         },
-      }),
-    ]);
+      },
+    }),
+  ]);
+
+  function bucket<T>(rows: T[], key: (r: T) => string | null): Map<string, T[]> {
+    const m = new Map<string, T[]>();
+    for (const r of rows) {
+      const k = key(r);
+      if (!k) continue;
+      const list = m.get(k);
+      if (list) list.push(r);
+      else m.set(k, [r]);
+    }
+    return m;
+  }
+  const closedBy = bucket(closedRows, (r) => r.assignedUserId);
+  const openBy = bucket(openRows, (r) => r.assignedUserId);
+  const routesBy = bucket(routeRows, (r) => r.assigneeUserId);
+  const minutesBy = new Map(
+    timeRows.map((t) => [t.userId, t._sum.minutes ?? 0]),
+  );
+
+  const rows: ProductivityRow[] = [];
+  for (const u of users) {
+    const closed = closedBy.get(u.id) ?? [];
+    const open = openBy.get(u.id) ?? [];
+    const routes = routesBy.get(u.id) ?? [];
 
     const turnaroundDays = closed
       .filter((c) => c.closedAt != null)
@@ -137,7 +174,7 @@ export async function productivityReport(
       avgTurnaroundDays,
       openAssigned: open.length,
       breachedOpen: 0, // computed separately below where SLA is known
-      totalMinutesLogged: timeSum._sum.minutes ?? 0,
+      totalMinutesLogged: minutesBy.get(u.id) ?? 0,
       routesRun: routes.length,
       stopsCompleted,
       stopsFailed,
@@ -172,27 +209,40 @@ export interface DeviceHotspot {
  * window. Sorted hottest-first. Use `threshold = 3` by default so
  * one-off bad luck doesn't flood the list.
  */
+/** Most hotspot rows anyone reads; citywide there can be thousands. */
+export const DEVICE_HOTSPOT_LIMIT = 250;
+
 export async function deviceHotspots(
   windowDays = 180,
   threshold = 3,
   db: PrismaClient = defaultPrisma,
   now: Date = new Date(),
+  /**
+   * Five-borough expansion — tenant scope. This report reads every
+   * ticket in the window, so unscoped it showed a district user the
+   * whole city's device history.
+   */
+  scope: Prisma.TicketWhereInput = {},
 ): Promise<DeviceHotspot[]> {
   const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
+  const base: Prisma.TicketWhereInput = {
+    deviceId: { not: null },
+    reportedAt: { gte: cutoff },
+  };
   const groups = await db.ticket.groupBy({
     by: ["deviceId"],
-    where: {
-      deviceId: { not: null },
-      reportedAt: { gte: cutoff },
-    },
+    where: Object.keys(scope).length === 0 ? base : { AND: [scope, base] },
     _count: { _all: true },
     _max: { reportedAt: true },
   });
 
   const hot = groups
     .filter((g) => g.deviceId != null && g._count._all >= threshold)
-    .sort((a, b) => b._count._all - a._count._all);
+    .sort((a, b) => b._count._all - a._count._all)
+    // Cap AFTER sorting so the worst offenders are always the ones
+    // shown — an uncapped citywide list is thousands of rows.
+    .slice(0, DEVICE_HOTSPOT_LIMIT);
 
   if (hot.length === 0) return [];
 

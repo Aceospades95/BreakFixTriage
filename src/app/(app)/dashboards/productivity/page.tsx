@@ -3,6 +3,8 @@ import { PageHeader } from "@/components/page-header";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { productivityReport } from "@/lib/reports/productivity";
+import { prisma } from "@/lib/db/prisma";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 import { humanise } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -12,13 +14,15 @@ export default async function ProductivityPage({
 }: {
   searchParams?: { days?: string };
 }) {
-  await requireRole(PERMISSIONS.REPORTS_READ);
+  const session = await requireRole(PERMISSIONS.REPORTS_READ);
+  // Five-borough expansion — scope the ticket-derived columns.
+  const scope = ticketWhereForSession(session);
 
   const days = Math.max(
     1,
     Math.min(365, parseInt(searchParams?.days ?? "30", 10) || 30),
   );
-  const rows = await productivityReport(days);
+  const rows = await productivityReport(days, prisma, new Date(), scope);
 
   const totalClosed = rows.reduce((a, r) => a + r.closedInWindow, 0);
   const totalMinutes = rows.reduce((a, r) => a + r.totalMinutesLogged, 0);

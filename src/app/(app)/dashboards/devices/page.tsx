@@ -3,6 +3,8 @@ import { PageHeader } from "@/components/page-header";
 import { requireRole } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/auth/rbac";
 import { deviceHotspots } from "@/lib/reports/productivity";
+import { prisma } from "@/lib/db/prisma";
+import { ticketWhereForSession } from "@/lib/data/forSession";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +13,10 @@ export default async function DeviceHotspotsPage({
 }: {
   searchParams?: { days?: string; threshold?: string };
 }) {
-  await requireRole(PERMISSIONS.REPORTS_READ);
+  const session = await requireRole(PERMISSIONS.REPORTS_READ);
+  // Five-borough expansion — REPORTS_READ is in the read-only set,
+  // so this page is reachable by district-scoped roles.
+  const scope = ticketWhereForSession(session);
 
   const days = Math.max(
     7,
@@ -22,7 +27,13 @@ export default async function DeviceHotspotsPage({
     Math.min(20, parseInt(searchParams?.threshold ?? "3", 10) || 3),
   );
 
-  const hotspots = await deviceHotspots(days, threshold);
+  const hotspots = await deviceHotspots(
+    days,
+    threshold,
+    prisma,
+    new Date(),
+    scope,
+  );
 
   return (
     <>
